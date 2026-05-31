@@ -1,5 +1,5 @@
 import ReactECharts from "echarts-for-react";
-import type { RecordPoint } from "../types";
+import type { Activity, RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
 import { buildHeartRateZones, resolveHeartRateZoneIndex } from "../lib/hrZones";
 import { applyRollingAverageSeries, getDynamicSmoothingWindow } from "../lib/chartSmoothing";
@@ -11,9 +11,18 @@ import {
   type DistanceUnit,
 } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
+import {
+  calculateCardiacDecoupling,
+  describeCardiacDecouplingBand,
+  type CardiacDecouplingMode,
+  type CardiacDecouplingModeResult,
+  type CardiacDecouplingUnavailableReason,
+} from "../lib/cardiacDecoupling";
 
 type Props = {
+  activity?: Activity | null;
   records: RecordPoint[];
+  analysisRecords?: RecordPoint[];
   theme: "light" | "dark";
   distanceUnit: DistanceUnit;
   heartRateZoneBoundsBpm?: number[];
@@ -48,8 +57,64 @@ function formatAbsTime(baseTimestampMs: number, relMs: number): string {
   return `${hh}:${mm}:${ss}`;
 }
 
+function formatInsightDuration(seconds: number): string {
+  const totalMinutes = Math.round(Math.max(0, seconds) / 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
+function formatPercent(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "--";
+}
+
+function formatMetric(value: number | undefined, digits = 2): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "--";
+}
+
+function cardiacModeLabel(mode: CardiacDecouplingMode, t: (key: string) => string): string {
+  switch (mode) {
+    case "average_power": return t("insights.cardiacModeAveragePower");
+    case "normalized_power": return t("insights.cardiacModeNormalizedPower");
+    case "speed": return t("insights.cardiacModeSpeed");
+    case "constant_output_hr": return t("insights.cardiacModeConstantEffort");
+  }
+}
+
+function cardiacReasonLabel(reason: CardiacDecouplingUnavailableReason | undefined, t: (key: string) => string): string {
+  switch (reason) {
+    case "duration_too_short": return t("insights.cardiacReasonDurationTooShort");
+    case "unsupported_activity_type": return t("insights.cardiacReasonUnsupported");
+    case "missing_heart_rate": return t("insights.cardiacReasonMissingHeartRate");
+    case "missing_power": return t("insights.cardiacReasonMissingPower");
+    case "missing_speed": return t("insights.cardiacReasonMissingSpeed");
+    case "insufficient_heart_rate_coverage": return t("insights.cardiacReasonHeartRateCoverage");
+    case "insufficient_output_coverage": return t("insights.cardiacReasonOutputCoverage");
+    case "insufficient_paired_coverage": return t("insights.cardiacReasonPairedCoverage");
+    case "insufficient_rolling_window_coverage": return t("insights.cardiacReasonRollingCoverage");
+    case "invalid_segment_average": return t("insights.cardiacReasonInvalidAverage");
+    default: return t("insights.cardiacReasonUnavailable");
+  }
+}
+
+function cardiacBandLabel(decouplingPct: number | undefined, t: (key: string) => string): string {
+  if (typeof decouplingPct !== "number" || !Number.isFinite(decouplingPct)) return "";
+  const band = describeCardiacDecouplingBand(decouplingPct);
+  if (band === "low") return t("insights.cardiacBandLow");
+  if (band === "moderate") return t("insights.cardiacBandModerate");
+  return t("insights.cardiacBandHigh");
+}
+
+function selectCardiacResult(results: CardiacDecouplingModeResult[], defaultMode: CardiacDecouplingMode | undefined): CardiacDecouplingModeResult | undefined {
+  return results.find((result) => result.mode === defaultMode) ?? results.find((result) => result.available) ?? results[0];
+}
+
 export function ActivityInsights({
+  activity,
   records,
+  analysisRecords = [],
   theme,
   distanceUnit,
   heartRateZoneBoundsBpm,
@@ -122,6 +187,11 @@ export function ActivityInsights({
 
   const hasPowerData = records.some((r) => typeof r.power === "number" && r.power > 0);
   const hasHeartRateData = records.some((r) => typeof r.heart_rate === "number" && r.heart_rate > 0);
+  const cardiacRecords = analysisRecords.length ? analysisRecords : records;
+  const cardiacDecoupling = activity ? calculateCardiacDecoupling(activity, cardiacRecords) : null;
+  const cardiacResult = cardiacDecoupling ? selectCardiacResult(cardiacDecoupling.results, cardiacDecoupling.defaultMode) : undefined;
+  const cardiacBand = cardiacResult?.available ? describeCardiacDecouplingBand(cardiacResult.decouplingPct ?? 0) : undefined;
+  const cardiacIsNegative = (cardiacResult?.decouplingPct ?? 0) < 0;
 
   const lapMarkers = lapTimestampsUtc
     .slice(1)
@@ -599,6 +669,50 @@ export function ActivityInsights({
 
   return (
     <section className="insight-grid">
+      {cardiacDecoupling && (
+        <article className="panel cardiac-decoupling-card">
+          <div className="cardiac-decoupling-header">
+            <h3>{tr("insights.cardiacDecoupling")}</h3>
+            {cardiacResult && <span className="cardiac-mode-badge">{cardiacModeLabel(cardiacResult.mode, tr)}</span>}
+          </div>
+          {cardiacResult?.available ? (
+            <>
+              <div className={`cardiac-decoupling-value ${cardiacBand ?? ""}`}>{formatPercent(cardiacResult.decouplingPct)}</div>
+              <div className="cardiac-decoupling-band">
+                {cardiacIsNegative ? tr("insights.cardiacIncreasedEfficiency") : cardiacBandLabel(cardiacResult.decouplingPct, tr)}
+              </div>
+              <div className="cardiac-decoupling-support">
+                {cardiacResult.mode === "constant_output_hr" ? (
+                  <span>{tr("insights.cardiacHrSummary", { first: formatMetric(cardiacResult.firstHalfAvgHr, 0), second: formatMetric(cardiacResult.secondHalfAvgHr, 0) })}</span>
+                ) : (
+                  <span>{tr("insights.cardiacEfSummary", { first: formatMetric(cardiacResult.firstHalfEfficiency), second: formatMetric(cardiacResult.secondHalfEfficiency) })}</span>
+                )}
+              </div>
+              {typeof cardiacDecoupling.evaluatedDurationS === "number" && (
+                <div className="cardiac-decoupling-context">
+                  {tr("insights.cardiacAnalyzedWindow", {
+                    duration: formatInsightDuration(cardiacDecoupling.evaluatedDurationS),
+                    warmup: formatInsightDuration(cardiacDecoupling.warmupExcludedS ?? 0),
+                    cooldown: formatInsightDuration(cardiacDecoupling.endExcludedS ?? 0),
+                  })}
+                </div>
+              )}
+              {cardiacDecoupling.warnings?.includes("high_variability_effort") && (
+                <div className="cardiac-decoupling-note">{tr("insights.cardiacHighVariability")}</div>
+              )}
+              {cardiacResult.assumption === "constant_output" && (
+                <div className="cardiac-decoupling-note">{tr("insights.cardiacConstantOutputNote")}</div>
+              )}
+              <div className="cardiac-decoupling-note">{tr("insights.cardiacSteadyEffortNote")}</div>
+            </>
+          ) : (
+            <>
+              <div className="cardiac-decoupling-unavailable">{tr("insights.cardiacUnavailable")}</div>
+              <div className="cardiac-decoupling-context">{cardiacReasonLabel(cardiacResult?.reason ?? cardiacDecoupling.reason, tr)}</div>
+            </>
+          )}
+        </article>
+      )}
       <article className="panel">
         <h3>{tr("insights.speedTrend")}</h3>
         <ReactECharts option={timelineOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />

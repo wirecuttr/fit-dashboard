@@ -328,7 +328,7 @@ export function Dashboard({ onLogout }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const {
-    activities, selectedActivity, records, overview,
+    activities, selectedActivity, records, analysisRecords, overview,
     filterSport, setFilterSport, selectActivity, refresh
   } = useActivityStore();
   const {
@@ -1604,7 +1604,7 @@ export function Dashboard({ onLogout }: Props) {
                 <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></div>
                 <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />
               </div>
-              <ActivityInsights records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
+              <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
                   <h3>{t("detail.laps")}</h3>

@@ -7,6 +7,7 @@ type ActivityState = {
   selectedActivity: Activity | null;
   overview: OverviewStats | null;
   records: RecordPoint[];
+  analysisRecords: RecordPoint[];
   loading: boolean;
   filterSport: string;
   setFilterSport: (sport: string) => void;
@@ -19,6 +20,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
   selectedActivity: null,
   overview: null,
   records: [],
+  analysisRecords: [],
   loading: false,
   filterSport: "all",
 
@@ -32,8 +34,11 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
 
       if (get().selectedActivity) {
         const id = get().selectedActivity!.id;
-        const records = await api.getRecords(id);
-        set({ records });
+        const [records, analysisRecords] = await Promise.all([
+          api.getRecords(id),
+          api.getRecords(id, 1000),
+        ]);
+        set({ records, analysisRecords });
       }
     } finally {
       set({ loading: false });
@@ -41,11 +46,14 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
   },
 
   async selectActivity(activity) {
-    set({ selectedActivity: activity, records: [] });
+    set({ selectedActivity: activity, records: [], analysisRecords: [] });
     if (!activity) {
       return;
     }
-    const records = await api.getRecords(activity.id);
-    set({ records });
+    const [records, analysisRecords] = await Promise.all([
+      api.getRecords(activity.id),
+      api.getRecords(activity.id, 1000),
+    ]);
+    set({ records, analysisRecords });
   }
 }));
