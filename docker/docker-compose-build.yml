@@ -1,3 +1,5 @@
+name: fit-dashboard
+
 services:
   fit-dashboard:
     build:

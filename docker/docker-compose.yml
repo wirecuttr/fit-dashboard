@@ -1,3 +1,5 @@
+name: fit-dashboard
+
 services:
   fit-dashboard:
     image: ghcr.io/arpanghosh8453/fit-dashboard:latest
