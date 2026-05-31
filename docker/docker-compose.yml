@@ -5,8 +5,10 @@ services:
     hostname: fit-dashboard
     command: ["sh", "-c", "rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-available/default && exec /usr/local/bin/start-fit-dashboard.sh"]
     restart: unless-stopped
-    mem_limit: ${FIT_DASHBOARD_MEMORY_LIMIT:-512m}
-    memswap_limit: ${FIT_DASHBOARD_MEMORY_SWAP_LIMIT:-1g}
+    deploy:
+      resources:
+        limits:
+          memory: ${FIT_DASHBOARD_MEMORY_LIMIT:-512m}
     ports:
       - "8088:80"
     volumes:
