@@ -499,7 +499,13 @@ Result behavior:
 
 ## Confidence Flags
 
-Confidence flags do not make a result unavailable. They give the UI context when the activity is eligible but interpretation is weaker.
+Confidence flags do not make a result unavailable. They give the UI context when the activity is eligible but interpretation is weaker. The UI should always show a confidence label for available results.
+
+Confidence levels:
+
+- `High confidence`: output-based result using measured power or speed, all coverage thresholds passed, and no confidence warnings are present.
+- `Medium confidence`: constant-output heart-rate drift result that depends on the assumption that machine effort stayed steady, with no low-confidence warning.
+- `Low confidence`: any available result with `high_variability_effort`. Low confidence overrides medium or high confidence.
 
 Cycling variability flag:
 
@@ -531,13 +537,16 @@ Display:
 - Show evaluated duration and excluded warmup/end time in the detailed view, for example `Analyzed 45 min after excluding 10 min warmup and 5 min cooldown`.
 - Add help/disclaimer copy explaining that decoupling is most useful on steady aerobic efforts and may be distorted by intervals, stops, terrain, heat, dehydration, caffeine, poor sleep, fatigue, or bad sensor data.
 - For `Constant Effort HR Drift`, add mode-specific help: `This assumes the machine effort stayed steady. Changes in resistance, incline, cadence, or machine program can distort the result.`
-- For `high_variability_effort`, show a low-confidence note rather than hiding the metric: `Low confidence: this effort was highly variable.`
+- Always show confidence when a result is available: `High confidence`, `Medium confidence`, or `Low confidence`.
+- For `high_variability_effort`, show a low-confidence label plus a note rather than hiding the metric: `This effort was highly variable.`
 - Show negative decoupling as a raw negative percentage with neutral or positive wording, for example `-2.1%, increased efficiency`. Do not treat it as an error.
 - Supporting text for output-based modes:
 
 ```text
 First half EF 2.21, second half EF 2.10
 ```
+
+Use enough EF precision for the selected output mode. Power-based EF can use two decimals, while speed-based EF should use four decimals because speed divided by heart rate is usually a small value.
 
 - Supporting text for constant-effort machine mode:
 
