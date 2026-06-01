@@ -97,7 +97,8 @@ export type HeartRateDriftExcludedRange = {
 
 export type HeartRateDriftChartData = {
   heartRate: Array<[number, number | null]>;
-  normalizedPower: Array<[number, number | null]>;
+  output: Array<[number, number | null]>;
+  outputMode: Exclude<CardiacDecouplingMode, "constant_output_hr">;
   markers: HeartRateDriftChartMarker[];
   excludedRanges: HeartRateDriftExcludedRange[];
 };
@@ -363,6 +364,28 @@ function sampleStreamValue(interval: ActiveInterval, sampleAtS: number, stream: 
     return sampleInterpolatedValue(interval, sampleAtS, config, interval.startRecord.power, interval.endRecord.power, isNonNegative);
   }
   return sampleInterpolatedValue(interval, sampleAtS, config, interval.startRecord.heart_rate, interval.endRecord.heart_rate, isPositive);
+}
+
+function sampleSpeedValue(interval: ActiveInterval, sampleAtS: number, config: CardiacDecouplingConfig): number | null {
+  if (interval.dtS > config.maxInterpolationGapS) return null;
+  const startDistance = interval.startRecord.distance_m;
+  const endDistance = interval.endRecord.distance_m;
+  if (isNonNegative(startDistance) && isNonNegative(endDistance) && endDistance >= startDistance) {
+    return (endDistance - startDistance) / interval.dtS;
+  }
+  return sampleInterpolatedValue(interval, sampleAtS, config, interval.startRecord.speed_m_s, interval.endRecord.speed_m_s, isNonNegative);
+}
+
+function sampleOutputValue(
+  interval: ActiveInterval,
+  sampleAtS: number,
+  mode: Exclude<CardiacDecouplingMode, "constant_output_hr">,
+  config: CardiacDecouplingConfig
+): number | null {
+  if (mode === "average_power" || mode === "normalized_power") {
+    return sampleStreamValue(interval, sampleAtS, "power", config);
+  }
+  return sampleSpeedValue(interval, sampleAtS, config);
 }
 
 function measureSegment(
@@ -925,15 +948,81 @@ function activeToElapsedMs(intervals: ActiveInterval[], activeS: number, t0: num
   return null;
 }
 
+function normalizeExcludedRanges(ranges: HeartRateDriftExcludedRange[]): HeartRateDriftExcludedRange[] {
+  const primary = ranges.filter((range) => range.kind !== "gap" && range.endMs > range.startMs);
+  const normalized: HeartRateDriftExcludedRange[] = [...primary];
+
+  for (const gap of ranges.filter((range) => range.kind === "gap" && range.endMs > range.startMs)) {
+    let segments = [{ startMs: gap.startMs, endMs: gap.endMs }];
+    for (const blocker of primary) {
+      segments = segments.flatMap((segment) => {
+        if (segment.endMs <= blocker.startMs || segment.startMs >= blocker.endMs) return [segment];
+        const trimmed: Array<{ startMs: number; endMs: number }> = [];
+        if (segment.startMs < blocker.startMs) trimmed.push({ startMs: segment.startMs, endMs: blocker.startMs });
+        if (segment.endMs > blocker.endMs) trimmed.push({ startMs: blocker.endMs, endMs: segment.endMs });
+        return trimmed;
+      });
+    }
+    for (const segment of segments) {
+      if (segment.endMs - segment.startMs >= 1000) normalized.push({ ...segment, kind: "gap" });
+    }
+  }
+
+  const order: Record<HeartRateDriftExcludedRange["kind"], number> = { warmup: 0, cooldown: 1, gap: 2 };
+  return normalized.sort((a, b) => a.startMs - b.startMs || order[a.kind] - order[b.kind]);
+}
+
+function buildHeartRateDriftOutputSeries(
+  intervals: ActiveInterval[],
+  evaluatedSegment: SegmentBounds,
+  mode: Exclude<CardiacDecouplingMode, "constant_output_hr">,
+  config: CardiacDecouplingConfig,
+  t0: number
+): Array<[number, number | null]> {
+  if (mode === "normalized_power") {
+    return buildNormalizedPowerWindows(intervals, evaluatedSegment, config)
+      .filter((window) => isNonNegative(window.rollingPower))
+      .map((window) => {
+        const elapsedMs = activeToElapsedMs(intervals, window.activeS, t0);
+        return elapsedMs === null ? null : [elapsedMs, Number((window.rollingPower ?? 0).toFixed(2))] as [number, number];
+      })
+      .filter((point): point is [number, number] => point !== null);
+  }
+
+  const intervalS = Math.max(1, config.resampleIntervalS);
+  const count = Math.floor((evaluatedSegment.endS - evaluatedSegment.startS) / intervalS);
+  const points: Array<[number, number | null]> = [];
+  let intervalIndex = 0;
+
+  for (let i = 0; i < count; i += 1) {
+    const sampleAtS = evaluatedSegment.startS + i * intervalS + intervalS / 2;
+    while (intervalIndex < intervals.length && intervals[intervalIndex].activeEndS <= sampleAtS) {
+      intervalIndex += 1;
+    }
+
+    const elapsedMs = activeToElapsedMs(intervals, sampleAtS, t0);
+    if (elapsedMs === null) continue;
+
+    const interval = intervals[intervalIndex];
+    const value = interval && interval.activeStartS <= sampleAtS && interval.activeEndS > sampleAtS
+      ? sampleOutputValue(interval, sampleAtS, mode, config)
+      : null;
+    points.push([elapsedMs, value === null ? null : Number(value.toFixed(mode === "speed" ? 4 : 2))]);
+  }
+
+  return points;
+}
+
 export function buildHeartRateDriftChartData(
   records: RecordPoint[],
   decoupling: Pick<CardiacDecouplingResult, "evaluatedDurationS" | "warmupExcludedS" | "endExcludedS">,
-  result: Pick<CardiacDecouplingModeResult, "bins"> | undefined,
+  result: Pick<CardiacDecouplingModeResult, "bins" | "mode"> | undefined,
   configOverrides: Partial<CardiacDecouplingConfig> = {},
 ): HeartRateDriftChartData | null {
   const config = { ...DEFAULT_CARDIAC_DECOUPLING_CONFIG, ...configOverrides };
   const sorted = sortRecords(records);
   if (sorted.length < 2 || typeof decoupling.evaluatedDurationS !== "number") return null;
+  if (!result || result.mode === "constant_output_hr") return null;
 
   const t0 = sorted[0].timestamp_ms;
   const totalElapsedMs = Math.max(0, sorted[sorted.length - 1].timestamp_ms - t0);
@@ -965,26 +1054,23 @@ export function buildHeartRateDriftChartData(
   }
 
   const markers: HeartRateDriftChartMarker[] = [];
-  if (evaluatedStartMs !== null) markers.push({ elapsedMs: evaluatedStartMs, kind: "warmup" });
-  for (let i = 1; i < (result?.bins?.length ?? 0); i += 1) {
-    const elapsedMs = activeToElapsedMs(intervals, result?.bins?.[i]?.startS ?? 0, t0);
-    if (elapsedMs !== null) markers.push({ elapsedMs, kind: "bin", index: i + 1 });
+  const bins = result?.bins ?? [];
+  if (bins.length) {
+    for (let i = 0; i < bins.length; i += 1) {
+      const elapsedMs = activeToElapsedMs(intervals, bins[i].startS, t0);
+      if (elapsedMs !== null) markers.push({ elapsedMs, kind: "bin", index: i + 1 });
+    }
+  } else if (evaluatedStartMs !== null) {
+    markers.push({ elapsedMs: evaluatedStartMs, kind: "warmup" });
   }
   if (evaluatedEndMs !== null) markers.push({ elapsedMs: evaluatedEndMs, kind: "cooldown" });
 
-  const windows = buildNormalizedPowerWindows(intervals, evaluatedSegment, config);
-  const normalizedPower: Array<[number, number | null]> = windows
-    .filter((window) => isNonNegative(window.rollingPower))
-    .map((window) => {
-      const elapsedMs = activeToElapsedMs(intervals, window.activeS, t0);
-      return elapsedMs === null ? null : [elapsedMs, Number((window.rollingPower ?? 0).toFixed(2))] as [number, number];
-    })
-    .filter((point): point is [number, number] => point !== null);
+  const output = buildHeartRateDriftOutputSeries(intervals, evaluatedSegment, result.mode, config, t0);
 
   const heartRate: Array<[number, number | null]> = sorted.map((record) => [
     record.timestamp_ms - t0,
     isPositive(record.heart_rate) ? record.heart_rate : null,
   ]);
 
-  return { heartRate, normalizedPower, markers, excludedRanges };
+  return { heartRate, output, outputMode: result.mode, markers, excludedRanges: normalizeExcludedRanges(excludedRanges) };
 }
