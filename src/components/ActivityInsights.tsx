@@ -12,10 +12,13 @@ import {
 } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
 import {
+  buildHeartRateDriftChartData,
   calculateCardiacDecoupling,
   describeCardiacDecouplingBand,
   describeCardiacDecouplingConfidence,
   type CardiacDecouplingConfidence,
+  type HeartRateDriftChartMarker,
+  type HeartRateDriftExcludedRange,
   type CardiacDecouplingMode,
   type CardiacDecouplingModeResult,
   type CardiacDecouplingUnavailableReason,
@@ -120,6 +123,18 @@ function cardiacEfficiencyDigits(mode: CardiacDecouplingMode): number {
   return mode === "speed" ? 4 : 2;
 }
 
+function heartRateDriftMarkerLabel(marker: HeartRateDriftChartMarker, t: (key: string, params?: Record<string, string | number>) => string): string {
+  if (marker.kind === "warmup") return t("insights.hrDriftWarmup");
+  if (marker.kind === "cooldown") return t("insights.hrDriftCooldown");
+  return t("insights.hrDriftBin", { index: marker.index ?? "" });
+}
+
+function heartRateDriftRangeLabel(kind: HeartRateDriftExcludedRange["kind"], t: (key: string) => string): string {
+  if (kind === "warmup") return t("insights.hrDriftWarmup");
+  if (kind === "cooldown") return t("insights.hrDriftCooldown");
+  return t("insights.hrDriftGap");
+}
+
 function selectCardiacResult(results: CardiacDecouplingModeResult[], defaultMode: CardiacDecouplingMode | undefined): CardiacDecouplingModeResult | undefined {
   return results.find((result) => result.mode === defaultMode) ?? results.find((result) => result.available) ?? results[0];
 }
@@ -136,7 +151,7 @@ export function ActivityInsights({
   lapTimestampsUtc = [],
   smoothGraphs = true,
 }: Props) {
-    const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
+  const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
   const isDark = theme === "dark";
   const { t: tr } = useTranslation();
   const axisColor = isDark ? "#8899b8" : "#64748b";
@@ -207,6 +222,12 @@ export function ActivityInsights({
   const cardiacConfidence = describeCardiacDecouplingConfidence(cardiacResult, cardiacDecoupling?.warnings);
   const cardiacEfficiencyPrecision = cardiacResult ? cardiacEfficiencyDigits(cardiacResult.mode) : 2;
   const cardiacIsNegative = (cardiacResult?.decouplingPct ?? 0) < 0;
+  const heartRateDriftChartData = cardiacDecoupling && cardiacResult?.available
+    ? buildHeartRateDriftChartData(cardiacRecords, cardiacDecoupling, cardiacResult)
+    : null;
+  const hasHeartRateDriftChart = !!heartRateDriftChartData
+    && heartRateDriftChartData.normalizedPower.length > 0
+    && heartRateDriftChartData.heartRate.some(([, value]) => value !== null);
 
   const lapMarkers = lapTimestampsUtc
     .slice(1)
@@ -671,6 +692,96 @@ export function ActivityInsights({
     })),
   };
 
+  const heartRateDriftOption = hasHeartRateDriftChart && heartRateDriftChartData ? {
+    tooltip: {
+      trigger: "axis",
+      ...tooltipStyle,
+      formatter: (params: any[]) => {
+        const p = params?.[0];
+        const rel = Number(p?.value?.[0] ?? 0);
+        let html = formatTooltipHeader(rel);
+        for (const row of params) {
+          if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
+            const unit = row.seriesName === tr("chart.heartRate") ? " bpm" : " W";
+            html += `<div>${row.marker} ${row.seriesName}: <strong>${Number(row.value[1]).toFixed(1)}${unit}</strong></div>`;
+          }
+        }
+        return html;
+      },
+    },
+    legend: { textStyle: { color: axisColor, fontSize: 12 }, top: 0 },
+    grid: { left: 46, right: 48, top: 44, bottom: 46 },
+    xAxis: {
+      type: "value",
+      axisLabel: { color: axisColor, fontSize: 11, formatter: (val: number) => formatRelTime(val) },
+      axisLine: { lineStyle: { color: gridLine } },
+      splitLine: { show: false },
+    },
+    yAxis: [
+      {
+        type: "value", name: "bpm",
+        nameTextStyle: { color: axisColor, fontSize: 11 },
+        axisLabel: { color: axisColor, fontSize: 11 },
+        splitLine: { lineStyle: { color: gridLine } },
+      },
+      {
+        type: "value", name: "W",
+        nameTextStyle: { color: axisColor, fontSize: 11 },
+        axisLabel: { color: axisColor, fontSize: 11 },
+        splitLine: { show: false },
+      },
+    ],
+    dataZoom: [
+      {
+        type: "inside",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseWheel: false,
+        start: zoomRange?.start ?? 0,
+        end: zoomRange?.end ?? 100,
+      },
+    ],
+    series: [
+      {
+        name: tr("chart.heartRate"), type: "line", smooth: smoothGraphs, showSymbol: false,
+        lineStyle: { width: 1.8, color: "#ef4444" },
+        sampling: smoothGraphs ? "lttb" : undefined,
+        data: heartRateDriftChartData.heartRate,
+        markArea: heartRateDriftChartData.excludedRanges.length ? {
+          silent: true,
+          itemStyle: { color: isDark ? "rgba(148, 163, 184, 0.16)" : "rgba(148, 163, 184, 0.22)" },
+          label: { color: axisColor, fontSize: 10 },
+          data: heartRateDriftChartData.excludedRanges.map((range) => [
+            { xAxis: range.startMs, name: heartRateDriftRangeLabel(range.kind, tr) },
+            { xAxis: range.endMs },
+          ]),
+        } : undefined,
+        markLine: heartRateDriftChartData.markers.length ? {
+          animation: false,
+          symbol: ["none", "none"],
+          label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
+          data: heartRateDriftChartData.markers.map((marker) => ({
+            xAxis: marker.elapsedMs,
+            name: heartRateDriftMarkerLabel(marker, tr),
+            lineStyle: {
+              color: marker.kind === "bin"
+                ? (isDark ? "rgba(96, 165, 250, 0.72)" : "rgba(37, 99, 235, 0.65)")
+                : (isDark ? "rgba(245, 158, 11, 0.76)" : "rgba(217, 119, 6, 0.72)"),
+              type: "dashed",
+              width: 1,
+            },
+          })),
+        } : undefined,
+      },
+      {
+        name: tr("insights.cardiacModeNormalizedPower"), type: "line", yAxisIndex: 1, smooth: smoothGraphs, showSymbol: false,
+        lineStyle: { width: 2, color: "#f59e0b" },
+        sampling: smoothGraphs ? "lttb" : undefined,
+        data: heartRateDriftChartData.normalizedPower,
+      },
+    ],
+  } : null;
+
+
   const zoomEvents = {
     datazoom: (evt: any) => {
       const batch = evt?.batch?.[0];
@@ -729,6 +840,12 @@ export function ActivityInsights({
               <div className="cardiac-decoupling-context">{cardiacReasonLabel(cardiacResult?.reason ?? cardiacDecoupling.reason, tr)}</div>
             </>
           )}
+        </article>
+      )}
+      {heartRateDriftOption && (
+        <article className="panel">
+          <h3>{tr("insights.hrDriftDetail")}</h3>
+          <ReactECharts option={heartRateDriftOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
       )}
       <article className="panel">

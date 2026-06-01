@@ -323,19 +323,19 @@ Power-based modes:
 Computed normalized power:
 
 ```text
-rolling_30s_power[t] = average power over [t - 30s, t)
-normalized_power = fourth_root(mean(rolling_30s_power[t]^4))
+rolling_30s_power[t_center] = average power over [t_center - 15s, t_center + 15s)
+normalized_power = fourth_root(mean(rolling_30s_power[t_center]^4))
 ```
 
 Normalized-power rules:
 
 1. Build a 1-second power series using `resampleIntervalS` after the shared gap handling.
-2. Use trailing 30-second windows. A window ending at time `t` covers `[t - 30s, t)`.
-3. Only windows fully inside the half/bin can contribute.
+2. Build normalized-power rolling values as a continuous centered 30-second time series over the evaluated activity. A rolling sample at `t_center` covers `[t_center - 15s, t_center + 15s)`.
+3. Only rolling windows fully inside the evaluated window can contribute. Windows can cross half and bin boundaries; assignment to a half or bin is based on the centered timestamp.
 4. A rolling window contributes only when its power coverage is at least `minRollingWindowCoveragePct`.
-5. The first possible contributing window in a half/bin ends 30 seconds after that half/bin starts. Earlier time has no rolling value and does not contribute to normalized-power output.
-6. HR for normalized-power EF is averaged over the same 1-second intervals whose ending timestamps have accepted rolling-power windows. This keeps HR and normalized-power output aligned.
-7. If a half/bin has no accepted rolling windows, or accepted windows do not meet coverage requirements, normalized-power mode is unavailable for that half/bin.
+5. The first possible contributing rolling sample is centered 15 seconds after the evaluated window starts. The last possible contributing rolling sample is centered 15 seconds before the evaluated window ends.
+6. HR for normalized-power EF is averaged over the same half/bin segment as the normalized-power output. Do not time-shift HR to match power.
+7. If a half/bin has no accepted centered rolling samples, or accepted samples do not meet coverage requirements, normalized-power mode is unavailable for that half/bin.
 
 Speed-based mode:
 
@@ -531,7 +531,7 @@ UI exposure can happen after the calculation is implemented and tested. The firs
 
 Display:
 
-- Label: `Cardiac Decoupling`
+- Label: `Heart Rate Drift`, with `HR Drift` acceptable in compact chart titles.
 - Value: percentage with one decimal place, for example `4.8%`
 - Mode selector/badge: `Average Power`, `Normalized Power`, `Speed`, or `Constant Effort HR Drift`
 - Show evaluated duration and excluded warmup/end time in the detailed view, for example `Analyzed 45 min after excluding 10 min warmup and 5 min cooldown`.
@@ -539,6 +539,9 @@ Display:
 - For `Constant Effort HR Drift`, add mode-specific help: `This assumes the machine effort stayed steady. Changes in resistance, incline, cadence, or machine program can distort the result.`
 - Always show confidence when a result is available: `High confidence`, `Medium confidence`, or `Low confidence`.
 - For `high_variability_effort`, show a low-confidence label plus a note rather than hiding the metric: `This effort was highly variable.`
+- Add a detail chart panel beside the summary card in the existing chart grid. Start with HR plus centered normalized power for power-based cycling activities.
+- The detail chart should shade excluded warmup, cooldown, and full-record gap ranges in grey.
+- The detail chart should draw vertical dashed markers for evaluated-start/warmup end, evaluated-end/cooldown start, and interior bin boundaries.
 - Show negative decoupling as a raw negative percentage with neutral or positive wording, for example `-2.1%, increased efficiency`. Do not treat it as an error.
 - Supporting text for output-based modes:
 

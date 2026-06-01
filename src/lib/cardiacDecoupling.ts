@@ -83,6 +83,25 @@ export type CardiacDecouplingResult = {
   results: CardiacDecouplingModeResult[];
 };
 
+export type HeartRateDriftChartMarker = {
+  elapsedMs: number;
+  kind: "warmup" | "cooldown" | "bin";
+  index?: number;
+};
+
+export type HeartRateDriftExcludedRange = {
+  startMs: number;
+  endMs: number;
+  kind: "warmup" | "cooldown" | "gap";
+};
+
+export type HeartRateDriftChartData = {
+  heartRate: Array<[number, number | null]>;
+  normalizedPower: Array<[number, number | null]>;
+  markers: HeartRateDriftChartMarker[];
+  excludedRanges: HeartRateDriftExcludedRange[];
+};
+
 export const DEFAULT_CARDIAC_DECOUPLING_CONFIG: CardiacDecouplingConfig = {
   minActivityDurationS: 60 * 60,
   warmupIgnoreS: 10 * 60,
@@ -125,6 +144,12 @@ type SegmentStats = {
 type SegmentBounds = {
   startS: number;
   endS: number;
+};
+
+type NormalizedPowerWindow = {
+  activeS: number;
+  rollingPower: number | null;
+  coveragePct: number;
 };
 
 type NormalizedPowerStats = {
@@ -500,15 +525,15 @@ function buildConstantOutputBins(
   return { bins };
 }
 
-function sampleStream(
+function sampleStreamWithActiveTimes(
   intervals: ActiveInterval[],
   segment: SegmentBounds,
   config: CardiacDecouplingConfig,
   stream: "power" | "hr"
-): Array<number | null> {
+): Array<{ activeS: number; value: number | null }> {
   const intervalS = Math.max(1, config.resampleIntervalS);
   const count = Math.floor((segment.endS - segment.startS) / intervalS);
-  const samples: Array<number | null> = [];
+  const samples: Array<{ activeS: number; value: number | null }> = [];
   let intervalIndex = 0;
 
   for (let i = 0; i < count; i += 1) {
@@ -518,41 +543,49 @@ function sampleStream(
     }
 
     const interval = intervals[intervalIndex];
-    if (!interval || interval.activeStartS > sampleAtS || interval.activeEndS <= sampleAtS) {
-      samples.push(null);
-      continue;
-    }
-
-    samples.push(sampleStreamValue(interval, sampleAtS, stream, config));
+    const value = interval && interval.activeStartS <= sampleAtS && interval.activeEndS > sampleAtS
+      ? sampleStreamValue(interval, sampleAtS, stream, config)
+      : null;
+    samples.push({ activeS: sampleAtS, value });
   }
 
   return samples;
 }
 
-function measureNormalizedPower(intervals: ActiveInterval[], segment: SegmentBounds, config: CardiacDecouplingConfig): NormalizedPowerStats {
-  const powerSamples = sampleStream(intervals, segment, config, "power");
+function buildNormalizedPowerWindows(intervals: ActiveInterval[], evaluatedSegment: SegmentBounds, config: CardiacDecouplingConfig): NormalizedPowerWindow[] {
+  const powerSamples = sampleStreamWithActiveTimes(intervals, evaluatedSegment, config, "power");
   const intervalS = Math.max(1, config.resampleIntervalS);
   const windowSize = Math.round(30 / intervalS);
-  const possibleWindows = Math.max(0, powerSamples.length - windowSize + 1);
-  if (windowSize <= 0 || possibleWindows <= 0) {
+  if (windowSize <= 0 || powerSamples.length < windowSize) return [];
+
+  const windows: NormalizedPowerWindow[] = [];
+  for (let end = windowSize; end <= powerSamples.length; end += 1) {
+    const window = powerSamples.slice(end - windowSize, end);
+    const valid = window.map((sample) => sample.value).filter((value): value is number => isNonNegative(value));
+    const coveragePct = percent(valid.length, window.length);
+    const rollingPower = coveragePct >= config.minRollingWindowCoveragePct && valid.length
+      ? valid.reduce((sum, value) => sum + value, 0) / valid.length
+      : null;
+    const firstActiveS = window[0]?.activeS ?? evaluatedSegment.startS;
+    const centerActiveS = firstActiveS - intervalS / 2 + (windowSize * intervalS) / 2;
+    windows.push({ activeS: centerActiveS, rollingPower, coveragePct });
+  }
+  return windows;
+}
+
+function measureNormalizedPower(windows: NormalizedPowerWindow[], segment: SegmentBounds, config: CardiacDecouplingConfig): NormalizedPowerStats {
+  const candidates = windows.filter((window) => window.activeS >= segment.startS && window.activeS < segment.endS);
+  if (!candidates.length) {
     return { normalizedPower: null, rollingWindowCoveragePct: 0 };
   }
 
-  const acceptedAverages: number[] = [];
-  for (let end = windowSize; end <= powerSamples.length; end += 1) {
-    const window = powerSamples.slice(end - windowSize, end);
-    const valid = window.filter((value): value is number => isNonNegative(value));
-    const coveragePct = percent(valid.length, window.length);
-    if (coveragePct < config.minRollingWindowCoveragePct) continue;
-    acceptedAverages.push(valid.reduce((sum, value) => sum + value, 0) / valid.length);
-  }
-
-  const rollingWindowCoveragePct = percent(acceptedAverages.length, possibleWindows);
-  if (rollingWindowCoveragePct < config.minRollingWindowCoveragePct || !acceptedAverages.length) {
+  const accepted = candidates.filter((window): window is NormalizedPowerWindow & { rollingPower: number } => isNonNegative(window.rollingPower));
+  const rollingWindowCoveragePct = percent(accepted.length, candidates.length);
+  if (rollingWindowCoveragePct < config.minRollingWindowCoveragePct || !accepted.length) {
     return { normalizedPower: null, rollingWindowCoveragePct };
   }
 
-  const meanFourthPower = acceptedAverages.reduce((sum, value) => sum + value ** 4, 0) / acceptedAverages.length;
+  const meanFourthPower = accepted.reduce((sum, window) => sum + window.rollingPower ** 4, 0) / accepted.length;
   return {
     normalizedPower: meanFourthPower > 0 ? meanFourthPower ** 0.25 : 0,
     rollingWindowCoveragePct,
@@ -603,6 +636,7 @@ function buildNormalizedPowerResult(
   intervals: ActiveInterval[],
   halfSegments: [SegmentBounds, SegmentBounds],
   binSegments: SegmentBounds[],
+  normalizedPowerWindows: NormalizedPowerWindow[],
   config: CardiacDecouplingConfig
 ): CardiacDecouplingModeResult {
   const mode: CardiacDecouplingMode = "normalized_power";
@@ -613,8 +647,8 @@ function buildNormalizedPowerResult(
   const secondReason = validateOutputSegment(second, config);
   if (secondReason) return makeUnavailable(mode, secondReason);
 
-  const firstNp = measureNormalizedPower(intervals, halfSegments[0], config);
-  const secondNp = measureNormalizedPower(intervals, halfSegments[1], config);
+  const firstNp = measureNormalizedPower(normalizedPowerWindows, halfSegments[0], config);
+  const secondNp = measureNormalizedPower(normalizedPowerWindows, halfSegments[1], config);
   if (firstNp.normalizedPower === null || firstNp.rollingWindowCoveragePct < config.minRollingWindowCoveragePct) {
     return makeUnavailable(mode, "insufficient_rolling_window_coverage");
   }
@@ -627,7 +661,7 @@ function buildNormalizedPowerResult(
     const stats = measureSegment(intervals, segment, mode, config);
     const reason = validateOutputSegment(stats, config);
     if (reason) return makeUnavailable(mode, reason);
-    const np = measureNormalizedPower(intervals, segment, config);
+    const np = measureNormalizedPower(normalizedPowerWindows, segment, config);
     if (np.normalizedPower === null || np.rollingWindowCoveragePct < config.minRollingWindowCoveragePct) {
       return makeUnavailable(mode, "insufficient_rolling_window_coverage");
     }
@@ -743,10 +777,11 @@ function firstUnavailableReason(results: CardiacDecouplingModeResult[]): Cardiac
 function calculateVariabilityIndex(
   intervals: ActiveInterval[],
   segment: SegmentBounds,
+  normalizedPowerWindows: NormalizedPowerWindow[],
   config: CardiacDecouplingConfig
 ): number | undefined {
   const averageStats = measureSegment(intervals, segment, "average_power", config);
-  const normalized = measureNormalizedPower(intervals, segment, config);
+  const normalized = measureNormalizedPower(normalizedPowerWindows, segment, config);
   if ((averageStats.avgOutput ?? 0) <= 0 || (normalized.normalizedPower ?? 0) <= 0) return undefined;
   return (normalized.normalizedPower ?? 0) / (averageStats.avgOutput ?? 1);
 }
@@ -799,13 +834,14 @@ export function calculateCardiacDecoupling(
     { startS: evaluatedStartS + evaluatedDurationS / 2, endS: evaluatedEndS },
   ];
   const evaluatedSegment = { startS: evaluatedStartS, endS: evaluatedEndS };
+  const normalizedPowerWindows = buildNormalizedPowerWindows(intervals, evaluatedSegment, config);
   const results: CardiacDecouplingModeResult[] = [];
 
   if (activityClass === "cycling") {
     const hasPower = hasOutputCoverage(intervals, evaluatedSegment, "average_power", config);
     if (hasPower) {
       results.push(buildAverageOutputResult(intervals, halfSegments, binSegments, "average_power", config));
-      results.push(buildNormalizedPowerResult(intervals, halfSegments, binSegments, config));
+      results.push(buildNormalizedPowerResult(intervals, halfSegments, binSegments, normalizedPowerWindows, config));
     }
     if (!results.some((result) => result.available && (result.mode === "average_power" || result.mode === "normalized_power"))) {
       if (hasOutputCoverage(intervals, evaluatedSegment, "speed", config)) {
@@ -835,7 +871,7 @@ export function calculateCardiacDecoupling(
   const available = results.some((result) => result.available);
   const defaultMode = chooseDefaultMode(results, activityClass, config);
   const warnings: CardiacDecouplingWarning[] = [];
-  const variabilityIndex = activityClass === "cycling" ? calculateVariabilityIndex(intervals, evaluatedSegment, config) : undefined;
+  const variabilityIndex = activityClass === "cycling" ? calculateVariabilityIndex(intervals, evaluatedSegment, normalizedPowerWindows, config) : undefined;
   if (variabilityIndex !== undefined && variabilityIndex > config.highVariabilityIndexThreshold) {
     warnings.push("high_variability_effort");
   }
@@ -868,4 +904,87 @@ export function describeCardiacDecouplingConfidence(
   if (warnings.includes("high_variability_effort")) return "low";
   if (result.assumption === "constant_output") return "medium";
   return "high";
+}
+
+function activeToElapsedMs(intervals: ActiveInterval[], activeS: number, t0: number): number | null {
+  if (!intervals.length) return null;
+  const first = intervals[0];
+  if (activeS <= first.activeStartS) return first.startRecord.timestamp_ms - t0;
+
+  for (const interval of intervals) {
+    if (activeS >= interval.activeStartS && activeS <= interval.activeEndS) {
+      const fraction = interval.dtS > 0 ? (activeS - interval.activeStartS) / interval.dtS : 0;
+      const startMs = interval.startRecord.timestamp_ms - t0;
+      const endMs = interval.endRecord.timestamp_ms - t0;
+      return startMs + (endMs - startMs) * Math.min(1, Math.max(0, fraction));
+    }
+  }
+
+  const last = intervals[intervals.length - 1];
+  if (activeS >= last.activeEndS) return last.endRecord.timestamp_ms - t0;
+  return null;
+}
+
+export function buildHeartRateDriftChartData(
+  records: RecordPoint[],
+  decoupling: Pick<CardiacDecouplingResult, "evaluatedDurationS" | "warmupExcludedS" | "endExcludedS">,
+  result: Pick<CardiacDecouplingModeResult, "bins"> | undefined,
+  configOverrides: Partial<CardiacDecouplingConfig> = {},
+): HeartRateDriftChartData | null {
+  const config = { ...DEFAULT_CARDIAC_DECOUPLING_CONFIG, ...configOverrides };
+  const sorted = sortRecords(records);
+  if (sorted.length < 2 || typeof decoupling.evaluatedDurationS !== "number") return null;
+
+  const t0 = sorted[0].timestamp_ms;
+  const totalElapsedMs = Math.max(0, sorted[sorted.length - 1].timestamp_ms - t0);
+  const intervals = buildActiveIntervals(sorted, config);
+  if (!intervals.length) return null;
+
+  const evaluatedStartS = decoupling.warmupExcludedS ?? 0;
+  const evaluatedEndS = evaluatedStartS + decoupling.evaluatedDurationS;
+  const evaluatedSegment = { startS: evaluatedStartS, endS: evaluatedEndS };
+  const evaluatedStartMs = activeToElapsedMs(intervals, evaluatedStartS, t0);
+  const evaluatedEndMs = activeToElapsedMs(intervals, evaluatedEndS, t0);
+
+  const excludedRanges: HeartRateDriftExcludedRange[] = [];
+  if (evaluatedStartMs !== null && evaluatedStartMs > 0) {
+    excludedRanges.push({ startMs: 0, endMs: evaluatedStartMs, kind: "warmup" });
+  }
+  if (evaluatedEndMs !== null && evaluatedEndMs < totalElapsedMs) {
+    excludedRanges.push({ startMs: evaluatedEndMs, endMs: totalElapsedMs, kind: "cooldown" });
+  }
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    const dtS = (sorted[i + 1].timestamp_ms - sorted[i].timestamp_ms) / 1000;
+    if (dtS > config.maxRecordGapS) {
+      excludedRanges.push({
+        startMs: sorted[i].timestamp_ms - t0,
+        endMs: sorted[i + 1].timestamp_ms - t0,
+        kind: "gap",
+      });
+    }
+  }
+
+  const markers: HeartRateDriftChartMarker[] = [];
+  if (evaluatedStartMs !== null) markers.push({ elapsedMs: evaluatedStartMs, kind: "warmup" });
+  for (let i = 1; i < (result?.bins?.length ?? 0); i += 1) {
+    const elapsedMs = activeToElapsedMs(intervals, result?.bins?.[i]?.startS ?? 0, t0);
+    if (elapsedMs !== null) markers.push({ elapsedMs, kind: "bin", index: i + 1 });
+  }
+  if (evaluatedEndMs !== null) markers.push({ elapsedMs: evaluatedEndMs, kind: "cooldown" });
+
+  const windows = buildNormalizedPowerWindows(intervals, evaluatedSegment, config);
+  const normalizedPower: Array<[number, number | null]> = windows
+    .filter((window) => isNonNegative(window.rollingPower))
+    .map((window) => {
+      const elapsedMs = activeToElapsedMs(intervals, window.activeS, t0);
+      return elapsedMs === null ? null : [elapsedMs, Number((window.rollingPower ?? 0).toFixed(2))] as [number, number];
+    })
+    .filter((point): point is [number, number] => point !== null);
+
+  const heartRate: Array<[number, number | null]> = sorted.map((record) => [
+    record.timestamp_ms - t0,
+    isPositive(record.heart_rate) ? record.heart_rate : null,
+  ]);
+
+  return { heartRate, normalizedPower, markers, excludedRanges };
 }
