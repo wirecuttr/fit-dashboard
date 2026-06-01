@@ -337,16 +337,30 @@ Normalized-power rules:
 6. HR for normalized-power EF is averaged over the same half/bin segment as the normalized-power output. Do not time-shift HR to match power.
 7. If a half/bin has no accepted centered rolling samples, or accepted samples do not meet coverage requirements, normalized-power mode is unavailable for that half/bin.
 
-Speed-based mode:
+Speed/pace-based mode:
 
-- Use speed for supported non-cycling activities when speed/distance meets the output and paired-coverage thresholds.
+- Use speed internally for supported non-cycling activities when speed/distance meets the output and paired-coverage thresholds.
+- Treat running, walking, and hiking UI copy as pace-based HR drift (`Pa:Hr`) because that is the common running convention, but calculate EF from speed so higher output still means better efficiency.
+- Internal formula: `EF = speed / HR`. Do not calculate EF as raw `pace / HR`, because pace is the inverse of speed and would reverse the efficiency direction.
+- For running, walking, and hiking charts, display the selected output as pace in `min/km` or `min/mi` with an inverted y-axis, matching the existing pace chart behavior. Zero-speed samples remain valid in the calculation, but become unavailable/infinite for pace display and should render as gaps rather than huge pace spikes.
+- For other speed-based sports such as rowing or cross-country skiing, display the selected output as speed unless a sport-specific convention is added later.
 - Prefer distance-over-time speed when cumulative distance is usable, because it is usually less noisy than instantaneous speed.
 - Use `RecordPoint.speed_m_s` when distance-based speed cannot be calculated.
 - If speed is missing but distance and timestamps are present, derive speed from distance deltas using the distance-derived speed rules above.
 - Zero-speed intervals are valid output samples. They are included in speed averages and paired coverage.
 - Ignore invalid or negative instantaneous speeds.
-- Prefer speed over min/km pace because higher values represent higher output and make EF direction intuitive.
 - Do not apply arbitrary smoothing in the first implementation. A 1-second moving average is usually equivalent to no smoothing because FIT record samples are commonly about 1 second apart or less frequent. If instantaneous speed must be used, calculate time-weighted averages per half/bin and add a longer explicit smoothing window only if test fixtures show unacceptable noise.
+
+Running-power mode:
+
+- Running power is useful when recorded by devices such as Stryd, Garmin, or Coros, but it is more device/ecosystem-dependent than cycling power and should not silently replace pace-based running drift in the first implementation.
+- The first implementation should keep running/walking default mode pace-based. Running power can be added later as an additional selectable mode when a run has adequate power and HR coverage.
+
+Implementation convention references:
+
+- TrainingPeaks names aerobic decoupling as `Pa:Hr` for pace-to-heart-rate and `Pw:Hr` for power-to-heart-rate, and describes running use cases in terms of pace while cycling uses power.
+- Runalyze names the running variant pace-based, but its aerobic-efficiency formula uses `Speed [m/s] / Heart rate [bpm]`. This matches the internal speed/HR calculation while preserving runner-facing pace terminology.
+- Stryd documents running power as a useful run-training metric for hills, wind, and consistent effort, but this supports treating running power as an optional additional mode rather than the initial default.
 
 Constant-output machine mode:
 
@@ -533,15 +547,19 @@ Display:
 
 - Label: `Heart Rate Drift`, with `HR Drift` acceptable in compact chart titles.
 - Value: percentage with one decimal place, for example `4.8%`
-- Mode selector/badge: `Average Power`, `Normalized Power`, `Speed`, or `Constant Effort HR Drift`
+- Mode selector/badge: `Average Power`, `Normalized Power`, `Pace`/`Speed`, or `Constant Effort HR Drift`. Use `Pace` for running, walking, and hiking speed-mode results; use `Speed` for other speed-mode sports.
 - Show evaluated duration and excluded warmup/end time in the detailed view, for example `Analyzed 45 min after excluding 10 min warmup and 5 min cooldown`.
 - Add help/disclaimer copy explaining that decoupling is most useful on steady aerobic efforts and may be distorted by intervals, stops, terrain, heat, dehydration, caffeine, poor sleep, fatigue, or bad sensor data.
 - For `Constant Effort HR Drift`, add mode-specific help: `This assumes the machine effort stayed steady. Changes in resistance, incline, cadence, or machine program can distort the result.`
 - Always show confidence when a result is available: `High confidence`, `Medium confidence`, or `Low confidence`.
 - For `high_variability_effort`, show a low-confidence label plus a note rather than hiding the metric: `This effort was highly variable.`
-- Add a detail chart panel beside the summary card in the existing chart grid. Start with HR plus centered normalized power for power-based cycling activities.
-- The detail chart should shade excluded warmup, cooldown, and full-record gap ranges in grey.
-- The detail chart should draw vertical dashed markers for evaluated-start/warmup end, evaluated-end/cooldown start, and interior bin boundaries.
+- Add a detail chart panel beside the summary card in the existing chart grid. During migration away from the standalone summary card, the chart panel should also show a large decoupling percentage plus color-coded drift and confidence badges in its header. Do not duplicate the selected output mode as a separate badge in the chart header because the chart legend already names the plotted output series.
+- The detail chart should plot HR plus the selected output mode: centered normalized power for `normalized_power`, sampled power for `average_power`, pace display for running/walking/hiking `speed` mode, and speed display for other `speed` mode activities. Do not show a normalized-power overlay for speed-based running or walking results.
+- The detail chart should shade excluded warmup, cooldown, and full-record gap ranges in grey without text labels inside the shaded areas. For display, trim or hide gap ranges that overlap warmup/cooldown ranges so nested exclusions do not draw redundant shaded regions. This is visual cleanup only and must not change active-time, coverage, binning, or EF calculations.
+- The detail chart should draw vertical dashed markers for the start of each evaluated bin and the evaluated-end/cooldown-start boundary. The first evaluated marker should be labeled `Bin 1`, not `Warmup`, because the warmup range is already shown by the grey excluded area.
+- The detail chart should use dynamic padded y-axis bounds. HR bounds round to multiples of 10 and clamp the lower bound to at least `30 bpm`; power bounds round to multiples of 10 and clamp the lower bound to at least `0 W`; speed and pace bounds round to whole display units and clamp the lower bound to at least `0`.
+- Detail chart smoothing is display-only. When graph smoothing is enabled, smooth the plotted HR and selected output series using the shared chart smoothing helper so the detail chart is visually consistent with the main pace chart. Do not feed the smoothed chart series back into the HR drift calculation, bin averages, EF values, or summary metric.
+- Smoothing rationale: HR drift is a slow segment-level trend, while second-by-second speed and GPS-derived pace can be visually noisy. The calculation already reduces noise through long time-weighted halves/bins and explicit coverage/gap rules. Display smoothing improves readability without changing the metric or reducing comparability with Pa:Hr/Pw:Hr implementations that compare segment-level efficiency.
 - Show negative decoupling as a raw negative percentage with neutral or positive wording, for example `-2.1%, increased efficiency`. Do not treat it as an error.
 - Supporting text for output-based modes:
 
@@ -640,12 +658,22 @@ Fixture strategy:
 
 - TrainingPeaks, `Aerobic Decoupling and Heart Rate Drift Explained`: https://www.trainingpeaks.com/coach-blog/aerobic-endurance-and-decoupling/
   - Supports the Pa:Hr/Pw:Hr framing, first-half vs second-half comparison, common interpretation bands, endurance-use context, and warmup/cooldown exclusion for target test portions.
+- TrainingPeaks Help Center, `Glossary`: https://help.trainingpeaks.com/hc/en-us/articles/115001271712-Glossary
+  - Defines Pw:Hr/Pa:Hr as aerobic decoupling, EF as normalized power or normalized graded pace over average HR, and Pa:Hr/Pw:Hr as pace/power heart-rate decoupling.
+- RUNALYZE, `Aerobic Efficiency`: https://runalyze.com/glossary/aerobic-efficiency?_locale=en
+  - Names the pace variant while defining pace-based AE with speed over HR, supporting internal `speed / HR` calculation for runner-facing pace terminology.
+- RUNALYZE, `Aerobic Decoupling`: https://runalyze.com/glossary/aerobic-decoupling?_locale=en
+  - Supports first-half vs second-half aerobic-efficiency comparison and typical 0-10 percent decoupling range for consistent efforts.
 - JOIN, `Heart rate decoupling`: https://join.cc/cycling-tips/heart-rate-decoupling
   - Supports the power-to-HR two-half calculation, at-least-one-hour guidance, low-intensity/steady-workout requirement, and cautions around caffeine, sleep, dehydration, HR lag, and interval workouts.
 - Santa Barbara Triathlon Club, `Decoupling: How to Determine if you are Aerobically Fit`: https://www.sbtriclub.com/decoupling-how-to-determine-if-you-are-aerobically-fit/
   - Supports input-vs-output framing, less-than-5-percent endurance target, two-half calculation, use of normalized power for cycling, and speed/pace for running.
 - Uphill Athlete, `Understanding the Heart Rate Drift Test`: https://uphillathlete.com/aerobic-training/heart-rate-drift/
   - Supports steady aerobic test conditions, warmup and cooldown exclusion, 40-60 minute controlled test guidance, lap/manual section selection, and cautions about HR monitor quality.
+- Stryd, `Train With Power`: https://www.stryd.com/us/en/pages/training-with-power
+  - Supports running power as a useful output metric for hills, wind, and effort consistency, but not as a universal default for all running files.
+- Stryd Help Center, `Stryd Metrics`: https://help.stryd.com/en/articles/6879522-stryd-metrics
+  - Documents running-power calculation context and related device-specific running metrics.
 - Garmin FIT SDK Tools `Profile.xlsx`: https://github.com/garmin/fit-sdk-tools
   - Source for FIT `sport` and `sub_sport` enum values used by the activity allowlist.
 

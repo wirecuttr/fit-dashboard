@@ -7,6 +7,7 @@ import {
   convertElevationMeters,
   convertSpeedMps,
   elevationLabel,
+  paceLabel,
   speedLabel,
   type DistanceUnit,
 } from "../lib/units";
@@ -79,11 +80,53 @@ function formatMetric(value: number | undefined, digits = 2): string {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "--";
 }
 
-function cardiacModeLabel(mode: CardiacDecouplingMode, t: (key: string) => string): string {
+function formatPaceValue(value: number): string {
+  if (!Number.isFinite(value)) return "--";
+  let minutes = Math.floor(value);
+  let seconds = Math.round((value - minutes) * 60);
+  if (seconds >= 60) {
+    minutes += 1;
+    seconds -= 60;
+  }
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function normalizeActivityText(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function metadataString(metadataJson: string | null | undefined, key: string): string {
+  if (!metadataJson) return "";
+  try {
+    const parsed = JSON.parse(metadataJson) as Record<string, unknown>;
+    const value = parsed[key];
+    return typeof value === "string" ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+function activityUsesPaceDisplay(activity: Pick<Activity, "sport" | "activity_name" | "file_name" | "metadata_json"> | null | undefined): boolean {
+  if (!activity) return false;
+  const sport = normalizeActivityText(activity.sport);
+  const subSport = normalizeActivityText(metadataString(activity.metadata_json, "sub_sport"));
+  if (["running", "walking", "hiking"].includes(sport)) return true;
+  if (["treadmill", "trail", "track", "indoor_running", "indoor_walking", "casual_walking", "speed_walking"].includes(subSport)) return true;
+  if (sport && sport !== "unknown") return false;
+  const fallback = normalizeActivityText(`${activity.activity_name} ${activity.file_name}`);
+  return ["running", "walking", "hiking", "treadmill"].some((token) => fallback.includes(token));
+}
+
+function paceFromSpeedMps(valueMps: number, distanceUnit: DistanceUnit): number | null {
+  const speedInUnit = convertSpeedMps(valueMps, distanceUnit);
+  return speedInUnit > 0 ? 60 / speedInUnit : null;
+}
+
+function cardiacModeLabel(mode: CardiacDecouplingMode, t: (key: string) => string, usePaceLabel = false): string {
   switch (mode) {
     case "average_power": return t("insights.cardiacModeAveragePower");
     case "normalized_power": return t("insights.cardiacModeNormalizedPower");
-    case "speed": return t("insights.cardiacModeSpeed");
+    case "speed": return usePaceLabel ? t("chart.pace") : t("insights.cardiacModeSpeed");
     case "constant_output_hr": return t("insights.cardiacModeConstantEffort");
   }
 }
@@ -133,6 +176,21 @@ function heartRateDriftRangeLabel(kind: HeartRateDriftExcludedRange["kind"], t: 
   if (kind === "warmup") return t("insights.hrDriftWarmup");
   if (kind === "cooldown") return t("insights.hrDriftCooldown");
   return t("insights.hrDriftGap");
+}
+
+function paddedAxisBounds(points: Array<[number, number | null]>, minFloor: number, minPadding: number, step = 10): { min: number; max: number } | undefined {
+  const values = points.flatMap(([, value]) => typeof value === "number" && Number.isFinite(value) ? [value] : []);
+  if (!values.length) return undefined;
+
+  const axisStep = Math.max(1, step);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const range = Math.max(high - low, minPadding);
+  const padding = Math.max(minPadding, range * 0.1);
+  const min = Math.max(minFloor, Math.floor((low - padding) / axisStep) * axisStep);
+  let max = Math.ceil((high + padding) / axisStep) * axisStep;
+  if (max <= min) max = min + axisStep;
+  return { min, max };
 }
 
 function selectCardiacResult(results: CardiacDecouplingModeResult[], defaultMode: CardiacDecouplingMode | undefined): CardiacDecouplingModeResult | undefined {
@@ -222,12 +280,42 @@ export function ActivityInsights({
   const cardiacConfidence = describeCardiacDecouplingConfidence(cardiacResult, cardiacDecoupling?.warnings);
   const cardiacEfficiencyPrecision = cardiacResult ? cardiacEfficiencyDigits(cardiacResult.mode) : 2;
   const cardiacIsNegative = (cardiacResult?.decouplingPct ?? 0) < 0;
+  const usePaceDisplay = activityUsesPaceDisplay(activity);
   const heartRateDriftChartData = cardiacDecoupling && cardiacResult?.available
     ? buildHeartRateDriftChartData(cardiacRecords, cardiacDecoupling, cardiacResult)
     : null;
+  const heartRateDriftShowsPace = heartRateDriftChartData?.outputMode === "speed" && usePaceDisplay;
+  const heartRateDriftOutputData: Array<[number, number | null]> = heartRateDriftChartData
+    ? heartRateDriftChartData.output.map(([elapsedMs, value]) => {
+        if (value === null) return [elapsedMs, null];
+        if (heartRateDriftShowsPace) return [elapsedMs, paceFromSpeedMps(value, distanceUnit)];
+        if (heartRateDriftChartData.outputMode === "speed") return [elapsedMs, convertSpeedMps(value, distanceUnit)];
+        return [elapsedMs, value];
+      })
+    : [];
+  const heartRateDriftOutputUnit = heartRateDriftShowsPace
+    ? paceLabel(distanceUnit)
+    : heartRateDriftChartData?.outputMode === "speed" ? speedLabel(distanceUnit) : "W";
+  const heartRateDriftOutputLabel = heartRateDriftChartData ? cardiacModeLabel(heartRateDriftChartData.outputMode, tr, heartRateDriftShowsPace) : "";
+  const heartRateDriftOutputDigits = heartRateDriftChartData?.outputMode === "speed" ? 2 : 1;
+  const heartRateDriftHrData = smoothGraphs && heartRateDriftChartData
+    ? applyRollingAverageSeries(heartRateDriftChartData.heartRate, 1, smoothWindow)
+    : heartRateDriftChartData?.heartRate ?? [];
+  const heartRateDriftOutputDataSmoothed = smoothGraphs
+    ? applyRollingAverageSeries(heartRateDriftOutputData, 1, smoothWindow)
+    : heartRateDriftOutputData;
   const hasHeartRateDriftChart = !!heartRateDriftChartData
-    && heartRateDriftChartData.normalizedPower.length > 0
-    && heartRateDriftChartData.heartRate.some(([, value]) => value !== null);
+    && heartRateDriftOutputDataSmoothed.some(([, value]) => value !== null)
+    && heartRateDriftHrData.some(([, value]) => value !== null);
+  const heartRateDriftHrAxis = heartRateDriftChartData ? paddedAxisBounds(heartRateDriftHrData, 30, 5, 10) : undefined;
+  const heartRateDriftOutputAxis = heartRateDriftChartData
+    ? paddedAxisBounds(
+        heartRateDriftOutputDataSmoothed,
+        0,
+        heartRateDriftChartData.outputMode === "speed" ? 0.5 : 10,
+        heartRateDriftChartData.outputMode === "speed" ? 1 : 10,
+      )
+    : undefined;
 
   const lapMarkers = lapTimestampsUtc
     .slice(1)
@@ -702,8 +790,15 @@ export function ActivityInsights({
         let html = formatTooltipHeader(rel);
         for (const row of params) {
           if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
-            const unit = row.seriesName === tr("chart.heartRate") ? " bpm" : " W";
-            html += `<div>${row.marker} ${row.seriesName}: <strong>${Number(row.value[1]).toFixed(1)}${unit}</strong></div>`;
+            const isHeartRate = row.seriesName === tr("chart.heartRate");
+            const value = Number(row.value[1]);
+            if (isHeartRate) {
+              html += `<div>${row.marker} ${row.seriesName}: <strong>${value.toFixed(1)} bpm</strong></div>`;
+            } else if (heartRateDriftShowsPace) {
+              html += `<div>${row.marker} ${row.seriesName}: <strong>${formatPaceValue(value)} ${heartRateDriftOutputUnit}</strong></div>`;
+            } else {
+              html += `<div>${row.marker} ${row.seriesName}: <strong>${value.toFixed(heartRateDriftOutputDigits)} ${heartRateDriftOutputUnit}</strong></div>`;
+            }
           }
         }
         return html;
@@ -720,14 +815,21 @@ export function ActivityInsights({
     yAxis: [
       {
         type: "value", name: "bpm",
+        ...heartRateDriftHrAxis,
         nameTextStyle: { color: axisColor, fontSize: 11 },
         axisLabel: { color: axisColor, fontSize: 11 },
         splitLine: { lineStyle: { color: gridLine } },
       },
       {
-        type: "value", name: "W",
+        type: "value", name: heartRateDriftOutputUnit,
+        ...heartRateDriftOutputAxis,
+        inverse: heartRateDriftShowsPace,
         nameTextStyle: { color: axisColor, fontSize: 11 },
-        axisLabel: { color: axisColor, fontSize: 11 },
+        axisLabel: {
+          color: axisColor,
+          fontSize: 11,
+          formatter: heartRateDriftShowsPace ? (val: number) => formatPaceValue(val) : undefined,
+        },
         splitLine: { show: false },
       },
     ],
@@ -745,13 +847,13 @@ export function ActivityInsights({
         name: tr("chart.heartRate"), type: "line", smooth: smoothGraphs, showSymbol: false,
         lineStyle: { width: 1.8, color: "#ef4444" },
         sampling: smoothGraphs ? "lttb" : undefined,
-        data: heartRateDriftChartData.heartRate,
+        data: heartRateDriftHrData,
         markArea: heartRateDriftChartData.excludedRanges.length ? {
           silent: true,
           itemStyle: { color: isDark ? "rgba(148, 163, 184, 0.16)" : "rgba(148, 163, 184, 0.22)" },
-          label: { color: axisColor, fontSize: 10 },
+          label: { show: false },
           data: heartRateDriftChartData.excludedRanges.map((range) => [
-            { xAxis: range.startMs, name: heartRateDriftRangeLabel(range.kind, tr) },
+            { xAxis: range.startMs },
             { xAxis: range.endMs },
           ]),
         } : undefined,
@@ -773,10 +875,10 @@ export function ActivityInsights({
         } : undefined,
       },
       {
-        name: tr("insights.cardiacModeNormalizedPower"), type: "line", yAxisIndex: 1, smooth: smoothGraphs, showSymbol: false,
+        name: heartRateDriftOutputLabel, type: "line", yAxisIndex: 1, smooth: smoothGraphs, showSymbol: false,
         lineStyle: { width: 2, color: "#f59e0b" },
         sampling: smoothGraphs ? "lttb" : undefined,
-        data: heartRateDriftChartData.normalizedPower,
+        data: heartRateDriftOutputDataSmoothed,
       },
     ],
   } : null;
@@ -799,7 +901,7 @@ export function ActivityInsights({
         <article className="panel cardiac-decoupling-card">
           <div className="cardiac-decoupling-header">
             <h3>{tr("insights.cardiacDecoupling")}</h3>
-            {cardiacResult && <span className="cardiac-mode-badge">{cardiacModeLabel(cardiacResult.mode, tr)}</span>}
+            {cardiacResult && <span className="cardiac-mode-badge">{cardiacModeLabel(cardiacResult.mode, tr, cardiacResult.mode === "speed" && usePaceDisplay)}</span>}
           </div>
           {cardiacResult?.available ? (
             <>
@@ -842,9 +944,33 @@ export function ActivityInsights({
           )}
         </article>
       )}
-      {heartRateDriftOption && (
-        <article className="panel">
-          <h3>{tr("insights.hrDriftDetail")}</h3>
+      {heartRateDriftOption && cardiacResult?.available && (
+        <article className="panel heart-rate-drift-detail-panel">
+          <div className="heart-rate-drift-detail-header">
+            <h3>{tr("insights.hrDriftDetail")}</h3>
+            <div className="heart-rate-drift-detail-summary">
+              <div className={`heart-rate-drift-detail-value ${cardiacBand ?? ""}`}>{formatPercent(cardiacResult.decouplingPct)}</div>
+              <div className="heart-rate-drift-detail-badges">
+                <span className={`heart-rate-drift-status-badge drift-${cardiacIsNegative ? "negative" : cardiacBand ?? "unknown"}`}>
+                  {cardiacIsNegative ? tr("insights.cardiacIncreasedEfficiency") : cardiacBandLabel(cardiacResult.decouplingPct, tr)}
+                </span>
+                {cardiacConfidence && (
+                  <span className={`heart-rate-drift-status-badge confidence-${cardiacConfidence}`}>
+                    {cardiacConfidenceLabel(cardiacConfidence, tr)}
+                  </span>
+                )}
+              </div>
+            </div>
+            {typeof cardiacDecoupling?.evaluatedDurationS === "number" && (
+              <div className="heart-rate-drift-detail-context">
+                {tr("insights.cardiacAnalyzedWindow", {
+                  duration: formatInsightDuration(cardiacDecoupling.evaluatedDurationS),
+                  warmup: formatInsightDuration(cardiacDecoupling.warmupExcludedS ?? 0),
+                  cooldown: formatInsightDuration(cardiacDecoupling.endExcludedS ?? 0),
+                })}
+              </div>
+            )}
+          </div>
           <ReactECharts option={heartRateDriftOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
       )}
