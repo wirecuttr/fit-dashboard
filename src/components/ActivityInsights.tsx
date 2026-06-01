@@ -1,3 +1,4 @@
+import { useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { Activity, RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
@@ -212,6 +213,7 @@ export function ActivityInsights({
   const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
   const isDark = theme === "dark";
   const { t: tr } = useTranslation();
+  const [heartRateDriftHelpOpen, setHeartRateDriftHelpOpen] = useState(false);
   const axisColor = isDark ? "#8899b8" : "#64748b";
   const gridLine = isDark ? "rgba(100, 140, 220, 0.08)" : "rgba(0, 0, 0, 0.06)";
   const tooltipBg = isDark ? "rgba(14, 22, 45, 0.95)" : "rgba(255, 255, 255, 0.95)";
@@ -851,9 +853,9 @@ export function ActivityInsights({
         markArea: heartRateDriftChartData.excludedRanges.length ? {
           silent: true,
           itemStyle: { color: isDark ? "rgba(148, 163, 184, 0.16)" : "rgba(148, 163, 184, 0.22)" },
-          label: { show: false },
+          label: { color: axisColor, fontSize: 10 },
           data: heartRateDriftChartData.excludedRanges.map((range) => [
-            { xAxis: range.startMs },
+            { xAxis: range.startMs, name: range.kind === "gap" ? "" : heartRateDriftRangeLabel(range.kind, tr) },
             { xAxis: range.endMs },
           ]),
         } : undefined,
@@ -863,7 +865,7 @@ export function ActivityInsights({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: heartRateDriftChartData.markers.map((marker) => ({
             xAxis: marker.elapsedMs,
-            name: heartRateDriftMarkerLabel(marker, tr),
+            name: marker.kind === "cooldown" ? "" : heartRateDriftMarkerLabel(marker, tr),
             lineStyle: {
               color: marker.kind === "bin"
                 ? (isDark ? "rgba(96, 165, 250, 0.72)" : "rgba(37, 99, 235, 0.65)")
@@ -947,7 +949,18 @@ export function ActivityInsights({
       {heartRateDriftOption && cardiacResult?.available && (
         <article className="panel heart-rate-drift-detail-panel">
           <div className="heart-rate-drift-detail-header">
-            <h3>{tr("insights.hrDriftDetail")}</h3>
+            <div className="heart-rate-drift-title-row">
+              <h3>{tr("insights.hrDriftDetail")}</h3>
+              <button
+                type="button"
+                className="heart-rate-drift-help-button"
+                aria-label="Show heart rate drift help"
+                aria-expanded={heartRateDriftHelpOpen}
+                onClick={() => setHeartRateDriftHelpOpen((open) => !open)}
+              >
+                ?
+              </button>
+            </div>
             <div className="heart-rate-drift-detail-summary">
               <div className={`heart-rate-drift-detail-value ${cardiacBand ?? ""}`}>{formatPercent(cardiacResult.decouplingPct)}</div>
               <div className="heart-rate-drift-detail-badges">
@@ -961,13 +974,12 @@ export function ActivityInsights({
                 )}
               </div>
             </div>
-            {typeof cardiacDecoupling?.evaluatedDurationS === "number" && (
-              <div className="heart-rate-drift-detail-context">
-                {tr("insights.cardiacAnalyzedWindow", {
-                  duration: formatInsightDuration(cardiacDecoupling.evaluatedDurationS),
-                  warmup: formatInsightDuration(cardiacDecoupling.warmupExcludedS ?? 0),
-                  cooldown: formatInsightDuration(cardiacDecoupling.endExcludedS ?? 0),
-                })}
+            {heartRateDriftHelpOpen && (
+              <div className="heart-rate-drift-help-panel">
+                <p><strong>What this shows:</strong> Heart Rate Drift compares output-to-heart-rate efficiency in the first half of the analyzed section with the second half. Lower drift usually means steadier aerobic efficiency.</p>
+                <p><strong>Chart lines:</strong> Heart rate is plotted with the selected output metric. Cycling uses normalized power when it can be calculated. If normalized power is unavailable, speed can be used as a low-confidence fallback. Running, walking, and hiking are displayed as pace, while the calculation uses speed internally.</p>
+                <p><strong>Grey regions:</strong> Warmup, cooldown, and long recording gaps are excluded from the calculation. The dashed vertical lines mark bin boundaries.</p>
+                <p><strong>Use with care:</strong> This is most useful on steady aerobic efforts. Intervals, stops, hills, heat, dehydration, fatigue, caffeine, poor sleep, or bad sensor data can distort the result. Confidence reflects data quality and mode assumptions, not medical certainty.</p>
               </div>
             )}
           </div>

@@ -31,7 +31,6 @@ export type CardiacDecouplingConfig = {
   highVariabilityIndexThreshold: number;
   lowDriftThresholdPct: number;
   highDriftThresholdPct: number;
-  defaultCyclingDisplayMode: "normalized_power" | "average_power";
 };
 
 export type CardiacDecouplingBin = {
@@ -67,7 +66,7 @@ export type CardiacDecouplingModeResult = {
   secondHalfRollingWindowCoveragePct?: number;
   overallBinDriftPct?: number;
   adjacentBinDriftPct?: number[];
-  assumption?: "constant_output";
+  assumption?: "constant_output" | "cycling_speed_fallback";
   bins?: CardiacDecouplingBin[];
 };
 
@@ -119,7 +118,6 @@ export const DEFAULT_CARDIAC_DECOUPLING_CONFIG: CardiacDecouplingConfig = {
   highVariabilityIndexThreshold: 1.05,
   lowDriftThresholdPct: 5,
   highDriftThresholdPct: 10,
-  defaultCyclingDisplayMode: "normalized_power",
 };
 
 type ActivityClass = "cycling" | "speed" | "constant_output_machine" | "unsupported";
@@ -620,7 +618,8 @@ function buildAverageOutputResult(
   halfSegments: [SegmentBounds, SegmentBounds],
   binSegments: SegmentBounds[],
   mode: "average_power" | "speed",
-  config: CardiacDecouplingConfig
+  config: CardiacDecouplingConfig,
+  assumption?: CardiacDecouplingModeResult["assumption"]
 ): CardiacDecouplingModeResult {
   const first = measureSegment(intervals, halfSegments[0], mode, config);
   const second = measureSegment(intervals, halfSegments[1], mode, config);
@@ -650,6 +649,7 @@ function buildAverageOutputResult(
     secondHalfOutputCoveragePct: second.outputCoveragePct,
     firstHalfPairedCoveragePct: first.pairedCoveragePct,
     secondHalfPairedCoveragePct: second.pairedCoveragePct,
+    ...(assumption ? { assumption } : {}),
     ...binDrift(binResult.bins),
     bins: binResult.bins,
   };
@@ -771,15 +771,13 @@ function hasOutputCoverage(intervals: ActiveInterval[], segment: SegmentBounds, 
 
 function chooseDefaultMode(
   results: CardiacDecouplingModeResult[],
-  activityClass: ActivityClass,
-  config: CardiacDecouplingConfig
+  activityClass: ActivityClass
 ): CardiacDecouplingMode | undefined {
   const availableModes = new Set(results.filter((result) => result.available).map((result) => result.mode));
   if (!availableModes.size) return undefined;
 
   if (activityClass === "cycling") {
-    if (availableModes.has(config.defaultCyclingDisplayMode)) return config.defaultCyclingDisplayMode;
-    for (const mode of ["normalized_power", "average_power", "speed"] as const) {
+    for (const mode of ["normalized_power", "speed"] as const) {
       if (availableModes.has(mode)) return mode;
     }
   }
@@ -822,7 +820,8 @@ export function calculateCardiacDecoupling(
 
   const intervals = buildActiveIntervals(records, config);
   const activeDurationS = getActiveDurationS(intervals);
-  if (activeDurationS < config.minActivityDurationS) {
+  const activityDurationS = isPositive(activity.duration_s) ? activity.duration_s : activeDurationS;
+  if (activityDurationS < config.minActivityDurationS) {
     return { available: false, reason: "duration_too_short", results: [] };
   }
 
@@ -861,15 +860,12 @@ export function calculateCardiacDecoupling(
   const results: CardiacDecouplingModeResult[] = [];
 
   if (activityClass === "cycling") {
-    const hasPower = hasOutputCoverage(intervals, evaluatedSegment, "average_power", config);
-    if (hasPower) {
-      results.push(buildAverageOutputResult(intervals, halfSegments, binSegments, "average_power", config));
-      results.push(buildNormalizedPowerResult(intervals, halfSegments, binSegments, normalizedPowerWindows, config));
-    }
-    if (!results.some((result) => result.available && (result.mode === "average_power" || result.mode === "normalized_power"))) {
+    const normalizedPowerResult = buildNormalizedPowerResult(intervals, halfSegments, binSegments, normalizedPowerWindows, config);
+    results.push(normalizedPowerResult);
+    if (!normalizedPowerResult.available) {
       if (hasOutputCoverage(intervals, evaluatedSegment, "speed", config)) {
-        results.push(buildAverageOutputResult(intervals, halfSegments, binSegments, "speed", config));
-      } else if (!hasPower) {
+        results.push(buildAverageOutputResult(intervals, halfSegments, binSegments, "speed", config, "cycling_speed_fallback"));
+      } else {
         results.push(makeUnavailable("speed", "missing_speed"));
       }
     }
@@ -892,7 +888,7 @@ export function calculateCardiacDecoupling(
   }
 
   const available = results.some((result) => result.available);
-  const defaultMode = chooseDefaultMode(results, activityClass, config);
+  const defaultMode = chooseDefaultMode(results, activityClass);
   const warnings: CardiacDecouplingWarning[] = [];
   const variabilityIndex = activityClass === "cycling" ? calculateVariabilityIndex(intervals, evaluatedSegment, normalizedPowerWindows, config) : undefined;
   if (variabilityIndex !== undefined && variabilityIndex > config.highVariabilityIndexThreshold) {
@@ -925,6 +921,7 @@ export function describeCardiacDecouplingConfidence(
 ): CardiacDecouplingConfidence | undefined {
   if (!result?.available) return undefined;
   if (warnings.includes("high_variability_effort")) return "low";
+  if (result.assumption === "cycling_speed_fallback") return "low";
   if (result.assumption === "constant_output") return "medium";
   return "high";
 }

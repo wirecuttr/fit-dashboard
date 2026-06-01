@@ -32,16 +32,22 @@ Efficiency factor for a segment:
 EF = output / heart_rate
 ```
 
-For cycling with power:
+For cycling with normalized power:
 
 ```text
-EF = average_power_w / average_heart_rate_bpm
+EF = normalized_power_w / average_heart_rate_bpm
 ```
 
-For running or other pace-based activities:
+For speed/pace-based activities:
 
 ```text
 EF = average_speed_m_s / average_heart_rate_bpm
+```
+
+Here `average_heart_rate_bpm` and `average_speed_m_s` are time-weighted averages over the included samples in the evaluated bin or segment. If a raw average-power mode is added later, its efficiency factor would use the same bin/segment scope:
+
+```text
+EF = average_power_w / average_heart_rate_bpm
 ```
 
 Cardiac decoupling:
@@ -62,11 +68,11 @@ Initial configurable values:
 
 ```ts
 type CardiacDecouplingConfig = {
-  minActivityDurationS: number;       // default: 60 * 60
-  warmupIgnoreS: number;              // default: 10 * 60
-  ignoreLastS: number;                // default: 5 * 60
-  targetBinDurationS: number;         // default: 30 * 60
-  minBinDurationS: number;            // default: 20 * 60
+  minActivityDurationS: number;       // default: 60 minutes, in seconds
+  warmupIgnoreS: number;              // default: 10 minutes, in seconds
+  ignoreLastS: number;                // default: 5 minutes, in seconds
+  targetBinDurationS: number;         // default: 30 minutes, in seconds
+  minBinDurationS: number;            // default: 20 minutes, in seconds
   minHrCoveragePct: number;           // default: 80
   minOutputCoveragePct: number;       // default: 80
   minPairedCoveragePct: number;       // default: 80
@@ -77,11 +83,10 @@ type CardiacDecouplingConfig = {
   highVariabilityIndexThreshold: number; // default: 1.05
   lowDriftThresholdPct: number;       // default: 5
   highDriftThresholdPct: number;      // default: 10
-  defaultCyclingDisplayMode: "normalized_power" | "average_power"; // default: "normalized_power"
 };
 ```
 
-`defaultCyclingDisplayMode` is a display preference only. It should not suppress calculation of the other power mode when the data supports both average-power and normalized-power results. The initial default should be `normalized_power` when available. Keep these defaults internal/constants in the first release; a user-facing settings UI is not required initially.
+Keep these defaults internal/constants in the first release; a user-facing settings UI is not required initially.
 
 Suggested location:
 
@@ -96,8 +101,8 @@ The metric should be calculated only when all required conditions are met.
 
 Minimum conditions:
 
-- Activity duration is at least `minActivityDurationS` (default: 60 minutes) on the configured time base before warmup and end exclusions.
-- The evaluated duration after exclusions can be split into at least two bins of `minBinDurationS` each.
+- Activity duration is at least `minActivityDurationS` (default: 60 minutes).
+- The evaluated duration can be split into at least two bins of `minBinDurationS` each.
 - The activity belongs to a supported sport group.
 - Heart-rate coverage meets `minHrCoveragePct` for all required halves and bins.
 - At least one output-based mode has `minOutputCoveragePct` and `minPairedCoveragePct` for all required halves and bins, or the activity uses a supported constant-output machine mode.
@@ -112,7 +117,7 @@ Cycling-like activities:
 - `cycling` with sub-sports such as `indoor_cycling`, `spin`, `road`, `mountain`, `gravel_cycling`, or `commuting`
 - `fitness_equipment` with `sub_sport=indoor_cycling`
 
-Output rule: use power first when power meets the output and paired-coverage thresholds. When power is usable, calculate both average-power decoupling and computed-normalized-power decoupling. If power is missing or fails coverage/quality checks, use speed/distance when speed meets the output and paired-coverage thresholds. Indoor and outdoor cycling follow the same rule. Zero-watt samples are valid and should reduce average power, not invalidate coverage.
+Output rule: use computed normalized power when it meets power, paired-coverage, and rolling-window coverage thresholds. If normalized power cannot be calculated reliably, use speed/distance as a low-confidence fallback when speed meets the output and paired-coverage thresholds. Indoor and outdoor cycling follow the same rule. Zero-watt samples are valid and should reduce power averages used by normalized-power windows and variability diagnostics, not invalidate coverage.
 
 Running/walking-like activities:
 
@@ -159,15 +164,15 @@ Source: Garmin FIT SDK Tools `Profile.xlsx` in `garmin/fit-sdk-tools`.
 
 ## Time Base
 
-Use one deterministic active-recording time base for all windows, bins, coverage, and averages.
+Use one deterministic active timeline for all windows, bins, coverage, and averages. This is the calculation time base, not necessarily the same as the stored activity/session duration.
 
 Initial implementation:
 
 - Build an active timeline from sorted `RecordPoint.timestamp` values.
-- Each adjacent record interval `[timestamp_i, timestamp_i+1)` contributes to active time when `0 < delta_time <= maxRecordGapS`.
-- A record interval with `delta_time > maxRecordGapS` is treated as a device pause or auto-pause and is removed from the active timeline before warmup/end exclusions, binning, and coverage calculations.
-- Activity duration is total active recording time before warmup and end exclusions.
-- Activity start on the active timeline is 0. Activity end is total active recording duration.
+- Each adjacent record interval `[timestamp_i, timestamp_i+1)` contributes to active timeline duration when `0 < delta_time <= maxRecordGapS`.
+- A record interval with `delta_time > maxRecordGapS` is treated as a device pause or auto-pause and is omitted from the active timeline before warmup/end exclusions, binning, and coverage calculations.
+- Active timeline duration is the sum of contributing record intervals. It is shorter than raw elapsed session duration when there are full-record gaps longer than `maxRecordGapS`.
+- Activity start on the active timeline is 0. Activity end on the active timeline is total active timeline duration.
 - Do not infer moving time and do not remove stopped/coasting intervals that were actually recorded.
 - If the device records zero power or zero speed for a short pause, those samples remain in the evaluated window and reduce average output.
 - If the device stops recording during a pause, the full-record gap is removed by the active-timeline rule and does not count against stream coverage.
@@ -179,22 +184,22 @@ Initial implementation:
 
 Initial window selection:
 
-1. Require active recording duration to be at least `minActivityDurationS` (default: 60 minutes) before exclusions are applied.
+1. Require activity duration to be at least `minActivityDurationS` (default: 60 minutes).
 2. Always exclude the first `warmupIgnoreS` (default: 10 minutes) as warmup.
 3. Always exclude the final `ignoreLastS` (default: 5 minutes) to avoid cooldown, device stop/start noise, and post-workout idle records.
-4. Use the remaining evaluated duration as `[warmupIgnoreS, active_duration - ignoreLastS)` on the active timeline.
+4. Use the remaining evaluated duration as `[warmupIgnoreS, active_timeline_duration - ignoreLastS)`.
 5. Require evaluated duration to be at least `2 * minBinDurationS` (default: 40 minutes). If not, return unavailable.
 6. Build analysis bins using the binning rules below.
 7. Calculate EF for each bin where the selected mode supports EF.
 8. Calculate activity decoupling from the first half of evaluated duration vs the second half of evaluated duration.
 
-With default config, a 60-minute active-recording activity evaluates active minutes 10-55, giving 45 evaluated minutes and two 22.5-minute bins. A shorter evaluated duration that cannot produce at least two 20-minute bins is unavailable.
+With default config, an activity with 60 minutes of duration and no full-record gaps evaluates active minutes 10-55, giving 45 evaluated minutes and two 22.5-minute bins. A shorter evaluated duration that cannot produce at least two 20-minute bins is unavailable.
 
 This is a minimum availability rule, not a claim that 45 evaluated minutes is ideal for every use. The reviewed coaching guidance commonly describes either a 40-60 minute controlled test segment or at least a one-hour endurance workout, excluding warmup and cooldown. The UI should expose evaluated duration so users can judge whether the analyzed section is comparable to their usual method.
 
 ## Binning
 
-All cardiac decoupling calculations are based on evaluated duration after warmup and end exclusions. Detail bins are equal-duration half-open slices of that evaluated duration.
+All cardiac decoupling calculations are based on evaluated duration after the active timeline is built and warmup/end exclusions are applied. Detail bins are equal-duration half-open slices of that evaluated duration.
 
 Default auto-binning:
 
@@ -310,15 +315,15 @@ Coverage should be reported per mode so the UI can explain whether a value is un
 
 ## Output Source Selection
 
-Power-based modes:
+Power-based cycling mode:
 
 - Use `RecordPoint.power`.
-- Use these modes for cycling-like activities when power meets the output and paired-coverage thresholds.
-- Calculate average-power decoupling from elapsed-time-weighted average power over paired HR/power intervals.
+- Cycling-like activities use normalized power when it can be calculated reliably from record-level power.
 - Zero-watt samples are valid output samples. They are included in power averages and paired coverage.
 - Calculate normalized-power decoupling by computing normalized power from the power time series for each evaluated half and bin.
 - Do not depend on session-level or lap-level FIT `normalized_power` fields. Those fields are optional and may not align with the evaluated halves or bins.
-- If any valid power samples exist in the evaluated window, attempt both average-power and normalized-power results. The UI can choose which one to display by default and may allow the user to switch between them.
+- Do not use average-power decoupling as an automatic cycling fallback. Average power may still be calculated internally for variability index or future diagnostics, but it should not be selected/displayed automatically.
+- If normalized power cannot be calculated reliably, attempt speed as a low-confidence cycling fallback. If speed/distance is also unavailable, the cycling result is unavailable.
 
 Computed normalized power:
 
@@ -373,7 +378,7 @@ Constant-output machine mode:
 constant_output_drift = ((HR_second_half - HR_first_half) / HR_second_half) * 100
 ```
 
-- This should be labeled separately from speed, average-power, and normalized-power decoupling because it depends on a steady-effort assumption rather than recorded output.
+- This should be labeled separately from speed and normalized-power decoupling because it depends on a steady-effort assumption rather than recorded output.
 
 Mode selection:
 
@@ -381,11 +386,9 @@ Mode selection:
 results = []
 
 if sport is cycling-like:
-    if any valid power samples exist in the evaluated window:
-        add average_power result
-        add normalized_power result
-    if no power result is available:
-        add speed result
+    add normalized_power result
+    if normalized_power is unavailable:
+        add speed result with cycling_speed_fallback assumption
 else if sport is constant-output-machine:
     if speed meets output and paired-coverage thresholds:
         add speed result
@@ -507,7 +510,7 @@ Result behavior:
 - Top-level `available` is true when at least one mode result is available.
 - Top-level `reason` is set only when no mode result is available. Use the reason from the highest-priority attempted mode, where priority is the order in which mode-selection adds results.
 - `defaultMode` is selected from available results only.
-- Cycling default mode uses `defaultCyclingDisplayMode` when that mode is available. Because the initial default is `normalized_power`, cycling displays normalized-power decoupling first when available. Otherwise choose the first available mode in this order: `normalized_power`, `average_power`, `speed`.
+- Cycling default mode is `normalized_power` when available. If normalized power is unavailable and speed fallback is available, cycling defaults to `speed` with low confidence. Average power is not an automatic cycling default or fallback.
 - Non-cycling speed-supported activities default to `speed` when available.
 - Constant-output machine activities default to `speed` when speed is available, otherwise `constant_output_hr`.
 
@@ -517,9 +520,9 @@ Confidence flags do not make a result unavailable. They give the UI context when
 
 Confidence levels:
 
-- `High confidence`: output-based result using measured power or speed, all coverage thresholds passed, and no confidence warnings are present.
+- `High confidence`: output-based result using the preferred output for that activity group, all coverage thresholds passed, and no confidence warnings or fallback assumptions are present.
 - `Medium confidence`: constant-output heart-rate drift result that depends on the assumption that machine effort stayed steady, with no low-confidence warning.
-- `Low confidence`: any available result with `high_variability_effort`. Low confidence overrides medium or high confidence.
+- `Low confidence`: any available result with `high_variability_effort`, or any cycling result that uses speed because normalized power was unavailable. Low confidence overrides medium or high confidence.
 
 Cycling variability flag:
 
@@ -529,11 +532,11 @@ variability_index = normalized_power / average_power
 
 Rules:
 
-- Calculate cycling variability index when both normalized-power and average-power values are available for the evaluated activity.
+- Calculate cycling variability index when both normalized-power and average-power values can be calculated internally for the evaluated activity.
 - If `variability_index > highVariabilityIndexThreshold` (default: 1.05), add warning `high_variability_effort`.
 - The warning means the effort may be too variable for clean aerobic decoupling interpretation.
 - Do not apply this warning to speed or constant-output modes in the first implementation.
-- If normalized power is unavailable, skip the warning rather than blocking average-power decoupling.
+- If normalized power is unavailable, skip the warning. Cycling may still fall back to speed with low confidence when speed/distance passes coverage checks.
 
 ## UI Placement
 
@@ -547,16 +550,17 @@ Display:
 
 - Label: `Heart Rate Drift`, with `HR Drift` acceptable in compact chart titles.
 - Value: percentage with one decimal place, for example `4.8%`
-- Mode selector/badge: `Average Power`, `Normalized Power`, `Pace`/`Speed`, or `Constant Effort HR Drift`. Use `Pace` for running, walking, and hiking speed-mode results; use `Speed` for other speed-mode sports.
+- Mode selector/badge: `Normalized Power`, `Pace`/`Speed`, or `Constant Effort HR Drift`. Use `Pace` for running, walking, and hiking speed-mode results; use `Speed` for cycling fallback and other speed-mode sports.
 - Show evaluated duration and excluded warmup/end time in the detailed view, for example `Analyzed 45 min after excluding 10 min warmup and 5 min cooldown`.
+- Add a `?` help button in the HR Drift detail chart header. For now the help text can be English-only until the copy is finalized for localization. It should explain what the chart shows, how drift is calculated at a high level, how cycling normalized-power vs speed fallback works, why speed fallback is low confidence, why running/walking/hiking show pace while calculating from speed internally, what grey excluded regions mean, and the steady-effort caveats.
 - Add help/disclaimer copy explaining that decoupling is most useful on steady aerobic efforts and may be distorted by intervals, stops, terrain, heat, dehydration, caffeine, poor sleep, fatigue, or bad sensor data.
 - For `Constant Effort HR Drift`, add mode-specific help: `This assumes the machine effort stayed steady. Changes in resistance, incline, cadence, or machine program can distort the result.`
 - Always show confidence when a result is available: `High confidence`, `Medium confidence`, or `Low confidence`.
 - For `high_variability_effort`, show a low-confidence label plus a note rather than hiding the metric: `This effort was highly variable.`
-- Add a detail chart panel beside the summary card in the existing chart grid. During migration away from the standalone summary card, the chart panel should also show a large decoupling percentage plus color-coded drift and confidence badges in its header. Do not duplicate the selected output mode as a separate badge in the chart header because the chart legend already names the plotted output series.
-- The detail chart should plot HR plus the selected output mode: centered normalized power for `normalized_power`, sampled power for `average_power`, pace display for running/walking/hiking `speed` mode, and speed display for other `speed` mode activities. Do not show a normalized-power overlay for speed-based running or walking results.
-- The detail chart should shade excluded warmup, cooldown, and full-record gap ranges in grey without text labels inside the shaded areas. For display, trim or hide gap ranges that overlap warmup/cooldown ranges so nested exclusions do not draw redundant shaded regions. This is visual cleanup only and must not change active-time, coverage, binning, or EF calculations.
-- The detail chart should draw vertical dashed markers for the start of each evaluated bin and the evaluated-end/cooldown-start boundary. The first evaluated marker should be labeled `Bin 1`, not `Warmup`, because the warmup range is already shown by the grey excluded area.
+- Add a detail chart panel beside the summary card in the existing chart grid. During migration away from the standalone summary card, the chart panel should also show a large decoupling percentage plus color-coded drift and confidence badges in its header. Do not duplicate the selected output mode or analyzed-window text in the chart header because the chart legend and visual excluded regions already show that context.
+- The detail chart should plot HR plus the selected output mode: centered normalized power for `normalized_power`, pace display for running/walking/hiking `speed` mode, and speed display for cycling fallback and other `speed` mode activities. Do not show a normalized-power overlay for speed-based results.
+- The detail chart should shade excluded warmup, cooldown, and full-record gap ranges in grey. Show horizontal labels for warmup and cooldown shaded regions, but do not label shaded gap regions. For display, trim or hide gap ranges that overlap warmup/cooldown ranges so nested exclusions do not draw redundant shaded regions. This is visual cleanup only and must not change active-time, coverage, binning, or EF calculations.
+- The detail chart should draw vertical dashed markers for the start of each evaluated bin and the evaluated-end/cooldown-start boundary. The first evaluated marker should be labeled `Bin 1`, not `Warmup`, because the warmup range is already shown by the grey excluded area. Draw the evaluated-end/cooldown-start line without a text label because the cooldown shaded region carries that label.
 - The detail chart should use dynamic padded y-axis bounds. HR bounds round to multiples of 10 and clamp the lower bound to at least `30 bpm`; power bounds round to multiples of 10 and clamp the lower bound to at least `0 W`; speed and pace bounds round to whole display units and clamp the lower bound to at least `0`.
 - Detail chart smoothing is display-only. When graph smoothing is enabled, smooth the plotted HR and selected output series using the shared chart smoothing helper so the detail chart is visually consistent with the main pace chart. Do not feed the smoothed chart series back into the HR drift calculation, bin averages, EF values, or summary metric.
 - Smoothing rationale: HR drift is a slow segment-level trend, while second-by-second speed and GPS-derived pace can be visually noisy. The calculation already reduces noise through long time-weighted halves/bins and explicit coverage/gap rules. Display smoothing improves readability without changing the metric or reducing comparability with Pa:Hr/Pw:Hr implementations that compare segment-level efficiency.
@@ -614,10 +618,10 @@ Possible later implementation:
 
 Unit tests should cover:
 
-- Eligible cycling activity with power and HR returns average-power and normalized-power results when normalized-power calculation is available.
-- Zero-watt cycling samples count as valid power coverage and reduce average power without invalidating the mode.
+- Eligible cycling activity with power and HR returns a normalized-power result when normalized-power calculation is available.
+- Zero-watt cycling samples count as valid power coverage and reduce power averages without invalidating normalized-power windows or variability diagnostics.
 - Segment/bin average output of 0 returns `invalid_segment_average` for output-based modes.
-- Cycling power with unusable normalized-power windows still returns average-power when average-power quality checks pass.
+- Cycling with unusable normalized-power windows falls back to speed with a `cycling_speed_fallback` assumption when speed/distance quality checks pass; otherwise it is unavailable.
 - Time base uses active recording time, removes full-record gaps greater than `maxRecordGapS`, and does not remove recorded zero-output stopped/coasting intervals.
 - Bin count uses round-half-up formula at `.5` target-duration boundaries.
 - Coverage is measured by elapsed time, not raw record count.
