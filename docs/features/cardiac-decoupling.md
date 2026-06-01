@@ -86,14 +86,7 @@ type CardiacDecouplingConfig = {
 };
 ```
 
-Keep these defaults internal/constants in the first release; a user-facing settings UI is not required initially.
-
-Suggested location:
-
-- Frontend-first implementation: `src/lib/cardiacDecoupling.ts` exports `DEFAULT_CARDIAC_DECOUPLING_CONFIG`.
-- If the calculation moves backend-side later, mirror the defaults in Rust or load them from app settings.
-
-The first implementation can keep this as a module-level constant.
+Keep these defaults internal/constants in the first release; a user-facing settings UI is not required initially. Suggested location: `src/lib/cardiacDecoupling.ts` exports `DEFAULT_CARDIAC_DECOUPLING_CONFIG`. If the calculation moves backend-side later, mirror the defaults in Rust or load them from app settings.
 
 ## Eligibility
 
@@ -107,7 +100,7 @@ Minimum conditions:
 - Heart-rate coverage meets `minHrCoveragePct` for all required halves and bins.
 - At least one output-based mode has `minOutputCoveragePct` and `minPairedCoveragePct` for all required halves and bins, or the activity uses a supported constant-output machine mode.
 - Average HR is greater than 0 in all required halves and bins.
-- Average output is greater than 0 in all required halves and bins for output-based modes. Individual zero output samples are valid and included in averages.
+- Average output is greater than 0 in all required halves and bins for output-based modes.
 
 Supported sport groups are allowlists. Activities outside these groups are unavailable by default. This is preferable to maintaining an excluded list because Garmin's FIT `sport` and `sub_sport` enums are large and still evolving.
 
@@ -117,7 +110,7 @@ Cycling-like activities:
 - `cycling` with sub-sports such as `indoor_cycling`, `spin`, `road`, `mountain`, `gravel_cycling`, or `commuting`
 - `fitness_equipment` with `sub_sport=indoor_cycling`
 
-Output rule: use computed normalized power when it meets power, paired-coverage, and rolling-window coverage thresholds. If normalized power cannot be calculated reliably, use speed/distance as a low-confidence fallback when speed meets the output and paired-coverage thresholds. Indoor and outdoor cycling follow the same rule. Zero-watt samples are valid and should reduce power averages used by normalized-power windows and variability diagnostics, not invalidate coverage.
+Output rule: use computed normalized power when it meets power, paired-coverage, and rolling-window coverage thresholds. If normalized power cannot be calculated reliably, use speed/distance as a low-confidence fallback when speed meets the output and paired-coverage thresholds. Indoor and outdoor cycling follow the same rule.
 
 Running/walking-like activities:
 
@@ -127,7 +120,7 @@ Running/walking-like activities:
 - `running` with sub-sports such as `treadmill`, `trail`, `track`, or `indoor_running`
 - `walking` with sub-sports such as `indoor_walking`, `casual_walking`, or `speed_walking`
 
-Output rule: require speed/distance to meet the output and paired-coverage thresholds. Indoor and outdoor running/walking follow the same rule. Zero-speed intervals are valid when the device records them and should reduce average speed, not invalidate coverage.
+Output rule: require speed/distance to meet the output and paired-coverage thresholds. Indoor and outdoor running/walking follow the same rule.
 
 Other supported speed-based endurance activities:
 
@@ -174,7 +167,6 @@ Initial implementation:
 - Active timeline duration is the sum of contributing record intervals. It is shorter than raw elapsed session duration when there are full-record gaps longer than `maxRecordGapS`.
 - Activity start on the active timeline is 0. Activity end on the active timeline is total active timeline duration.
 - Do not infer moving time and do not remove stopped/coasting intervals that were actually recorded.
-- If the device records zero power or zero speed for a short pause, those samples remain in the evaluated window and reduce average output.
 - If the device stops recording during a pause, the full-record gap is removed by the active-timeline rule and does not count against stream coverage.
 - Use half-open intervals `[start, end)` for evaluated windows, halves, bins, and coverage intervals. This prevents boundary samples from being double-counted.
 - Apply stream gap and interpolation rules after mapping records onto the active timeline. Per-stream sensor dropouts still affect coverage; full-record device pauses do not.
@@ -281,7 +273,7 @@ Future options:
 
 ## Time-Series Normalization and Gap Handling
 
-Use one shared time-series method for heart rate, power, speed, and distance-derived speed after records have been mapped onto the active timeline. Normalized power uses the same method, then adds explicit 1-second resampling and 30-second trailing rolling-window calculation.
+Use one shared time-series method for heart rate, power, speed, and distance-derived speed after records have been mapped onto the active timeline. Normalized power uses the same method, then adds explicit 1-second resampling and centered 30-second rolling-window calculation.
 
 Stream validity:
 
@@ -319,7 +311,6 @@ Power-based cycling mode:
 
 - Use `RecordPoint.power`.
 - Cycling-like activities use normalized power when it can be calculated reliably from record-level power.
-- Zero-watt samples are valid output samples. They are included in power averages and paired coverage.
 - Calculate normalized-power decoupling by computing normalized power from the power time series for each evaluated half and bin.
 - Do not depend on session-level or lap-level FIT `normalized_power` fields. Those fields are optional and may not align with the evaluated halves or bins.
 - Do not use average-power decoupling as an automatic cycling fallback. Average power may still be calculated internally for variability index or future diagnostics, but it should not be selected/displayed automatically.
@@ -347,12 +338,11 @@ Speed/pace-based mode:
 - Use speed internally for supported non-cycling activities when speed/distance meets the output and paired-coverage thresholds.
 - Treat running, walking, and hiking UI copy as pace-based HR drift (`Pa:Hr`) because that is the common running convention, but calculate EF from speed so higher output still means better efficiency.
 - Internal formula: `EF = speed / HR`. Do not calculate EF as raw `pace / HR`, because pace is the inverse of speed and would reverse the efficiency direction.
-- For running, walking, and hiking charts, display the selected output as pace in `min/km` or `min/mi` with an inverted y-axis, matching the existing pace chart behavior. Zero-speed samples remain valid in the calculation, but become unavailable/infinite for pace display and should render as gaps rather than huge pace spikes.
+- For running, walking, and hiking charts, display the selected output as pace in `min/km` or `min/mi` with an inverted y-axis, matching the existing pace chart behavior. Zero-speed pace points should render as gaps rather than huge pace spikes.
 - For other speed-based sports such as rowing or cross-country skiing, display the selected output as speed unless a sport-specific convention is added later.
 - Prefer distance-over-time speed when cumulative distance is usable, because it is usually less noisy than instantaneous speed.
 - Use `RecordPoint.speed_m_s` when distance-based speed cannot be calculated.
 - If speed is missing but distance and timestamps are present, derive speed from distance deltas using the distance-derived speed rules above.
-- Zero-speed intervals are valid output samples. They are included in speed averages and paired coverage.
 - Ignore invalid or negative instantaneous speeds.
 - Do not apply arbitrary smoothing in the first implementation. A 1-second moving average is usually equivalent to no smoothing because FIT record samples are commonly about 1 second apart or less frequent. If instantaneous speed must be used, calculate time-weighted averages per half/bin and add a longer explicit smoothing window only if test fixtures show unacceptable noise.
 
@@ -412,7 +402,7 @@ For each evaluated half, bin, and mode:
 - Constant-output machine mode does not require output or paired coverage.
 - Segment or bin duration must be at least `minBinDurationS`.
 - Average HR must be greater than 0.
-- Average output must be greater than 0 for output-based modes. Individual zero power or speed samples are valid and included; only the segment/bin average must be positive.
+- Average output must be greater than 0 for output-based modes.
 
 Coverage should use the shared time-series method, not a raw record count. A stream is covered for elapsed intervals where valid samples exist or short gaps are bridged within `maxInterpolationGapS`. HR coverage requires positive heart-rate values. Output coverage requires finite non-negative power or speed values for that mode. Paired coverage is elapsed time where both HR and the selected output stream are valid for the same interval. Constant-output machine mode uses HR coverage only and must carry the steady-effort assumption through to the UI.
 
@@ -473,7 +463,7 @@ type CardiacDecouplingModeResult = {
   secondHalfRollingWindowCoveragePct?: number;
   overallBinDriftPct?: number;
   adjacentBinDriftPct?: number[];
-  assumption?: "constant_output";
+  assumption?: "constant_output" | "cycling_speed_fallback";
   bins?: Array<{
     startS: number;
     endS: number;
@@ -544,16 +534,13 @@ Show the metric on the Individual activity detail view, in the existing insights
 
 Place the card near other effort and endurance panels such as heart-rate zones, cadence/power, effort heatmap, and power-vs-heart-rate.
 
-UI exposure can happen after the calculation is implemented and tested. The first implementation may keep the result internal or development-only until there is enough confidence in data quality and copy.
-
 Display:
 
 - Label: `Heart Rate Drift`, with `HR Drift` acceptable in compact chart titles.
 - Value: percentage with one decimal place, for example `4.8%`
 - Mode selector/badge: `Normalized Power`, `Pace`/`Speed`, or `Constant Effort HR Drift`. Use `Pace` for running, walking, and hiking speed-mode results; use `Speed` for cycling fallback and other speed-mode sports.
 - Show evaluated duration and excluded warmup/end time in the detailed view, for example `Analyzed 45 min after excluding 10 min warmup and 5 min cooldown`.
-- Add a `?` help button in the HR Drift detail chart header. For now the help text can be English-only until the copy is finalized for localization. It should explain what the chart shows, how drift is calculated at a high level, how cycling normalized-power vs speed fallback works, why speed fallback is low confidence, why running/walking/hiking show pace while calculating from speed internally, what grey excluded regions mean, and the steady-effort caveats.
-- Add help/disclaimer copy explaining that decoupling is most useful on steady aerobic efforts and may be distorted by intervals, stops, terrain, heat, dehydration, caffeine, poor sleep, fatigue, or bad sensor data.
+- Add a `?` help button in the HR Drift detail chart header. For now the help text can be English-only until the copy is finalized for localization. It should explain the chart, the high-level drift calculation, normalized-power vs speed fallback, pace display for speed-based run/walk/hike results, grey excluded regions, and steady-effort caveats such as intervals, stops, terrain, heat, dehydration, caffeine, poor sleep, fatigue, or bad sensor data.
 - For `Constant Effort HR Drift`, add mode-specific help: `This assumes the machine effort stayed steady. Changes in resistance, incline, cadence, or machine program can distort the result.`
 - Always show confidence when a result is available: `High confidence`, `Medium confidence`, or `Low confidence`.
 - For `high_variability_effort`, show a low-confidence label plus a note rather than hiding the metric: `This effort was highly variable.`
@@ -622,7 +609,7 @@ Unit tests should cover:
 - Zero-watt cycling samples count as valid power coverage and reduce power averages without invalidating normalized-power windows or variability diagnostics.
 - Segment/bin average output of 0 returns `invalid_segment_average` for output-based modes.
 - Cycling with unusable normalized-power windows falls back to speed with a `cycling_speed_fallback` assumption when speed/distance quality checks pass; otherwise it is unavailable.
-- Time base uses active recording time, removes full-record gaps greater than `maxRecordGapS`, and does not remove recorded zero-output stopped/coasting intervals.
+- Time base uses the active timeline, omits full-record gaps greater than `maxRecordGapS`, and keeps recorded stopped/coasting intervals.
 - Bin count uses round-half-up formula at `.5` target-duration boundaries.
 - Coverage is measured by elapsed time, not raw record count.
 - Short HR, power, or speed gaps up to `maxInterpolationGapS` are linearly interpolated consistently across halves and bins.
@@ -630,7 +617,7 @@ Unit tests should cover:
 - A gap in one stream does not remove the interval from unrelated modes.
 - Output-based modes use paired HR/output intervals and fail when paired coverage is too low.
 - Result behavior includes attempted-but-unavailable modes and selects `defaultMode` only from available results.
-- Normalized-power mode uses trailing 30-second windows and excludes the first 30 seconds of each half/bin from rolling-window output.
+- Normalized-power mode uses centered 30-second windows and assigns each accepted window to halves/bins by center timestamp.
 - Distance-derived speed treats zero-distance intervals as valid zero speed and negative distance deltas as uncovered reset/corrupt intervals.
 - Eligible running activity with speed and HR.
 - Speed-mode activity prefers distance-over-time segment average when distance data is present.
@@ -638,7 +625,7 @@ Unit tests should cover:
 - Indoor cycling without power, speed, or distance returns unavailable.
 - Elliptical or stair machine with HR and no output stream returns a `constant_output_hr` result with a `constant_output` assumption.
 - Machine activity with usable speed/distance returns a speed result instead of constant-output HR drift.
-- Active recording duration shorter than 60 minutes returns unavailable.
+- Activity duration shorter than 60 minutes returns unavailable.
 - Evaluated duration shorter than `2 * minBinDurationS` returns unavailable.
 - Missing HR returns unavailable.
 - Low HR coverage in one half returns unavailable.
