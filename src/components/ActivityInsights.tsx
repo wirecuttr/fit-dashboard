@@ -24,7 +24,6 @@ import {
   type HeartRateDriftExcludedRange,
   type CardiacDecouplingMode,
   type CardiacDecouplingModeResult,
-  type CardiacDecouplingUnavailableReason,
 } from "../lib/cardiacDecoupling";
 
 type Props = {
@@ -63,15 +62,6 @@ function formatAbsTime(baseTimestampMs: number, relMs: number): string {
   const mm = String(absolute.getMinutes()).padStart(2, "0");
   const ss = String(absolute.getSeconds()).padStart(2, "0");
   return `${hh}:${mm}:${ss}`;
-}
-
-function formatInsightDuration(seconds: number): string {
-  const totalMinutes = Math.round(Math.max(0, seconds) / 60);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  if (h > 0 && m > 0) return `${h}h ${m}m`;
-  if (h > 0) return `${h}h`;
-  return `${m}m`;
 }
 
 function formatPercent(value: number | undefined): string {
@@ -130,22 +120,6 @@ function cardiacModeLabel(mode: CardiacDecouplingMode, t: (key: string) => strin
     case "normalized_power": return t("insights.cardiacModeNormalizedPower");
     case "speed": return usePaceLabel ? t("chart.pace") : t("insights.cardiacModeSpeed");
     case "constant_output_hr": return t("insights.cardiacModeConstantEffort");
-  }
-}
-
-function cardiacReasonLabel(reason: CardiacDecouplingUnavailableReason | undefined, t: (key: string) => string): string {
-  switch (reason) {
-    case "duration_too_short": return t("insights.cardiacReasonDurationTooShort");
-    case "unsupported_activity_type": return t("insights.cardiacReasonUnsupported");
-    case "missing_heart_rate": return t("insights.cardiacReasonMissingHeartRate");
-    case "missing_power": return t("insights.cardiacReasonMissingPower");
-    case "missing_speed": return t("insights.cardiacReasonMissingSpeed");
-    case "insufficient_heart_rate_coverage": return t("insights.cardiacReasonHeartRateCoverage");
-    case "insufficient_output_coverage": return t("insights.cardiacReasonOutputCoverage");
-    case "insufficient_paired_coverage": return t("insights.cardiacReasonPairedCoverage");
-    case "insufficient_rolling_window_coverage": return t("insights.cardiacReasonRollingCoverage");
-    case "invalid_segment_average": return t("insights.cardiacReasonInvalidAverage");
-    default: return t("insights.cardiacReasonUnavailable");
   }
 }
 
@@ -913,58 +887,11 @@ export function ActivityInsights({
 
   return (
     <section className="insight-grid">
-      {cardiacDecoupling && (
-        <article className="panel cardiac-decoupling-card">
-          <div className="cardiac-decoupling-header">
-            <h3>{tr("insights.cardiacDecoupling")}</h3>
-            {cardiacResult && <span className="cardiac-mode-badge">{cardiacModeLabel(cardiacResult.mode, tr, cardiacResult.mode === "speed" && usePaceDisplay)}</span>}
-          </div>
-          {cardiacResult?.available ? (
-            <>
-              <div className={`cardiac-decoupling-value ${cardiacBand ?? ""}`}>{formatPercent(cardiacResult.decouplingPct)}</div>
-              <div className="cardiac-decoupling-band">
-                {cardiacIsNegative ? tr("insights.cardiacIncreasedEfficiency") : cardiacBandLabel(cardiacResult.decouplingPct, tr)}
-              </div>
-              {cardiacConfidence && (
-                <div className={`cardiac-decoupling-confidence ${cardiacConfidence}`}>{cardiacConfidenceLabel(cardiacConfidence, tr)}</div>
-              )}
-              <div className="cardiac-decoupling-support">
-                {cardiacResult.mode === "constant_output_hr" ? (
-                  <span>{tr("insights.cardiacHrSummary", { first: formatMetric(cardiacResult.firstHalfAvgHr, 0), second: formatMetric(cardiacResult.secondHalfAvgHr, 0) })}</span>
-                ) : (
-                  <span>{tr("insights.cardiacEfSummary", { first: formatMetric(cardiacResult.firstHalfEfficiency, cardiacEfficiencyPrecision), second: formatMetric(cardiacResult.secondHalfEfficiency, cardiacEfficiencyPrecision) })}</span>
-                )}
-              </div>
-              {typeof cardiacDecoupling.evaluatedDurationS === "number" && (
-                <div className="cardiac-decoupling-context">
-                  {tr("insights.cardiacAnalyzedWindow", {
-                    duration: formatInsightDuration(cardiacDecoupling.evaluatedDurationS),
-                    warmup: formatInsightDuration(cardiacDecoupling.warmupExcludedS ?? 0),
-                    cooldown: formatInsightDuration(cardiacDecoupling.endExcludedS ?? 0),
-                  })}
-                </div>
-              )}
-              {cardiacDecoupling.warnings?.includes("high_variability_effort") && (
-                <div className="cardiac-decoupling-note">{tr("insights.cardiacHighVariability")}</div>
-              )}
-              {cardiacResult.assumption === "constant_output" && (
-                <div className="cardiac-decoupling-note">{tr("insights.cardiacConstantOutputNote")}</div>
-              )}
-              <div className="cardiac-decoupling-note">{tr("insights.cardiacSteadyEffortNote")}</div>
-            </>
-          ) : (
-            <>
-              <div className="cardiac-decoupling-unavailable">{tr("insights.cardiacUnavailable")}</div>
-              <div className="cardiac-decoupling-context">{cardiacReasonLabel(cardiacResult?.reason ?? cardiacDecoupling.reason, tr)}</div>
-            </>
-          )}
-        </article>
-      )}
       {heartRateDriftOption && cardiacResult?.available && (
         <article className="panel heart-rate-drift-detail-panel">
           <div className="heart-rate-drift-detail-header">
             <div className="heart-rate-drift-title-row">
-              <h3>{tr("insights.hrDriftDetail")}</h3>
+              <h3>{tr("insights.cardiacDecoupling")}</h3>
               <button
                 type="button"
                 className="heart-rate-drift-help-button"
@@ -1001,6 +928,13 @@ export function ActivityInsights({
             )}
           </div>
           <ReactECharts option={heartRateDriftOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+          <div className="heart-rate-drift-detail-support">
+            {cardiacResult.mode === "constant_output_hr" ? (
+              <span>{tr("insights.cardiacHrSummary", { first: formatMetric(cardiacResult.firstHalfAvgHr, 0), second: formatMetric(cardiacResult.secondHalfAvgHr, 0) })}</span>
+            ) : (
+              <span>{tr("insights.cardiacEfSummary", { first: formatMetric(cardiacResult.firstHalfEfficiency, cardiacEfficiencyPrecision), second: formatMetric(cardiacResult.secondHalfEfficiency, cardiacEfficiencyPrecision) })}</span>
+            )}
+          </div>
         </article>
       )}
       <article className="panel">

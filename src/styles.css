@@ -1626,105 +1626,173 @@ button:focus-visible {
 }
 
 
-.cardiac-decoupling-card {
+.heart-rate-drift-detail-panel {
   display: flex;
   min-height: 280px;
   flex-direction: column;
-  gap: 0.65rem;
 }
 
-.cardiac-decoupling-header {
+.heart-rate-drift-detail-header {
+  margin-bottom: 0.35rem;
+}
+
+.heart-rate-drift-title-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  margin-bottom: 0.35rem;
 }
 
-.cardiac-mode-badge {
-  flex: 0 0 auto;
-  border: 1px solid var(--border);
+.heart-rate-drift-title-row h3 {
+  margin-bottom: 0;
+}
+
+.heart-rate-drift-help-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 1.5px solid color-mix(in srgb, var(--text-muted) 55%, var(--border));
   border-radius: 999px;
-  padding: 0.18rem 0.55rem;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 650;
-  line-height: 1.2;
-  background: color-mix(in srgb, var(--panel-solid) 72%, transparent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel-solid) 88%, var(--text) 4%);
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
 }
 
-.cardiac-decoupling-value {
-  margin-top: 0.15rem;
+.heart-rate-drift-help-button:hover,
+.heart-rate-drift-help-button[aria-expanded="true"] {
   color: var(--text);
-  font-size: clamp(2.15rem, 4vw, 3.4rem);
-  font-weight: 800;
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: color-mix(in srgb, var(--primary) 10%, var(--panel-solid));
+}
+
+.heart-rate-drift-detail-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+}
+
+.heart-rate-drift-detail-value {
+  color: var(--text);
+  font-size: clamp(1.95rem, 3.4vw, 2.85rem);
+  font-weight: 820;
   line-height: 0.95;
 }
 
-.cardiac-decoupling-value.low {
+.heart-rate-drift-detail-value.low {
   color: #16a34a;
 }
 
-.cardiac-decoupling-value.moderate {
+.heart-rate-drift-detail-value.moderate {
   color: #d97706;
 }
 
-.cardiac-decoupling-value.high {
+.heart-rate-drift-detail-value.high {
   color: #dc2626;
 }
 
-.cardiac-decoupling-band {
-  color: var(--text);
-  font-size: 0.92rem;
-  font-weight: 700;
+.heart-rate-drift-detail-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
 }
 
-.cardiac-decoupling-confidence {
-  align-self: flex-start;
+.heart-rate-drift-detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.heart-rate-drift-status-badge {
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0.18rem 0.55rem;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 750;
   line-height: 1.2;
   background: color-mix(in srgb, var(--panel-solid) 72%, transparent);
 }
 
-.cardiac-decoupling-confidence.high {
+.heart-rate-drift-status-badge.drift-low,
+.heart-rate-drift-status-badge.drift-negative {
+  border-color: color-mix(in srgb, #16a34a 34%, var(--border));
+  color: #16a34a;
+  background: color-mix(in srgb, #16a34a 10%, var(--panel-solid));
+}
+
+.heart-rate-drift-status-badge.drift-moderate {
+  border-color: color-mix(in srgb, #d97706 36%, var(--border));
+  color: #d97706;
+  background: color-mix(in srgb, #d97706 10%, var(--panel-solid));
+}
+
+.heart-rate-drift-status-badge.drift-high {
+  border-color: color-mix(in srgb, #dc2626 36%, var(--border));
+  color: #dc2626;
+  background: color-mix(in srgb, #dc2626 9%, var(--panel-solid));
+}
+
+.heart-rate-drift-confidence-text {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.heart-rate-drift-confidence-text.confidence-high {
   color: #16a34a;
 }
 
-.cardiac-decoupling-confidence.medium {
+.heart-rate-drift-confidence-text.confidence-medium {
   color: #d97706;
 }
 
-.cardiac-decoupling-confidence.low {
+.heart-rate-drift-confidence-text.confidence-low {
   color: #dc2626;
 }
 
-.cardiac-decoupling-support {
-  margin-top: 0.15rem;
-  color: var(--text);
-  font-size: 0.84rem;
-  font-weight: 600;
+.heart-rate-drift-confidence-reason {
+  color: var(--text-muted);
+  font-weight: 550;
 }
 
-.cardiac-decoupling-context,
-.cardiac-decoupling-note {
+.heart-rate-drift-help-panel {
+  margin-top: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.65rem 0.75rem;
   color: var(--text-muted);
+  background: color-mix(in srgb, var(--panel-solid) 82%, transparent);
   font-size: 0.76rem;
   line-height: 1.45;
 }
 
-.cardiac-decoupling-note {
-  border-top: 1px solid var(--border);
-  padding-top: 0.55rem;
+.heart-rate-drift-help-panel p {
+  margin: 0;
 }
 
-.cardiac-decoupling-unavailable {
-  margin-top: 0.3rem;
+.heart-rate-drift-help-panel p + p {
+  margin-top: 0.45rem;
+}
+
+.heart-rate-drift-help-panel strong {
   color: var(--text);
-  font-size: 1.4rem;
-  font-weight: 800;
+  font-weight: 750;
+}
+
+.heart-rate-drift-detail-support {
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .heart-rate-drift-detail-panel {
