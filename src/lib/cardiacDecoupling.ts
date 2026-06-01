@@ -86,6 +86,7 @@ export type HeartRateDriftChartMarker = {
   elapsedMs: number;
   kind: "warmup" | "cooldown" | "bin";
   index?: number;
+  efficiency?: number;
 };
 
 export type HeartRateDriftExcludedRange = {
@@ -1055,7 +1056,7 @@ export function buildHeartRateDriftChartData(
   if (bins.length) {
     for (let i = 0; i < bins.length; i += 1) {
       const elapsedMs = activeToElapsedMs(intervals, bins[i].startS, t0);
-      if (elapsedMs !== null) markers.push({ elapsedMs, kind: "bin", index: i + 1 });
+      if (elapsedMs !== null) markers.push({ elapsedMs, kind: "bin", index: i + 1, efficiency: bins[i].efficiency });
     }
   } else if (evaluatedStartMs !== null) {
     markers.push({ elapsedMs: evaluatedStartMs, kind: "warmup" });
