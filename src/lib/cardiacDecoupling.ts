@@ -98,7 +98,7 @@ export type HeartRateDriftExcludedRange = {
 export type HeartRateDriftChartData = {
   heartRate: Array<[number, number | null]>;
   output: Array<[number, number | null]>;
-  outputMode: Exclude<CardiacDecouplingMode, "constant_output_hr">;
+  outputMode?: Exclude<CardiacDecouplingMode, "constant_output_hr">;
   markers: HeartRateDriftChartMarker[];
   excludedRanges: HeartRateDriftExcludedRange[];
 };
@@ -157,6 +157,19 @@ type NormalizedPowerStats = {
   rollingWindowCoveragePct: number;
 };
 
+type StreamSample = {
+  activeS: number;
+  elapsedMs: number;
+  value: number;
+};
+
+type StreamContext = {
+  heartRate: StreamSample[];
+  power: StreamSample[];
+  speed: StreamSample[];
+  distance: StreamSample[];
+};
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -177,10 +190,6 @@ function normalizeText(value: string | null | undefined): string {
   return (value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
-function containsAny(value: string, tokens: string[]): boolean {
-  return tokens.some((token) => value.includes(token));
-}
-
 function readMetadataString(metadataJson: string | null | undefined, key: string): string {
   if (!metadataJson) return "";
   try {
@@ -192,23 +201,17 @@ function readMetadataString(metadataJson: string | null | undefined, key: string
   }
 }
 
-function classifyActivity(activity: Pick<Activity, "sport" | "activity_name" | "file_name" | "metadata_json">): ActivityClass {
+function classifyActivity(activity: Pick<Activity, "sport" | "metadata_json">): ActivityClass {
   const sport = normalizeText(activity.sport);
   const subSport = normalizeText(readMetadataString(activity.metadata_json, "sub_sport"));
-  const name = normalizeText(`${activity.activity_name} ${activity.file_name}`);
-  const fallbackText = `${sport} ${subSport} ${name}`;
 
-  if (
-    sport === "cycling" ||
-    (sport === "fitness_equipment" && subSport === "indoor_cycling") ||
-    containsAny(`${subSport} ${name}`, ["cycling", "biking", "bike", "spin"])
-  ) {
+  if (sport === "cycling" || (sport === "fitness_equipment" && subSport === "indoor_cycling")) {
     return "cycling";
   }
 
   if (
-    (sport === "fitness_equipment" && containsAny(subSport, ["elliptical", "stair_climbing", "stair_stepper"])) ||
-    containsAny(name, ["elliptical", "stair_climbing", "stair_stepper", "stairs"])
+    sport === "fitness_equipment" &&
+    ["elliptical", "stair_climbing", "stair_stepper"].includes(subSport)
   ) {
     return "constant_output_machine";
   }
@@ -216,8 +219,7 @@ function classifyActivity(activity: Pick<Activity, "sport" | "activity_name" | "
   if (
     ["running", "walking", "hiking", "rowing", "cross_country_skiing"].includes(sport) ||
     (sport === "training" && subSport === "cardio_training") ||
-    (sport === "fitness_equipment" && subSport === "indoor_rowing") ||
-    containsAny(fallbackText, ["running", "walking", "hiking", "rowing", "cross_country_skiing", "skiing", "cardio"])
+    (sport === "fitness_equipment" && subSport === "indoor_rowing")
   ) {
     return "speed";
   }
@@ -279,116 +281,160 @@ function interpolateNumber(start: number, end: number, fraction: number): number
   return start + (end - start) * fraction;
 }
 
-function clippedFractions(interval: ActiveInterval, segment: SegmentBounds): [number, number] | null {
-  if (interval.dtS <= 0) return null;
+function buildActiveSamples(intervals: ActiveInterval[]): Array<{ activeS: number; elapsedMs: number; record: RecordPoint }> {
+  const samples: Array<{ activeS: number; elapsedMs: number; record: RecordPoint }> = [];
+
+  for (const interval of intervals) {
+    const last = samples[samples.length - 1];
+    if (!last || last.elapsedMs !== interval.startRecord.timestamp_ms) {
+      samples.push({ activeS: interval.activeStartS, elapsedMs: interval.startRecord.timestamp_ms, record: interval.startRecord });
+    }
+    samples.push({ activeS: interval.activeEndS, elapsedMs: interval.endRecord.timestamp_ms, record: interval.endRecord });
+  }
+
+  return samples;
+}
+
+function streamSamples(
+  activeSamples: Array<{ activeS: number; elapsedMs: number; record: RecordPoint }>,
+  readValue: (record: RecordPoint) => unknown,
+  isValid: (value: unknown) => value is number,
+): StreamSample[] {
+  return activeSamples
+    .map((sample) => {
+      const value = readValue(sample.record);
+      return isValid(value) ? { activeS: sample.activeS, elapsedMs: sample.elapsedMs, value } : null;
+    })
+    .filter((sample): sample is StreamSample => sample !== null);
+}
+
+function buildStreamContext(intervals: ActiveInterval[]): StreamContext {
+  const activeSamples = buildActiveSamples(intervals);
+  return {
+    heartRate: streamSamples(activeSamples, (record) => record.heart_rate, isPositive),
+    power: streamSamples(activeSamples, (record) => record.power, isNonNegative),
+    speed: streamSamples(activeSamples, (record) => record.speed_m_s, isNonNegative),
+    distance: streamSamples(activeSamples, (record) => record.distance_m, isNonNegative),
+  };
+}
+
+function lowerBoundByActiveS(samples: StreamSample[], activeS: number): number {
+  let low = 0;
+  let high = samples.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (samples[mid].activeS < activeS) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+function streamValueAt(samples: StreamSample[], activeS: number, config: CardiacDecouplingConfig): number | null {
+  if (!samples.length) return null;
+  const index = lowerBoundByActiveS(samples, activeS);
+  const exact = samples[index] ?? samples[index - 1];
+  if (exact && Math.abs(exact.activeS - activeS) < 1e-9) return exact.value;
+
+  const before = samples[index - 1];
+  const after = samples[index];
+  if (!before || !after) return null;
+
+  const activeGapS = after.activeS - before.activeS;
+  const elapsedGapS = (after.elapsedMs - before.elapsedMs) / 1000;
+  if (activeGapS <= 0 || elapsedGapS <= 0) return null;
+  if (activeGapS > config.maxInterpolationGapS || elapsedGapS > config.maxInterpolationGapS) return null;
+
+  return interpolateNumber(before.value, after.value, (activeS - before.activeS) / activeGapS);
+}
+
+function clippedActiveBounds(interval: ActiveInterval, segment: SegmentBounds): [number, number] | null {
   const startS = Math.max(interval.activeStartS, segment.startS);
   const endS = Math.min(interval.activeEndS, segment.endS);
   if (endS <= startS) return null;
-  return [
-    (startS - interval.activeStartS) / interval.dtS,
-    (endS - interval.activeStartS) / interval.dtS,
-  ];
+  return [startS, endS];
 }
 
-function averageInterpolatedValue(
+function averageStreamValue(
+  samples: StreamSample[],
   interval: ActiveInterval,
   segment: SegmentBounds,
   config: CardiacDecouplingConfig,
-  startValue: number | undefined,
-  endValue: number | undefined,
-  isValid: (value: unknown) => value is number,
 ): number | null {
-  if (interval.dtS > config.maxInterpolationGapS) return null;
-  if (!isValid(startValue) || !isValid(endValue)) return null;
-  const fractions = clippedFractions(interval, segment);
-  if (!fractions) return null;
-  const [startFraction, endFraction] = fractions;
-  const clippedStart = interpolateNumber(startValue, endValue, startFraction);
-  const clippedEnd = interpolateNumber(startValue, endValue, endFraction);
-  return (clippedStart + clippedEnd) / 2;
+  const bounds = clippedActiveBounds(interval, segment);
+  if (!bounds) return null;
+  const [startS, endS] = bounds;
+  if (endS - startS > config.maxInterpolationGapS) return null;
+
+  const startValue = streamValueAt(samples, startS, config);
+  const endValue = streamValueAt(samples, endS, config);
+  if (startValue === null || endValue === null) return null;
+  return (startValue + endValue) / 2;
 }
 
-function sampleInterpolatedValue(
-  interval: ActiveInterval,
-  sampleAtS: number,
-  config: CardiacDecouplingConfig,
-  startValue: number | undefined,
-  endValue: number | undefined,
-  isValid: (value: unknown) => value is number,
-): number | null {
-  if (interval.dtS > config.maxInterpolationGapS) return null;
-  if (!isValid(startValue) || !isValid(endValue)) return null;
-  const fraction = (sampleAtS - interval.activeStartS) / interval.dtS;
-  if (fraction < 0 || fraction >= 1) return null;
-  return interpolateNumber(startValue, endValue, fraction);
+function intervalHr(interval: ActiveInterval, streams: StreamContext, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
+  return averageStreamValue(streams.heartRate, interval, segment, config);
 }
 
-function intervalHr(interval: ActiveInterval, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
-  return averageInterpolatedValue(interval, segment, config, interval.startRecord.heart_rate, interval.endRecord.heart_rate, isPositive);
+function intervalPower(interval: ActiveInterval, streams: StreamContext, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
+  return averageStreamValue(streams.power, interval, segment, config);
 }
 
-function intervalPower(interval: ActiveInterval, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
-  return averageInterpolatedValue(interval, segment, config, interval.startRecord.power, interval.endRecord.power, isNonNegative);
+function intervalDistanceSpeed(interval: ActiveInterval, streams: StreamContext, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
+  const bounds = clippedActiveBounds(interval, segment);
+  if (!bounds) return null;
+  const [startS, endS] = bounds;
+  const durationS = endS - startS;
+  if (durationS <= 0 || durationS > config.maxInterpolationGapS) return null;
+
+  const startDistance = streamValueAt(streams.distance, startS, config);
+  const endDistance = streamValueAt(streams.distance, endS, config);
+  if (startDistance === null || endDistance === null || endDistance < startDistance) return null;
+  return (endDistance - startDistance) / durationS;
 }
 
-function intervalDistanceSpeed(interval: ActiveInterval, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
-  if (interval.dtS > config.maxInterpolationGapS) return null;
-  const startDistance = interval.startRecord.distance_m;
-  const endDistance = interval.endRecord.distance_m;
-  if (!isNonNegative(startDistance) || !isNonNegative(endDistance) || endDistance < startDistance) return null;
-  const fractions = clippedFractions(interval, segment);
-  if (!fractions) return null;
-  const [startFraction, endFraction] = fractions;
-  const clippedStartDistance = interpolateNumber(startDistance, endDistance, startFraction);
-  const clippedEndDistance = interpolateNumber(startDistance, endDistance, endFraction);
-  const durationS = clippedDuration(interval, segment);
-  if (durationS <= 0 || clippedEndDistance < clippedStartDistance) return null;
-  return (clippedEndDistance - clippedStartDistance) / durationS;
-}
-
-function intervalSpeed(interval: ActiveInterval, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
-  const distanceSpeed = intervalDistanceSpeed(interval, config, segment);
+function intervalSpeed(interval: ActiveInterval, streams: StreamContext, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
+  const distanceSpeed = intervalDistanceSpeed(interval, streams, config, segment);
   if (distanceSpeed !== null) return distanceSpeed;
-  return averageInterpolatedValue(interval, segment, config, interval.startRecord.speed_m_s, interval.endRecord.speed_m_s, isNonNegative);
+  return averageStreamValue(streams.speed, interval, segment, config);
 }
 
-function intervalOutput(interval: ActiveInterval, mode: CardiacDecouplingMode, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
-  if (mode === "average_power" || mode === "normalized_power") return intervalPower(interval, config, segment);
-  if (mode === "speed") return intervalSpeed(interval, config, segment);
+function intervalOutput(interval: ActiveInterval, streams: StreamContext, mode: CardiacDecouplingMode, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
+  if (mode === "average_power" || mode === "normalized_power") return intervalPower(interval, streams, config, segment);
+  if (mode === "speed") return intervalSpeed(interval, streams, config, segment);
   return null;
 }
 
-function sampleStreamValue(interval: ActiveInterval, sampleAtS: number, stream: "power" | "hr", config: CardiacDecouplingConfig): number | null {
-  if (stream === "power") {
-    return sampleInterpolatedValue(interval, sampleAtS, config, interval.startRecord.power, interval.endRecord.power, isNonNegative);
-  }
-  return sampleInterpolatedValue(interval, sampleAtS, config, interval.startRecord.heart_rate, interval.endRecord.heart_rate, isPositive);
+function sampleStreamValue(samples: StreamSample[], sampleAtS: number, config: CardiacDecouplingConfig): number | null {
+  return streamValueAt(samples, sampleAtS, config);
 }
 
-function sampleSpeedValue(interval: ActiveInterval, sampleAtS: number, config: CardiacDecouplingConfig): number | null {
-  if (interval.dtS > config.maxInterpolationGapS) return null;
-  const startDistance = interval.startRecord.distance_m;
-  const endDistance = interval.endRecord.distance_m;
-  if (isNonNegative(startDistance) && isNonNegative(endDistance) && endDistance >= startDistance) {
-    return (endDistance - startDistance) / interval.dtS;
+function sampleSpeedValue(interval: ActiveInterval, streams: StreamContext, sampleAtS: number, config: CardiacDecouplingConfig): number | null {
+  if (interval.dtS <= config.maxInterpolationGapS) {
+    const startDistance = streamValueAt(streams.distance, interval.activeStartS, config);
+    const endDistance = streamValueAt(streams.distance, interval.activeEndS, config);
+    if (startDistance !== null && endDistance !== null && endDistance >= startDistance) {
+      return (endDistance - startDistance) / interval.dtS;
+    }
   }
-  return sampleInterpolatedValue(interval, sampleAtS, config, interval.startRecord.speed_m_s, interval.endRecord.speed_m_s, isNonNegative);
+  return streamValueAt(streams.speed, sampleAtS, config);
 }
 
 function sampleOutputValue(
   interval: ActiveInterval,
+  streams: StreamContext,
   sampleAtS: number,
   mode: Exclude<CardiacDecouplingMode, "constant_output_hr">,
   config: CardiacDecouplingConfig
 ): number | null {
   if (mode === "average_power" || mode === "normalized_power") {
-    return sampleStreamValue(interval, sampleAtS, "power", config);
+    return sampleStreamValue(streams.power, sampleAtS, config);
   }
-  return sampleSpeedValue(interval, sampleAtS, config);
+  return sampleSpeedValue(interval, streams, sampleAtS, config);
 }
 
 function measureSegment(
   intervals: ActiveInterval[],
+  streams: StreamContext,
   segment: SegmentBounds,
   mode: CardiacDecouplingMode,
   config: CardiacDecouplingConfig
@@ -407,7 +453,7 @@ function measureSegment(
     if (duration <= 0) continue;
     durationS += duration;
 
-    const hr = intervalHr(interval, config, segment);
+    const hr = intervalHr(interval, streams, config, segment);
     if (hr !== null) {
       hrCoveredS += duration;
       hrSum += hr * duration;
@@ -415,7 +461,7 @@ function measureSegment(
 
     if (!requiresOutput) continue;
 
-    const output = intervalOutput(interval, mode, config, segment);
+    const output = intervalOutput(interval, streams, mode, config, segment);
     if (output !== null) {
       outputCoveredS += duration;
     }
@@ -443,12 +489,18 @@ function measureSegment(
   };
 }
 
-function validateOutputSegment(stats: SegmentStats, config: CardiacDecouplingConfig): CardiacDecouplingUnavailableReason | null {
-  if (stats.avgHr === null) return "missing_heart_rate";
+function missingOutputReason(mode: CardiacDecouplingMode): CardiacDecouplingUnavailableReason {
+  if (mode === "average_power" || mode === "normalized_power") return "missing_power";
+  if (mode === "speed") return "missing_speed";
+  return "insufficient_output_coverage";
+}
+
+function validateOutputSegment(stats: SegmentStats, mode: CardiacDecouplingMode, config: CardiacDecouplingConfig): CardiacDecouplingUnavailableReason | null {
+  if (stats.hrCoveragePct <= 0) return "missing_heart_rate";
   if (stats.hrCoveragePct < config.minHrCoveragePct) return "insufficient_heart_rate_coverage";
-  if (stats.avgOutput === null) return "insufficient_output_coverage";
+  if (stats.avgOutput === null || stats.outputCoveragePct <= 0) return missingOutputReason(mode);
   if (stats.outputCoveragePct < config.minOutputCoveragePct) return "insufficient_output_coverage";
-  if (stats.pairedCoveragePct < config.minPairedCoveragePct) return "insufficient_paired_coverage";
+  if (stats.pairedCoveragePct < config.minPairedCoveragePct || stats.avgHr === null) return "insufficient_paired_coverage";
   if (stats.avgHr <= 0 || stats.avgOutput <= 0 || stats.efficiency === null || stats.efficiency <= 0) return "invalid_segment_average";
   return null;
 }
@@ -504,14 +556,15 @@ function binDrift(bins: CardiacDecouplingBin[]): Pick<CardiacDecouplingModeResul
 
 function buildOutputBins(
   intervals: ActiveInterval[],
+  streams: StreamContext,
   binSegments: SegmentBounds[],
   mode: CardiacDecouplingMode,
   config: CardiacDecouplingConfig
 ): { bins?: CardiacDecouplingBin[]; reason?: CardiacDecouplingUnavailableReason } {
   const bins: CardiacDecouplingBin[] = [];
   for (const segment of binSegments) {
-    const stats = measureSegment(intervals, segment, mode, config);
-    const reason = validateOutputSegment(stats, config);
+    const stats = measureSegment(intervals, streams, segment, mode, config);
+    const reason = validateOutputSegment(stats, mode, config);
     if (reason) return { reason };
     bins.push({
       startS: segment.startS,
@@ -529,12 +582,13 @@ function buildOutputBins(
 
 function buildConstantOutputBins(
   intervals: ActiveInterval[],
+  streams: StreamContext,
   binSegments: SegmentBounds[],
   config: CardiacDecouplingConfig
 ): { bins?: CardiacDecouplingBin[]; reason?: CardiacDecouplingUnavailableReason } {
   const bins: CardiacDecouplingBin[] = [];
   for (const segment of binSegments) {
-    const stats = measureSegment(intervals, segment, "constant_output_hr", config);
+    const stats = measureSegment(intervals, streams, segment, "constant_output_hr", config);
     const reason = validateHrSegment(stats, config);
     if (reason) return { reason };
     bins.push({
@@ -549,6 +603,7 @@ function buildConstantOutputBins(
 
 function sampleStreamWithActiveTimes(
   intervals: ActiveInterval[],
+  streams: StreamContext,
   segment: SegmentBounds,
   config: CardiacDecouplingConfig,
   stream: "power" | "hr"
@@ -565,8 +620,9 @@ function sampleStreamWithActiveTimes(
     }
 
     const interval = intervals[intervalIndex];
+    const source = stream === "power" ? streams.power : streams.heartRate;
     const value = interval && interval.activeStartS <= sampleAtS && interval.activeEndS > sampleAtS
-      ? sampleStreamValue(interval, sampleAtS, stream, config)
+      ? sampleStreamValue(source, sampleAtS, config)
       : null;
     samples.push({ activeS: sampleAtS, value });
   }
@@ -574,8 +630,8 @@ function sampleStreamWithActiveTimes(
   return samples;
 }
 
-function buildNormalizedPowerWindows(intervals: ActiveInterval[], evaluatedSegment: SegmentBounds, config: CardiacDecouplingConfig): NormalizedPowerWindow[] {
-  const powerSamples = sampleStreamWithActiveTimes(intervals, evaluatedSegment, config, "power");
+function buildNormalizedPowerWindows(intervals: ActiveInterval[], streams: StreamContext, evaluatedSegment: SegmentBounds, config: CardiacDecouplingConfig): NormalizedPowerWindow[] {
+  const powerSamples = sampleStreamWithActiveTimes(intervals, streams, evaluatedSegment, config, "power");
   const intervalS = Math.max(1, config.resampleIntervalS);
   const windowSize = Math.round(30 / intervalS);
   if (windowSize <= 0 || powerSamples.length < windowSize) return [];
@@ -616,20 +672,21 @@ function measureNormalizedPower(windows: NormalizedPowerWindow[], segment: Segme
 
 function buildAverageOutputResult(
   intervals: ActiveInterval[],
+  streams: StreamContext,
   halfSegments: [SegmentBounds, SegmentBounds],
   binSegments: SegmentBounds[],
   mode: "average_power" | "speed",
   config: CardiacDecouplingConfig,
   assumption?: CardiacDecouplingModeResult["assumption"]
 ): CardiacDecouplingModeResult {
-  const first = measureSegment(intervals, halfSegments[0], mode, config);
-  const second = measureSegment(intervals, halfSegments[1], mode, config);
-  const firstReason = validateOutputSegment(first, config);
+  const first = measureSegment(intervals, streams, halfSegments[0], mode, config);
+  const second = measureSegment(intervals, streams, halfSegments[1], mode, config);
+  const firstReason = validateOutputSegment(first, mode, config);
   if (firstReason) return makeUnavailable(mode, firstReason);
-  const secondReason = validateOutputSegment(second, config);
+  const secondReason = validateOutputSegment(second, mode, config);
   if (secondReason) return makeUnavailable(mode, secondReason);
 
-  const binResult = buildOutputBins(intervals, binSegments, mode, config);
+  const binResult = buildOutputBins(intervals, streams, binSegments, mode, config);
   if (binResult.reason || !binResult.bins) return makeUnavailable(mode, binResult.reason ?? "invalid_segment_average");
 
   const firstEfficiency = first.efficiency ?? 0;
@@ -658,17 +715,18 @@ function buildAverageOutputResult(
 
 function buildNormalizedPowerResult(
   intervals: ActiveInterval[],
+  streams: StreamContext,
   halfSegments: [SegmentBounds, SegmentBounds],
   binSegments: SegmentBounds[],
   normalizedPowerWindows: NormalizedPowerWindow[],
   config: CardiacDecouplingConfig
 ): CardiacDecouplingModeResult {
   const mode: CardiacDecouplingMode = "normalized_power";
-  const first = measureSegment(intervals, halfSegments[0], mode, config);
-  const second = measureSegment(intervals, halfSegments[1], mode, config);
-  const firstReason = validateOutputSegment(first, config);
+  const first = measureSegment(intervals, streams, halfSegments[0], mode, config);
+  const second = measureSegment(intervals, streams, halfSegments[1], mode, config);
+  const firstReason = validateOutputSegment(first, mode, config);
   if (firstReason) return makeUnavailable(mode, firstReason);
-  const secondReason = validateOutputSegment(second, config);
+  const secondReason = validateOutputSegment(second, mode, config);
   if (secondReason) return makeUnavailable(mode, secondReason);
 
   const firstNp = measureNormalizedPower(normalizedPowerWindows, halfSegments[0], config);
@@ -682,8 +740,8 @@ function buildNormalizedPowerResult(
 
   const bins: CardiacDecouplingBin[] = [];
   for (const segment of binSegments) {
-    const stats = measureSegment(intervals, segment, mode, config);
-    const reason = validateOutputSegment(stats, config);
+    const stats = measureSegment(intervals, streams, segment, mode, config);
+    const reason = validateOutputSegment(stats, mode, config);
     if (reason) return makeUnavailable(mode, reason);
     const np = measureNormalizedPower(normalizedPowerWindows, segment, config);
     if (np.normalizedPower === null || np.rollingWindowCoveragePct < config.minRollingWindowCoveragePct) {
@@ -733,19 +791,20 @@ function buildNormalizedPowerResult(
 
 function buildConstantOutputResult(
   intervals: ActiveInterval[],
+  streams: StreamContext,
   halfSegments: [SegmentBounds, SegmentBounds],
   binSegments: SegmentBounds[],
   config: CardiacDecouplingConfig
 ): CardiacDecouplingModeResult {
   const mode: CardiacDecouplingMode = "constant_output_hr";
-  const first = measureSegment(intervals, halfSegments[0], mode, config);
-  const second = measureSegment(intervals, halfSegments[1], mode, config);
+  const first = measureSegment(intervals, streams, halfSegments[0], mode, config);
+  const second = measureSegment(intervals, streams, halfSegments[1], mode, config);
   const firstReason = validateHrSegment(first, config);
   if (firstReason) return makeUnavailable(mode, firstReason);
   const secondReason = validateHrSegment(second, config);
   if (secondReason) return makeUnavailable(mode, secondReason);
 
-  const binResult = buildConstantOutputBins(intervals, binSegments, config);
+  const binResult = buildConstantOutputBins(intervals, streams, binSegments, config);
   if (binResult.reason || !binResult.bins) return makeUnavailable(mode, binResult.reason ?? "invalid_segment_average");
 
   const firstAvgHr = first.avgHr ?? 0;
@@ -765,8 +824,8 @@ function buildConstantOutputResult(
   };
 }
 
-function hasOutputCoverage(intervals: ActiveInterval[], segment: SegmentBounds, mode: "average_power" | "speed", config: CardiacDecouplingConfig): boolean {
-  const stats = measureSegment(intervals, segment, mode, config);
+function hasOutputCoverage(intervals: ActiveInterval[], streams: StreamContext, segment: SegmentBounds, mode: "average_power" | "speed", config: CardiacDecouplingConfig): boolean {
+  const stats = measureSegment(intervals, streams, segment, mode, config);
   return stats.outputCoveragePct > 0;
 }
 
@@ -798,18 +857,19 @@ function firstUnavailableReason(results: CardiacDecouplingModeResult[]): Cardiac
 
 function calculateVariabilityIndex(
   intervals: ActiveInterval[],
+  streams: StreamContext,
   segment: SegmentBounds,
   normalizedPowerWindows: NormalizedPowerWindow[],
   config: CardiacDecouplingConfig
 ): number | undefined {
-  const averageStats = measureSegment(intervals, segment, "average_power", config);
+  const averageStats = measureSegment(intervals, streams, segment, "average_power", config);
   const normalized = measureNormalizedPower(normalizedPowerWindows, segment, config);
   if ((averageStats.avgOutput ?? 0) <= 0 || (normalized.normalizedPower ?? 0) <= 0) return undefined;
   return (normalized.normalizedPower ?? 0) / (averageStats.avgOutput ?? 1);
 }
 
 export function calculateCardiacDecoupling(
-  activity: Pick<Activity, "sport" | "activity_name" | "file_name" | "duration_s" | "metadata_json">,
+  activity: Pick<Activity, "sport" | "duration_s" | "metadata_json">,
   records: RecordPoint[],
   configOverrides: Partial<CardiacDecouplingConfig> = {}
 ): CardiacDecouplingResult {
@@ -820,6 +880,7 @@ export function calculateCardiacDecoupling(
   }
 
   const intervals = buildActiveIntervals(records, config);
+  const streams = buildStreamContext(intervals);
   const activeDurationS = getActiveDurationS(intervals);
   const activityDurationS = isPositive(activity.duration_s) ? activity.duration_s : activeDurationS;
   if (activityDurationS < config.minActivityDurationS) {
@@ -857,32 +918,32 @@ export function calculateCardiacDecoupling(
     { startS: evaluatedStartS + evaluatedDurationS / 2, endS: evaluatedEndS },
   ];
   const evaluatedSegment = { startS: evaluatedStartS, endS: evaluatedEndS };
-  const normalizedPowerWindows = buildNormalizedPowerWindows(intervals, evaluatedSegment, config);
+  const normalizedPowerWindows = buildNormalizedPowerWindows(intervals, streams, evaluatedSegment, config);
   const results: CardiacDecouplingModeResult[] = [];
 
   if (activityClass === "cycling") {
-    const normalizedPowerResult = buildNormalizedPowerResult(intervals, halfSegments, binSegments, normalizedPowerWindows, config);
+    const normalizedPowerResult = buildNormalizedPowerResult(intervals, streams, halfSegments, binSegments, normalizedPowerWindows, config);
     results.push(normalizedPowerResult);
     if (!normalizedPowerResult.available) {
-      if (hasOutputCoverage(intervals, evaluatedSegment, "speed", config)) {
-        results.push(buildAverageOutputResult(intervals, halfSegments, binSegments, "speed", config, "cycling_speed_fallback"));
+      if (hasOutputCoverage(intervals, streams, evaluatedSegment, "speed", config)) {
+        results.push(buildAverageOutputResult(intervals, streams, halfSegments, binSegments, "speed", config, "cycling_speed_fallback"));
       } else {
         results.push(makeUnavailable("speed", "missing_speed"));
       }
     }
   } else if (activityClass === "constant_output_machine") {
-    if (hasOutputCoverage(intervals, evaluatedSegment, "speed", config)) {
-      const speedResult = buildAverageOutputResult(intervals, halfSegments, binSegments, "speed", config);
+    if (hasOutputCoverage(intervals, streams, evaluatedSegment, "speed", config)) {
+      const speedResult = buildAverageOutputResult(intervals, streams, halfSegments, binSegments, "speed", config);
       results.push(speedResult);
       if (!speedResult.available) {
-        results.push(buildConstantOutputResult(intervals, halfSegments, binSegments, config));
+        results.push(buildConstantOutputResult(intervals, streams, halfSegments, binSegments, config));
       }
     } else {
-      results.push(buildConstantOutputResult(intervals, halfSegments, binSegments, config));
+      results.push(buildConstantOutputResult(intervals, streams, halfSegments, binSegments, config));
     }
   } else {
-    if (hasOutputCoverage(intervals, evaluatedSegment, "speed", config)) {
-      results.push(buildAverageOutputResult(intervals, halfSegments, binSegments, "speed", config));
+    if (hasOutputCoverage(intervals, streams, evaluatedSegment, "speed", config)) {
+      results.push(buildAverageOutputResult(intervals, streams, halfSegments, binSegments, "speed", config));
     } else {
       results.push(makeUnavailable("speed", "missing_speed"));
     }
@@ -891,7 +952,7 @@ export function calculateCardiacDecoupling(
   const available = results.some((result) => result.available);
   const defaultMode = chooseDefaultMode(results, activityClass);
   const warnings: CardiacDecouplingWarning[] = [];
-  const variabilityIndex = activityClass === "cycling" ? calculateVariabilityIndex(intervals, evaluatedSegment, normalizedPowerWindows, config) : undefined;
+  const variabilityIndex = activityClass === "cycling" ? calculateVariabilityIndex(intervals, streams, evaluatedSegment, normalizedPowerWindows, config) : undefined;
   if (variabilityIndex !== undefined && variabilityIndex > config.highVariabilityIndexThreshold) {
     warnings.push("high_variability_effort");
   }
@@ -910,9 +971,9 @@ export function calculateCardiacDecoupling(
 }
 
 export function describeCardiacDecouplingBand(decouplingPct: number, config: CardiacDecouplingConfig = DEFAULT_CARDIAC_DECOUPLING_CONFIG): "low" | "moderate" | "high" {
-  const absValue = Math.abs(decouplingPct);
-  if (absValue < config.lowDriftThresholdPct) return "low";
-  if (absValue <= config.highDriftThresholdPct) return "moderate";
+  if (decouplingPct < 0) return "low";
+  if (decouplingPct < config.lowDriftThresholdPct) return "low";
+  if (decouplingPct <= config.highDriftThresholdPct) return "moderate";
   return "high";
 }
 
@@ -972,13 +1033,14 @@ function normalizeExcludedRanges(ranges: HeartRateDriftExcludedRange[]): HeartRa
 
 function buildHeartRateDriftOutputSeries(
   intervals: ActiveInterval[],
+  streams: StreamContext,
   evaluatedSegment: SegmentBounds,
   mode: Exclude<CardiacDecouplingMode, "constant_output_hr">,
   config: CardiacDecouplingConfig,
   t0: number
 ): Array<[number, number | null]> {
   if (mode === "normalized_power") {
-    return buildNormalizedPowerWindows(intervals, evaluatedSegment, config)
+    return buildNormalizedPowerWindows(intervals, streams, evaluatedSegment, config)
       .filter((window) => isNonNegative(window.rollingPower))
       .map((window) => {
         const elapsedMs = activeToElapsedMs(intervals, window.activeS, t0);
@@ -1003,7 +1065,7 @@ function buildHeartRateDriftOutputSeries(
 
     const interval = intervals[intervalIndex];
     const value = interval && interval.activeStartS <= sampleAtS && interval.activeEndS > sampleAtS
-      ? sampleOutputValue(interval, sampleAtS, mode, config)
+      ? sampleOutputValue(interval, streams, sampleAtS, mode, config)
       : null;
     points.push([elapsedMs, value === null ? null : Number(value.toFixed(mode === "speed" ? 4 : 2))]);
   }
@@ -1020,12 +1082,13 @@ export function buildHeartRateDriftChartData(
   const config = { ...DEFAULT_CARDIAC_DECOUPLING_CONFIG, ...configOverrides };
   const sorted = sortRecords(records);
   if (sorted.length < 2 || typeof decoupling.evaluatedDurationS !== "number") return null;
-  if (!result || result.mode === "constant_output_hr") return null;
+  if (!result) return null;
 
   const t0 = sorted[0].timestamp_ms;
   const totalElapsedMs = Math.max(0, sorted[sorted.length - 1].timestamp_ms - t0);
   const intervals = buildActiveIntervals(sorted, config);
   if (!intervals.length) return null;
+  const streams = buildStreamContext(intervals);
 
   const evaluatedStartS = decoupling.warmupExcludedS ?? 0;
   const evaluatedEndS = evaluatedStartS + decoupling.evaluatedDurationS;
@@ -1063,12 +1126,20 @@ export function buildHeartRateDriftChartData(
   }
   if (evaluatedEndMs !== null) markers.push({ elapsedMs: evaluatedEndMs, kind: "cooldown" });
 
-  const output = buildHeartRateDriftOutputSeries(intervals, evaluatedSegment, result.mode, config, t0);
+  const output = result.mode === "constant_output_hr"
+    ? []
+    : buildHeartRateDriftOutputSeries(intervals, streams, evaluatedSegment, result.mode, config, t0);
 
   const heartRate: Array<[number, number | null]> = sorted.map((record) => [
     record.timestamp_ms - t0,
     isPositive(record.heart_rate) ? record.heart_rate : null,
   ]);
 
-  return { heartRate, output, outputMode: result.mode, markers, excludedRanges: normalizeExcludedRanges(excludedRanges) };
+  return {
+    heartRate,
+    output,
+    ...(result.mode === "constant_output_hr" ? {} : { outputMode: result.mode }),
+    markers,
+    excludedRanges: normalizeExcludedRanges(excludedRanges),
+  };
 }

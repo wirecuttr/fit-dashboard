@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": "node_modules/.cache/fit-dashboard-cardiac-tests",
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": [
+    "scripts/test-cardiac-decoupling.ts",
+    "src/lib/cardiacDecoupling.ts",
+    "src/types.ts"
+  ]
+}
