@@ -154,10 +154,18 @@ function cardiacEfficiencyDigits(mode: CardiacDecouplingMode): number {
   return mode === "speed" ? 4 : 2;
 }
 
-function heartRateDriftMarkerLabel(marker: HeartRateDriftChartMarker, t: (key: string, params?: Record<string, string | number>) => string): string {
+function heartRateDriftMarkerLabel(
+  marker: HeartRateDriftChartMarker,
+  mode: CardiacDecouplingMode,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
   if (marker.kind === "warmup") return t("insights.hrDriftWarmup");
   if (marker.kind === "cooldown") return t("insights.hrDriftCooldown");
-  return t("insights.hrDriftBin", { index: marker.index ?? "" });
+
+  const binLabel = t("insights.hrDriftBin", { index: marker.index ?? "" });
+  if (typeof marker.efficiency !== "number" || !Number.isFinite(marker.efficiency)) return binLabel;
+
+  return `${binLabel} - EF ${marker.efficiency.toFixed(cardiacEfficiencyDigits(mode))}`;
 }
 
 function heartRateDriftRangeLabel(kind: HeartRateDriftExcludedRange["kind"], t: (key: string) => string): string {
@@ -271,6 +279,11 @@ export function ActivityInsights({
   const cardiacConfidenceReason = cardiacConfidenceReasonLabel(cardiacResult, cardiacDecoupling?.warnings, tr);
   const cardiacEfficiencyPrecision = cardiacResult ? cardiacEfficiencyDigits(cardiacResult.mode) : 2;
   const cardiacIsNegative = (cardiacResult?.decouplingPct ?? 0) < 0;
+  const cardiacHalfSummary = cardiacResult?.available
+    ? cardiacResult.mode === "constant_output_hr"
+      ? tr("insights.cardiacHrSummary", { first: formatMetric(cardiacResult.firstHalfAvgHr, 0), second: formatMetric(cardiacResult.secondHalfAvgHr, 0) })
+      : tr("insights.cardiacEfSummary", { first: formatMetric(cardiacResult.firstHalfEfficiency, cardiacEfficiencyPrecision), second: formatMetric(cardiacResult.secondHalfEfficiency, cardiacEfficiencyPrecision) })
+    : "";
   const usePaceDisplay = activityUsesPaceDisplay(activity);
   const heartRateDriftChartData = cardiacDecoupling && cardiacResult?.available
     ? buildHeartRateDriftChartData(cardiacRecords, cardiacDecoupling, cardiacResult)
@@ -854,7 +867,7 @@ export function ActivityInsights({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: heartRateDriftChartData.markers.map((marker) => ({
             xAxis: marker.elapsedMs,
-            name: marker.kind === "cooldown" ? "" : heartRateDriftMarkerLabel(marker, tr),
+            name: marker.kind === "cooldown" ? "" : heartRateDriftMarkerLabel(marker, heartRateDriftChartData.outputMode, tr),
             lineStyle: {
               color: marker.kind === "bin"
                 ? (isDark ? "rgba(96, 165, 250, 0.72)" : "rgba(37, 99, 235, 0.65)")
@@ -910,6 +923,7 @@ export function ActivityInsights({
                   <span className={`heart-rate-drift-status-badge drift-${cardiacIsNegative ? "negative" : cardiacBand ?? "unknown"}`}>
                     {cardiacIsNegative ? tr("insights.cardiacIncreasedEfficiency") : cardiacBandLabel(cardiacResult.decouplingPct, tr)}
                   </span>
+                  {cardiacHalfSummary && <span className="heart-rate-drift-half-summary">{cardiacHalfSummary}</span>}
                 </div>
                 {cardiacConfidence && (
                   <div className={`heart-rate-drift-confidence-text confidence-${cardiacConfidence}`}>
@@ -921,21 +935,14 @@ export function ActivityInsights({
             </div>
             {heartRateDriftHelpOpen && (
               <div className="heart-rate-drift-help-panel">
-                <p><strong>What this shows:</strong> Heart Rate Drift compares output-to-heart-rate efficiency in the first half of the analyzed section with the second half. Lower drift usually means steadier aerobic efficiency.</p>
+                <p><strong>What this shows:</strong> Heart Rate Drift compares Efficiency Factor (EF), the activity output divided by average heart rate, between the first and second halves of the analyzed section. Lower drift usually means steadier aerobic efficiency.</p>
                 <p><strong>Chart lines:</strong> Heart rate is plotted with the selected output metric. Cycling uses normalized power when it can be calculated. If normalized power is unavailable, speed can be used as a low-confidence fallback. Running, walking, and hiking are displayed as pace, while the calculation uses speed internally.</p>
-                <p><strong>Grey regions:</strong> Warmup, cooldown, and long recording gaps are excluded from the calculation. The dashed vertical lines mark bin boundaries.</p>
+                <p><strong>Regions:</strong> Shaded regions are excluded from the calculation. Longer activities are split into approximately 30-minute bins, with each bin EF shown on its Bin label.</p>
                 <p><strong>Use with care:</strong> This is most useful on steady aerobic efforts. Intervals, stops, hills, heat, dehydration, fatigue, caffeine, poor sleep, or bad sensor data can distort the result. Confidence reflects data quality and mode assumptions, not medical certainty.</p>
               </div>
             )}
           </div>
           <ReactECharts option={heartRateDriftOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-          <div className="heart-rate-drift-detail-support">
-            {cardiacResult.mode === "constant_output_hr" ? (
-              <span>{tr("insights.cardiacHrSummary", { first: formatMetric(cardiacResult.firstHalfAvgHr, 0), second: formatMetric(cardiacResult.secondHalfAvgHr, 0) })}</span>
-            ) : (
-              <span>{tr("insights.cardiacEfSummary", { first: formatMetric(cardiacResult.firstHalfEfficiency, cardiacEfficiencyPrecision), second: formatMetric(cardiacResult.secondHalfEfficiency, cardiacEfficiencyPrecision) })}</span>
-            )}
-          </div>
         </article>
       )}
       <article className="panel">

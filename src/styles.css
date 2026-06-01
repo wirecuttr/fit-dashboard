@@ -1706,8 +1706,9 @@ button:focus-visible {
 
 .heart-rate-drift-detail-badges {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.35rem 0.5rem;
 }
 
 .heart-rate-drift-status-badge {
@@ -1737,6 +1738,13 @@ button:focus-visible {
   border-color: color-mix(in srgb, #dc2626 36%, var(--border));
   color: #dc2626;
   background: color-mix(in srgb, #dc2626 9%, var(--panel-solid));
+}
+
+.heart-rate-drift-half-summary {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
 .heart-rate-drift-confidence-text {
@@ -1785,14 +1793,6 @@ button:focus-visible {
 .heart-rate-drift-help-panel strong {
   color: var(--text);
   font-weight: 750;
-}
-
-.heart-rate-drift-detail-support {
-  margin-top: 0.35rem;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 600;
-  line-height: 1.4;
 }
 
 /* ── Summary / Compact Grid ────────────────────────────────────────── */
