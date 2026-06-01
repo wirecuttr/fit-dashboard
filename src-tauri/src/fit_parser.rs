@@ -256,7 +256,7 @@ fn build_activity_name(
     points: &[RecordPoint],
 ) -> String {
     let fallback = strip_known_extension(file_name);
-    let sport_label = title_case_sport(sport);
+    let activity_label = activity_type_label(sport, sub_sport);
 
     if let Some(pos) = points.iter().find(|p| p.latitude.is_some() && p.longitude.is_some()) {
         let geocoder = reverse_geocoder::ReverseGeocoder::new();
@@ -272,7 +272,7 @@ fn build_activity_name(
         }
         let loc = loc_parts.join(", ");
         if !loc.is_empty() {
-            return format!("{} — {}", loc, sport_label);
+            return format!("{} — {}", loc, activity_label);
         }
     }
 
@@ -1087,10 +1087,24 @@ fn parse_gpx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn gps_point() -> RecordPoint {
+        RecordPoint {
+            timestamp_ms: 0,
+            latitude: Some(43.6532),
+            longitude: Some(-79.3832),
+            altitude_m: None,
+            distance_m: None,
+            speed_m_s: None,
+            cadence: None,
+            heart_rate: None,
+            power: None,
+            temperature_c: None,
+        }
+    }
 
     #[test]
     fn detects_garmin_export_id_names() {
@@ -1126,9 +1140,30 @@ mod tests {
 
     #[test]
     fn builds_readable_activity_type_labels() {
-        assert_eq!(activity_type_label("cycling", Some("indoor_cycling")), "Indoor Cycling");
+        assert_eq!(
+            activity_type_label("cycling", Some("indoor_cycling")),
+            "Indoor Cycling"
+        );
         assert_eq!(activity_type_label("cycling", Some("spin")), "Indoor Cycling");
         assert_eq!(activity_type_label("cycling", Some("road")), "Road Cycling");
+        assert_eq!(
+            activity_type_label("cycling", Some("gravel_cycling")),
+            "Gravel Cycling"
+        );
+        assert_eq!(activity_type_label("running", Some("trail")), "Trail Running");
+        assert_eq!(activity_type_label("running", Some("generic")), "Running");
         assert_eq!(activity_type_label("unknown", Some("generic")), "Activity");
+    }
+
+    #[test]
+    fn uses_sub_sport_in_gps_activity_names() {
+        let name = build_activity_name(
+            "activity.fit",
+            "cycling",
+            Some("road"),
+            &[gps_point()],
+        );
+
+        assert!(name.ends_with("— Road Cycling"), "unexpected name: {name}");
     }
 }
