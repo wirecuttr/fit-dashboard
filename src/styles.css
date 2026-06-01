@@ -1755,11 +1755,11 @@ button:focus-visible {
   justify-content: center;
   width: 1.65rem;
   height: 1.65rem;
-  border: 1px solid var(--border);
+  border: 1.5px solid color-mix(in srgb, var(--text-muted) 55%, var(--border));
   border-radius: 999px;
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--panel-solid) 76%, transparent);
-  font-size: 0.85rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel-solid) 88%, var(--text) 4%);
+  font-size: 0.9rem;
   font-weight: 800;
   line-height: 1;
   cursor: pointer;
@@ -1798,6 +1798,13 @@ button:focus-visible {
   color: #dc2626;
 }
 
+.heart-rate-drift-detail-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
 .heart-rate-drift-detail-badges {
   display: flex;
   flex-wrap: wrap;
@@ -1815,25 +1822,46 @@ button:focus-visible {
 }
 
 .heart-rate-drift-status-badge.drift-low,
-.heart-rate-drift-status-badge.drift-negative,
-.heart-rate-drift-status-badge.confidence-high {
+.heart-rate-drift-status-badge.drift-negative {
   border-color: color-mix(in srgb, #16a34a 34%, var(--border));
   color: #16a34a;
   background: color-mix(in srgb, #16a34a 10%, var(--panel-solid));
 }
 
-.heart-rate-drift-status-badge.drift-moderate,
-.heart-rate-drift-status-badge.confidence-medium {
+.heart-rate-drift-status-badge.drift-moderate {
   border-color: color-mix(in srgb, #d97706 36%, var(--border));
   color: #d97706;
   background: color-mix(in srgb, #d97706 10%, var(--panel-solid));
 }
 
-.heart-rate-drift-status-badge.drift-high,
-.heart-rate-drift-status-badge.confidence-low {
+.heart-rate-drift-status-badge.drift-high {
   border-color: color-mix(in srgb, #dc2626 36%, var(--border));
   color: #dc2626;
   background: color-mix(in srgb, #dc2626 9%, var(--panel-solid));
+}
+
+.heart-rate-drift-confidence-text {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.heart-rate-drift-confidence-text.confidence-high {
+  color: #16a34a;
+}
+
+.heart-rate-drift-confidence-text.confidence-medium {
+  color: #d97706;
+}
+
+.heart-rate-drift-confidence-text.confidence-low {
+  color: #dc2626;
+}
+
+.heart-rate-drift-confidence-reason {
+  color: var(--text-muted);
+  font-weight: 550;
 }
 
 .heart-rate-drift-help-panel {
