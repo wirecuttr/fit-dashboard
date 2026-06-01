@@ -651,6 +651,8 @@ Fixture strategy:
   - Supports the Pa:Hr/Pw:Hr framing, first-half vs second-half comparison, common interpretation bands, endurance-use context, and warmup/cooldown exclusion for target test portions.
 - TrainingPeaks Help Center, `Glossary`: https://help.trainingpeaks.com/hc/en-us/articles/115001271712-Glossary
   - Defines Pw:Hr/Pa:Hr as aerobic decoupling, EF as normalized power or normalized graded pace over average HR, and Pa:Hr/Pw:Hr as pace/power heart-rate decoupling.
+- TrainingPeaks Help Center, `Aerobic Decoupling (Pw:Hr and Pa:HR) and Efficiency Factor (EF)`: https://help.trainingpeaks.com/hc/en-us/articles/204071724-Aerobic-Decoupling-Pw-Hr-and-Pa-HR-and-Efficiency-Factor-EF
+  - Supports EF as output over heart rate, cycling power plus HR requirements, running pace plus HR requirements, first-half vs second-half decoupling, steady-state/endurance-zone caveats, section selection, and less-than-5-percent guidance.
 - RUNALYZE, `Aerobic Efficiency`: https://runalyze.com/glossary/aerobic-efficiency?_locale=en
   - Names the pace variant while defining pace-based AE with speed over HR, supporting internal `speed / HR` calculation for runner-facing pace terminology.
 - RUNALYZE, `Aerobic Decoupling`: https://runalyze.com/glossary/aerobic-decoupling?_locale=en
@@ -661,6 +663,8 @@ Fixture strategy:
   - Supports input-vs-output framing, less-than-5-percent endurance target, two-half calculation, use of normalized power for cycling, and speed/pace for running.
 - Uphill Athlete, `Understanding the Heart Rate Drift Test`: https://uphillathlete.com/aerobic-training/heart-rate-drift/
   - Supports steady aerobic test conditions, warmup and cooldown exclusion, 40-60 minute controlled test guidance, lap/manual section selection, and cautions about HR monitor quality.
+- Marathon Pace KM, `Cardiac Drift (Heart Rate Drift): What It Means + How to Adjust Pace`: https://marathonpacekm.com/adjust-marathon-pace/cardiac-drift/
+  - Supports runner-facing cardiac-drift terminology, pace-vs-heart-rate framing, steady 60-minute field-test examples, first-half vs second-half comparison, and practical caveats around heat, dehydration, fatigue, pacing errors, and accumulated fatigue.
 - Stryd, `Train With Power`: https://www.stryd.com/us/en/pages/training-with-power
   - Supports running power as a useful output metric for hills, wind, and effort consistency, but not as a universal default for all running files.
 - Stryd Help Center, `Stryd Metrics`: https://help.stryd.com/en/articles/6879522-stryd-metrics
