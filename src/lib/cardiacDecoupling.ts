@@ -1,6 +1,7 @@
 import type { Activity, RecordPoint } from "../types";
 
 export type CardiacDecouplingMode = "average_power" | "normalized_power" | "speed" | "constant_output_hr";
+export type CardiacDecouplingConfidence = "high" | "medium" | "low";
 export type CardiacDecouplingWarning = "high_variability_effort";
 export type CardiacDecouplingUnavailableReason =
   | "duration_too_short"
@@ -155,14 +156,44 @@ function containsAny(value: string, tokens: string[]): boolean {
   return tokens.some((token) => value.includes(token));
 }
 
-function classifyActivity(activity: Pick<Activity, "sport" | "activity_name" | "file_name">): ActivityClass {
-  const sport = normalizeText(activity.sport);
-  const name = normalizeText(`${activity.activity_name} ${activity.file_name}`);
-  const combined = `${sport} ${name}`;
+function readMetadataString(metadataJson: string | null | undefined, key: string): string {
+  if (!metadataJson) return "";
+  try {
+    const parsed = JSON.parse(metadataJson) as Record<string, unknown>;
+    const value = parsed[key];
+    return typeof value === "string" ? value : "";
+  } catch {
+    return "";
+  }
+}
 
-  if (containsAny(combined, ["cycling", "biking", "bike", "spin"])) return "cycling";
-  if (containsAny(combined, ["elliptical", "stair_climbing", "stair_stepper", "stairs"])) return "constant_output_machine";
-  if (containsAny(combined, ["running", "walking", "hiking", "rowing", "cross_country_skiing", "skiing", "cardio", "training", "fitness_equipment"])) {
+function classifyActivity(activity: Pick<Activity, "sport" | "activity_name" | "file_name" | "metadata_json">): ActivityClass {
+  const sport = normalizeText(activity.sport);
+  const subSport = normalizeText(readMetadataString(activity.metadata_json, "sub_sport"));
+  const name = normalizeText(`${activity.activity_name} ${activity.file_name}`);
+  const fallbackText = `${sport} ${subSport} ${name}`;
+
+  if (
+    sport === "cycling" ||
+    (sport === "fitness_equipment" && subSport === "indoor_cycling") ||
+    containsAny(`${subSport} ${name}`, ["cycling", "biking", "bike", "spin"])
+  ) {
+    return "cycling";
+  }
+
+  if (
+    (sport === "fitness_equipment" && containsAny(subSport, ["elliptical", "stair_climbing", "stair_stepper"])) ||
+    containsAny(name, ["elliptical", "stair_climbing", "stair_stepper", "stairs"])
+  ) {
+    return "constant_output_machine";
+  }
+
+  if (
+    ["running", "walking", "hiking", "rowing", "cross_country_skiing"].includes(sport) ||
+    (sport === "training" && subSport === "cardio_training") ||
+    (sport === "fitness_equipment" && subSport === "indoor_rowing") ||
+    containsAny(fallbackText, ["running", "walking", "hiking", "rowing", "cross_country_skiing", "skiing", "cardio"])
+  ) {
     return "speed";
   }
 
@@ -219,37 +250,94 @@ function clippedDuration(interval: ActiveInterval, segment: SegmentBounds): numb
   return Math.max(0, Math.min(interval.activeEndS, segment.endS) - Math.max(interval.activeStartS, segment.startS));
 }
 
-function intervalHr(interval: ActiveInterval, config: CardiacDecouplingConfig): number | null {
-  if (interval.dtS > config.maxInterpolationGapS) return null;
-  return isPositive(interval.startRecord.heart_rate) ? interval.startRecord.heart_rate : null;
+function interpolateNumber(start: number, end: number, fraction: number): number {
+  return start + (end - start) * fraction;
 }
 
-function intervalPower(interval: ActiveInterval, config: CardiacDecouplingConfig): number | null {
-  if (interval.dtS > config.maxInterpolationGapS) return null;
-  return isNonNegative(interval.startRecord.power) ? interval.startRecord.power : null;
+function clippedFractions(interval: ActiveInterval, segment: SegmentBounds): [number, number] | null {
+  if (interval.dtS <= 0) return null;
+  const startS = Math.max(interval.activeStartS, segment.startS);
+  const endS = Math.min(interval.activeEndS, segment.endS);
+  if (endS <= startS) return null;
+  return [
+    (startS - interval.activeStartS) / interval.dtS,
+    (endS - interval.activeStartS) / interval.dtS,
+  ];
 }
 
-function intervalDistanceSpeed(interval: ActiveInterval, config: CardiacDecouplingConfig): number | null {
+function averageInterpolatedValue(
+  interval: ActiveInterval,
+  segment: SegmentBounds,
+  config: CardiacDecouplingConfig,
+  startValue: number | undefined,
+  endValue: number | undefined,
+  isValid: (value: unknown) => value is number,
+): number | null {
+  if (interval.dtS > config.maxInterpolationGapS) return null;
+  if (!isValid(startValue) || !isValid(endValue)) return null;
+  const fractions = clippedFractions(interval, segment);
+  if (!fractions) return null;
+  const [startFraction, endFraction] = fractions;
+  const clippedStart = interpolateNumber(startValue, endValue, startFraction);
+  const clippedEnd = interpolateNumber(startValue, endValue, endFraction);
+  return (clippedStart + clippedEnd) / 2;
+}
+
+function sampleInterpolatedValue(
+  interval: ActiveInterval,
+  sampleAtS: number,
+  config: CardiacDecouplingConfig,
+  startValue: number | undefined,
+  endValue: number | undefined,
+  isValid: (value: unknown) => value is number,
+): number | null {
+  if (interval.dtS > config.maxInterpolationGapS) return null;
+  if (!isValid(startValue) || !isValid(endValue)) return null;
+  const fraction = (sampleAtS - interval.activeStartS) / interval.dtS;
+  if (fraction < 0 || fraction >= 1) return null;
+  return interpolateNumber(startValue, endValue, fraction);
+}
+
+function intervalHr(interval: ActiveInterval, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
+  return averageInterpolatedValue(interval, segment, config, interval.startRecord.heart_rate, interval.endRecord.heart_rate, isPositive);
+}
+
+function intervalPower(interval: ActiveInterval, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
+  return averageInterpolatedValue(interval, segment, config, interval.startRecord.power, interval.endRecord.power, isNonNegative);
+}
+
+function intervalDistanceSpeed(interval: ActiveInterval, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
   if (interval.dtS > config.maxInterpolationGapS) return null;
   const startDistance = interval.startRecord.distance_m;
   const endDistance = interval.endRecord.distance_m;
-  if (!isNonNegative(startDistance) || !isNonNegative(endDistance)) return null;
-  const deltaDistance = endDistance - startDistance;
-  if (deltaDistance < 0) return null;
-  return deltaDistance / interval.dtS;
+  if (!isNonNegative(startDistance) || !isNonNegative(endDistance) || endDistance < startDistance) return null;
+  const fractions = clippedFractions(interval, segment);
+  if (!fractions) return null;
+  const [startFraction, endFraction] = fractions;
+  const clippedStartDistance = interpolateNumber(startDistance, endDistance, startFraction);
+  const clippedEndDistance = interpolateNumber(startDistance, endDistance, endFraction);
+  const durationS = clippedDuration(interval, segment);
+  if (durationS <= 0 || clippedEndDistance < clippedStartDistance) return null;
+  return (clippedEndDistance - clippedStartDistance) / durationS;
 }
 
-function intervalSpeed(interval: ActiveInterval, config: CardiacDecouplingConfig): number | null {
-  const distanceSpeed = intervalDistanceSpeed(interval, config);
+function intervalSpeed(interval: ActiveInterval, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
+  const distanceSpeed = intervalDistanceSpeed(interval, config, segment);
   if (distanceSpeed !== null) return distanceSpeed;
-  if (interval.dtS > config.maxInterpolationGapS) return null;
-  return isNonNegative(interval.startRecord.speed_m_s) ? interval.startRecord.speed_m_s : null;
+  return averageInterpolatedValue(interval, segment, config, interval.startRecord.speed_m_s, interval.endRecord.speed_m_s, isNonNegative);
 }
 
-function intervalOutput(interval: ActiveInterval, mode: CardiacDecouplingMode, config: CardiacDecouplingConfig): number | null {
-  if (mode === "average_power" || mode === "normalized_power") return intervalPower(interval, config);
-  if (mode === "speed") return intervalSpeed(interval, config);
+function intervalOutput(interval: ActiveInterval, mode: CardiacDecouplingMode, config: CardiacDecouplingConfig, segment: SegmentBounds): number | null {
+  if (mode === "average_power" || mode === "normalized_power") return intervalPower(interval, config, segment);
+  if (mode === "speed") return intervalSpeed(interval, config, segment);
   return null;
+}
+
+function sampleStreamValue(interval: ActiveInterval, sampleAtS: number, stream: "power" | "hr", config: CardiacDecouplingConfig): number | null {
+  if (stream === "power") {
+    return sampleInterpolatedValue(interval, sampleAtS, config, interval.startRecord.power, interval.endRecord.power, isNonNegative);
+  }
+  return sampleInterpolatedValue(interval, sampleAtS, config, interval.startRecord.heart_rate, interval.endRecord.heart_rate, isPositive);
 }
 
 function measureSegment(
@@ -272,7 +360,7 @@ function measureSegment(
     if (duration <= 0) continue;
     durationS += duration;
 
-    const hr = intervalHr(interval, config);
+    const hr = intervalHr(interval, config, segment);
     if (hr !== null) {
       hrCoveredS += duration;
       hrSum += hr * duration;
@@ -280,7 +368,7 @@ function measureSegment(
 
     if (!requiresOutput) continue;
 
-    const output = intervalOutput(interval, mode, config);
+    const output = intervalOutput(interval, mode, config, segment);
     if (output !== null) {
       outputCoveredS += duration;
     }
@@ -435,7 +523,7 @@ function sampleStream(
       continue;
     }
 
-    samples.push(stream === "power" ? intervalPower(interval, config) : intervalHr(interval, config));
+    samples.push(sampleStreamValue(interval, sampleAtS, stream, config));
   }
 
   return samples;
@@ -664,7 +752,7 @@ function calculateVariabilityIndex(
 }
 
 export function calculateCardiacDecoupling(
-  activity: Pick<Activity, "sport" | "activity_name" | "file_name" | "duration_s">,
+  activity: Pick<Activity, "sport" | "activity_name" | "file_name" | "duration_s" | "metadata_json">,
   records: RecordPoint[],
   configOverrides: Partial<CardiacDecouplingConfig> = {}
 ): CardiacDecouplingResult {
@@ -769,5 +857,15 @@ export function describeCardiacDecouplingBand(decouplingPct: number, config: Car
   const absValue = Math.abs(decouplingPct);
   if (absValue < config.lowDriftThresholdPct) return "low";
   if (absValue <= config.highDriftThresholdPct) return "moderate";
+  return "high";
+}
+
+export function describeCardiacDecouplingConfidence(
+  result: Pick<CardiacDecouplingModeResult, "available" | "assumption"> | undefined,
+  warnings: CardiacDecouplingWarning[] = [],
+): CardiacDecouplingConfidence | undefined {
+  if (!result?.available) return undefined;
+  if (warnings.includes("high_variability_effort")) return "low";
+  if (result.assumption === "constant_output") return "medium";
   return "high";
 }

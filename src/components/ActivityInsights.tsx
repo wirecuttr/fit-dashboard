@@ -14,6 +14,8 @@ import { useTranslation } from "../lib/i18n";
 import {
   calculateCardiacDecoupling,
   describeCardiacDecouplingBand,
+  describeCardiacDecouplingConfidence,
+  type CardiacDecouplingConfidence,
   type CardiacDecouplingMode,
   type CardiacDecouplingModeResult,
   type CardiacDecouplingUnavailableReason,
@@ -107,6 +109,17 @@ function cardiacBandLabel(decouplingPct: number | undefined, t: (key: string) =>
   return t("insights.cardiacBandHigh");
 }
 
+function cardiacConfidenceLabel(confidence: CardiacDecouplingConfidence | undefined, t: (key: string) => string): string {
+  if (confidence === "high") return t("insights.cardiacConfidenceHigh");
+  if (confidence === "medium") return t("insights.cardiacConfidenceMedium");
+  if (confidence === "low") return t("insights.cardiacConfidenceLow");
+  return "";
+}
+
+function cardiacEfficiencyDigits(mode: CardiacDecouplingMode): number {
+  return mode === "speed" ? 4 : 2;
+}
+
 function selectCardiacResult(results: CardiacDecouplingModeResult[], defaultMode: CardiacDecouplingMode | undefined): CardiacDecouplingModeResult | undefined {
   return results.find((result) => result.mode === defaultMode) ?? results.find((result) => result.available) ?? results[0];
 }
@@ -191,6 +204,8 @@ export function ActivityInsights({
   const cardiacDecoupling = activity ? calculateCardiacDecoupling(activity, cardiacRecords) : null;
   const cardiacResult = cardiacDecoupling ? selectCardiacResult(cardiacDecoupling.results, cardiacDecoupling.defaultMode) : undefined;
   const cardiacBand = cardiacResult?.available ? describeCardiacDecouplingBand(cardiacResult.decouplingPct ?? 0) : undefined;
+  const cardiacConfidence = describeCardiacDecouplingConfidence(cardiacResult, cardiacDecoupling?.warnings);
+  const cardiacEfficiencyPrecision = cardiacResult ? cardiacEfficiencyDigits(cardiacResult.mode) : 2;
   const cardiacIsNegative = (cardiacResult?.decouplingPct ?? 0) < 0;
 
   const lapMarkers = lapTimestampsUtc
@@ -681,11 +696,14 @@ export function ActivityInsights({
               <div className="cardiac-decoupling-band">
                 {cardiacIsNegative ? tr("insights.cardiacIncreasedEfficiency") : cardiacBandLabel(cardiacResult.decouplingPct, tr)}
               </div>
+              {cardiacConfidence && (
+                <div className={`cardiac-decoupling-confidence ${cardiacConfidence}`}>{cardiacConfidenceLabel(cardiacConfidence, tr)}</div>
+              )}
               <div className="cardiac-decoupling-support">
                 {cardiacResult.mode === "constant_output_hr" ? (
                   <span>{tr("insights.cardiacHrSummary", { first: formatMetric(cardiacResult.firstHalfAvgHr, 0), second: formatMetric(cardiacResult.secondHalfAvgHr, 0) })}</span>
                 ) : (
-                  <span>{tr("insights.cardiacEfSummary", { first: formatMetric(cardiacResult.firstHalfEfficiency), second: formatMetric(cardiacResult.secondHalfEfficiency) })}</span>
+                  <span>{tr("insights.cardiacEfSummary", { first: formatMetric(cardiacResult.firstHalfEfficiency, cardiacEfficiencyPrecision), second: formatMetric(cardiacResult.secondHalfEfficiency, cardiacEfficiencyPrecision) })}</span>
                 )}
               </div>
               {typeof cardiacDecoupling.evaluatedDurationS === "number" && (

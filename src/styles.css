@@ -1678,6 +1678,29 @@ button:focus-visible {
   font-weight: 700;
 }
 
+.cardiac-decoupling-confidence {
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  background: color-mix(in srgb, var(--panel-solid) 72%, transparent);
+}
+
+.cardiac-decoupling-confidence.high {
+  color: #16a34a;
+}
+
+.cardiac-decoupling-confidence.medium {
+  color: #d97706;
+}
+
+.cardiac-decoupling-confidence.low {
+  color: #dc2626;
+}
+
 .cardiac-decoupling-support {
   margin-top: 0.15rem;
   color: var(--text);

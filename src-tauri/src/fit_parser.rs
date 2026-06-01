@@ -286,6 +286,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
 
     let mut points: Vec<RecordPoint> = Vec::new();
     let mut sport = String::from("unknown");
+    let mut sub_sport: Option<String> = None;
     let mut device = String::new();
     let mut file_id_product_name: Option<String> = None;
     let mut file_id_manufacturer: Option<String> = None;
@@ -377,6 +378,12 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             for field in rec.fields() {
                 match field.name() {
                     "sport" => sport = value_string(field.value()).to_lowercase(),
+                    "sub_sport" => {
+                        let value = value_string(field.value()).to_lowercase();
+                        if !value.is_empty() {
+                            sub_sport = Some(value);
+                        }
+                    },
                     "beginning_body_battery" | "start_body_battery" => {
                         session_beginning_body_battery = value_i64(field.value())
                     }
@@ -639,6 +646,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         "record_count": points.len(),
         "device": device,
         "sport": sport,
+        "sub_sport": sub_sport.as_deref(),
         "source_format": "fit",
         "file_id": {
             "product_name": file_id_combined_name,
