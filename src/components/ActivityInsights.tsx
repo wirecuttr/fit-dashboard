@@ -203,6 +203,7 @@ export function ActivityInsights({
   const [heartRateDriftHelpOpen, setHeartRateDriftHelpOpen] = useState(false);
   const axisColor = isDark ? "#8899b8" : "#64748b";
   const gridLine = isDark ? "rgba(100, 140, 220, 0.08)" : "rgba(0, 0, 0, 0.06)";
+  const heartRateDriftGridLine = isDark ? "rgba(148, 163, 184, 0.18)" : "rgba(15, 23, 42, 0.12)";
   const tooltipBg = isDark ? "rgba(14, 22, 45, 0.95)" : "rgba(255, 255, 255, 0.95)";
   const tooltipBorder = isDark ? "rgba(100, 140, 220, 0.2)" : "rgba(0, 0, 0, 0.08)";
   const tooltipText = isDark ? "#e2e8f4" : "#0f172a";
@@ -808,7 +809,7 @@ export function ActivityInsights({
         ...heartRateDriftHrAxis,
         nameTextStyle: { color: axisColor, fontSize: 11 },
         axisLabel: { color: axisColor, fontSize: 11 },
-        splitLine: { lineStyle: { color: gridLine } },
+        splitLine: { lineStyle: { color: heartRateDriftGridLine } },
       },
       {
         type: "value", name: heartRateDriftOutputUnit,
