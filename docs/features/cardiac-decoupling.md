@@ -102,7 +102,7 @@ Minimum conditions:
 - Average HR is greater than 0 in all required halves and bins.
 - Average output is greater than 0 in all required halves and bins for output-based modes.
 
-Supported sport groups are allowlists. Activities outside these groups are unavailable by default. This is preferable to maintaining an excluded list because Garmin's FIT `sport` and `sub_sport` enums are large and still evolving.
+Supported sport groups are allowlists based on canonical FIT-derived `sport` and `sub_sport` values. Do not infer calculation eligibility from `activity_name` or `file_name`, because names are user-editable, can be generated identifiers, and can be localized. Activities outside these groups are unavailable by default. This is preferable to maintaining an excluded list because Garmin's FIT `sport` and `sub_sport` enums are large and still evolving.
 
 Cycling-like activities:
 
@@ -135,6 +135,7 @@ Machine-based constant-output activities:
 
 - `fitness_equipment` with `sub_sport=elliptical`
 - `fitness_equipment` with `sub_sport=stair_climbing`
+- `fitness_equipment` with `sub_sport=stair_stepper`
 
 Output rule: use speed/distance if it meets the output and paired-coverage thresholds. If no usable output stream is recorded, calculate constant-output heart-rate drift from HR only. This is supported in the initial implementation, but the UI must clearly state that the result assumes the machine effort, pace, resistance, or cadence was held steady across the evaluated window.
 
@@ -149,7 +150,7 @@ The authoritative list of Garmin FIT sport and sub-sport values is the FIT SDK `
 Relevant values for this feature include:
 
 - Top-level `sport`: `running`, `cycling`, `fitness_equipment`, `walking`, `cross_country_skiing`, `rowing`, `hiking`, `training`.
-- Relevant `sub_sport`: `treadmill`, `trail`, `track`, `spin`, `indoor_cycling`, `road`, `mountain`, `gravel_cycling`, `commuting`, `indoor_rowing`, `elliptical`, `stair_climbing`, `indoor_walking`, `indoor_running`, `cardio_training`.
+- Relevant `sub_sport`: `treadmill`, `trail`, `track`, `spin`, `indoor_cycling`, `road`, `mountain`, `gravel_cycling`, `commuting`, `indoor_rowing`, `elliptical`, `stair_climbing`, `stair_stepper`, `indoor_walking`, `indoor_running`, `cardio_training`.
 
 Design implication: support should be implemented as a positive allowlist of sport/sub-sport combinations. Unknown or newly added Garmin types should be unavailable until explicitly evaluated.
 
@@ -544,8 +545,8 @@ Display:
 - For `Constant Effort HR Drift`, add mode-specific help: `This assumes the machine effort stayed steady. Changes in resistance, incline, cadence, or machine program can distort the result.`
 - Always show confidence when a result is available: `High confidence`, `Medium confidence`, or `Low confidence`. In the chart header, show confidence as plain text rather than a badge, with a short reason when applicable: `highly variable effort`, `speed fallback`, or `steady-effort assumption`.
 - For `high_variability_effort`, show low confidence plus the short reason rather than hiding the metric.
-- Replace the standalone summary card with a detail chart panel in the existing chart grid. The chart panel should show a large decoupling percentage plus a color-coded drift badge and confidence text in its header. Do not duplicate the selected output mode or analyzed-window text in the chart header because the chart legend and visual excluded regions already show that context. Show the EF or constant-output HR summary below the chart as secondary text.
-- The detail chart should plot HR plus the selected output mode: centered normalized power for `normalized_power`, pace display for running/walking/hiking `speed` mode, and speed display for cycling fallback and other `speed` mode activities. Do not show a normalized-power overlay for speed-based results.
+- Replace the standalone summary card with a detail chart panel in the existing chart grid. The chart panel should show a large decoupling percentage plus a color-coded drift badge, the EF or constant-output HR summary, and confidence text in its header. Do not duplicate the selected output mode or analyzed-window text in the chart header because the chart legend and visual excluded regions already show that context.
+- The detail chart should plot HR plus the selected output mode: centered normalized power for `normalized_power`, pace display for running/walking/hiking `speed` mode, and speed display for cycling fallback and other `speed` mode activities. For `constant_output_hr`, show an HR-only detail chart because no output stream is used. Do not show a normalized-power overlay for speed-based results.
 - The detail chart should shade excluded warmup, cooldown, and full-record gap ranges in grey. Show horizontal labels for warmup and cooldown shaded regions, but do not label shaded gap regions. For display, trim or hide gap ranges that overlap warmup/cooldown ranges so nested exclusions do not draw redundant shaded regions. This is visual cleanup only and must not change active-time, coverage, binning, or EF calculations.
 - The detail chart should draw vertical dashed markers for the start of each evaluated bin and the evaluated-end/cooldown-start boundary. The first evaluated marker should be labeled `Bin 1`, not `Warmup`, because the warmup range is already shown by the grey excluded area. Draw the evaluated-end/cooldown-start line without a text label because the cooldown shaded region carries that label.
 - The detail chart should use dynamic padded y-axis bounds. HR bounds round to multiples of 10 and clamp the lower bound to at least `30 bpm`; power bounds round to multiples of 10 and clamp the lower bound to at least `0 W`; speed and pace bounds round to whole display units and clamp the lower bound to at least `0`.
@@ -580,7 +581,7 @@ lowDriftThresholdPct-highDriftThresholdPct: moderate drift
 > highDriftThresholdPct: high drift
 ```
 
-Default values are `lowDriftThresholdPct=5` and `highDriftThresholdPct=10`. These are TrainingPeaks-style guidance bands, not hard physiological cutoffs. TrainingPeaks describes less than 5% decoupling as strong aerobic endurance at that intensity, 5-10% as moderate endurance limitations or fatigue, and greater than 10% as likely above aerobic threshold or insufficient endurance for the effort.
+Default values are `lowDriftThresholdPct=5` and `highDriftThresholdPct=10`. Apply these bands to positive drift. Negative drift should be displayed as increased efficiency with neutral/positive wording rather than classified as high drift. These are TrainingPeaks-style guidance bands, not hard physiological cutoffs. TrainingPeaks describes less than 5% decoupling as strong aerobic endurance at that intensity, 5-10% as moderate endurance limitations or fatigue, and greater than 10% as likely above aerobic threshold or insufficient endurance for the effort.
 
 Reference: TrainingPeaks, `Aerobic Decoupling and Heart Rate Drift Explained`: https://www.trainingpeaks.com/coach-blog/aerobic-endurance-and-decoupling/
 

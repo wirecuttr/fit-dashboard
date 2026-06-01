@@ -98,15 +98,12 @@ function metadataString(metadataJson: string | null | undefined, key: string): s
   }
 }
 
-function activityUsesPaceDisplay(activity: Pick<Activity, "sport" | "activity_name" | "file_name" | "metadata_json"> | null | undefined): boolean {
+function activityUsesPaceDisplay(activity: Pick<Activity, "sport" | "metadata_json"> | null | undefined): boolean {
   if (!activity) return false;
   const sport = normalizeActivityText(activity.sport);
   const subSport = normalizeActivityText(metadataString(activity.metadata_json, "sub_sport"));
   if (["running", "walking", "hiking"].includes(sport)) return true;
-  if (["treadmill", "trail", "track", "indoor_running", "indoor_walking", "casual_walking", "speed_walking"].includes(subSport)) return true;
-  if (sport && sport !== "unknown") return false;
-  const fallback = normalizeActivityText(`${activity.activity_name} ${activity.file_name}`);
-  return ["running", "walking", "hiking", "treadmill"].some((token) => fallback.includes(token));
+  return ["treadmill", "trail", "track", "indoor_running", "indoor_walking", "casual_walking", "speed_walking"].includes(subSport);
 }
 
 function paceFromSpeedMps(valueMps: number, distanceUnit: DistanceUnit): number | null {
@@ -299,8 +296,10 @@ export function ActivityInsights({
     : [];
   const heartRateDriftOutputUnit = heartRateDriftShowsPace
     ? paceLabel(distanceUnit)
-    : heartRateDriftChartData?.outputMode === "speed" ? speedLabel(distanceUnit) : "W";
-  const heartRateDriftOutputLabel = heartRateDriftChartData ? cardiacModeLabel(heartRateDriftChartData.outputMode, tr, heartRateDriftShowsPace) : "";
+    : heartRateDriftChartData?.outputMode === "speed" ? speedLabel(distanceUnit) : heartRateDriftChartData?.outputMode ? "W" : "";
+  const heartRateDriftOutputLabel = heartRateDriftChartData?.outputMode
+    ? cardiacModeLabel(heartRateDriftChartData.outputMode, tr, heartRateDriftShowsPace)
+    : "";
   const heartRateDriftOutputDigits = heartRateDriftChartData?.outputMode === "speed" ? 2 : 1;
   const heartRateDriftHrData = smoothGraphs && heartRateDriftChartData
     ? applyRollingAverageSeries(heartRateDriftChartData.heartRate, 1, smoothWindow)
@@ -309,10 +308,10 @@ export function ActivityInsights({
     ? applyRollingAverageSeries(heartRateDriftOutputData, 1, smoothWindow)
     : heartRateDriftOutputData;
   const hasHeartRateDriftChart = !!heartRateDriftChartData
-    && heartRateDriftOutputDataSmoothed.some(([, value]) => value !== null)
-    && heartRateDriftHrData.some(([, value]) => value !== null);
+    && heartRateDriftHrData.some(([, value]) => value !== null)
+    && (!heartRateDriftChartData.outputMode || heartRateDriftOutputDataSmoothed.some(([, value]) => value !== null));
   const heartRateDriftHrAxis = heartRateDriftChartData ? paddedAxisBounds(heartRateDriftHrData, 30, 5, 10) : undefined;
-  const heartRateDriftOutputAxis = heartRateDriftChartData
+  const heartRateDriftOutputAxis = heartRateDriftChartData?.outputMode
     ? paddedAxisBounds(
         heartRateDriftOutputDataSmoothed,
         0,
@@ -784,6 +783,68 @@ export function ActivityInsights({
     })),
   };
 
+  const heartRateDriftYAxes = heartRateDriftChartData ? [
+    {
+      type: "value", name: "bpm",
+      ...heartRateDriftHrAxis,
+      nameTextStyle: { color: axisColor, fontSize: 11 },
+      axisLabel: { color: axisColor, fontSize: 11 },
+      splitLine: { lineStyle: { color: heartRateDriftGridLine } },
+    },
+    ...(heartRateDriftChartData.outputMode ? [{
+      type: "value", name: heartRateDriftOutputUnit,
+      ...heartRateDriftOutputAxis,
+      inverse: heartRateDriftShowsPace,
+      nameTextStyle: { color: axisColor, fontSize: 11 },
+      axisLabel: {
+        color: axisColor,
+        fontSize: 11,
+        formatter: heartRateDriftShowsPace ? (val: number) => formatPaceValue(val) : undefined,
+      },
+      splitLine: { show: false },
+    }] : []),
+  ] : [];
+
+  const heartRateDriftSeries = heartRateDriftChartData ? [
+    {
+      name: tr("chart.heartRate"), type: "line", smooth: smoothGraphs, showSymbol: false,
+      lineStyle: { width: 1.8, color: "#ef4444" },
+      sampling: smoothGraphs ? "lttb" : undefined,
+      data: heartRateDriftHrData,
+      markArea: heartRateDriftChartData.excludedRanges.length ? {
+        silent: true,
+        itemStyle: { color: isDark ? "rgba(148, 163, 184, 0.16)" : "rgba(148, 163, 184, 0.22)" },
+        label: { color: axisColor, fontSize: 10 },
+        data: heartRateDriftChartData.excludedRanges.map((range) => [
+          { xAxis: range.startMs, name: range.kind === "gap" ? "" : heartRateDriftRangeLabel(range.kind, tr) },
+          { xAxis: range.endMs },
+        ]),
+      } : undefined,
+      markLine: heartRateDriftChartData.markers.length ? {
+        animation: false,
+        symbol: ["none", "none"],
+        label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
+        data: heartRateDriftChartData.markers.map((marker) => ({
+          xAxis: marker.elapsedMs,
+          name: marker.kind === "cooldown" ? "" : heartRateDriftMarkerLabel(marker, cardiacResult?.mode ?? "speed", tr),
+          lineStyle: {
+            color: marker.kind === "bin"
+              ? (isDark ? "rgba(96, 165, 250, 0.72)" : "rgba(37, 99, 235, 0.65)")
+              : (isDark ? "rgba(245, 158, 11, 0.76)" : "rgba(217, 119, 6, 0.72)"),
+            type: "dashed",
+            width: 1,
+          },
+        })),
+      } : undefined,
+    },
+    ...(heartRateDriftChartData.outputMode ? [{
+      name: heartRateDriftOutputLabel, type: "line", yAxisIndex: 1, smooth: smoothGraphs, showSymbol: false,
+      lineStyle: { width: 2, color: "#f59e0b" },
+      sampling: smoothGraphs ? "lttb" : undefined,
+      data: heartRateDriftOutputDataSmoothed,
+    }] : []),
+  ] : [];
+
   const heartRateDriftOption = hasHeartRateDriftChart && heartRateDriftChartData ? {
     tooltip: {
       trigger: "axis",
@@ -809,34 +870,14 @@ export function ActivityInsights({
       },
     },
     legend: { textStyle: { color: axisColor, fontSize: 12 }, top: 0 },
-    grid: { left: 46, right: 48, top: 44, bottom: 46 },
+    grid: { left: 46, right: heartRateDriftChartData.outputMode ? 48 : 18, top: 44, bottom: 46 },
     xAxis: {
       type: "value",
       axisLabel: { color: axisColor, fontSize: 11, formatter: (val: number) => formatRelTime(val) },
       axisLine: { lineStyle: { color: gridLine } },
       splitLine: { show: false },
     },
-    yAxis: [
-      {
-        type: "value", name: "bpm",
-        ...heartRateDriftHrAxis,
-        nameTextStyle: { color: axisColor, fontSize: 11 },
-        axisLabel: { color: axisColor, fontSize: 11 },
-        splitLine: { lineStyle: { color: heartRateDriftGridLine } },
-      },
-      {
-        type: "value", name: heartRateDriftOutputUnit,
-        ...heartRateDriftOutputAxis,
-        inverse: heartRateDriftShowsPace,
-        nameTextStyle: { color: axisColor, fontSize: 11 },
-        axisLabel: {
-          color: axisColor,
-          fontSize: 11,
-          formatter: heartRateDriftShowsPace ? (val: number) => formatPaceValue(val) : undefined,
-        },
-        splitLine: { show: false },
-      },
-    ],
+    yAxis: heartRateDriftYAxes,
     dataZoom: [
       {
         type: "inside",
@@ -846,45 +887,7 @@ export function ActivityInsights({
         end: zoomRange?.end ?? 100,
       },
     ],
-    series: [
-      {
-        name: tr("chart.heartRate"), type: "line", smooth: smoothGraphs, showSymbol: false,
-        lineStyle: { width: 1.8, color: "#ef4444" },
-        sampling: smoothGraphs ? "lttb" : undefined,
-        data: heartRateDriftHrData,
-        markArea: heartRateDriftChartData.excludedRanges.length ? {
-          silent: true,
-          itemStyle: { color: isDark ? "rgba(148, 163, 184, 0.16)" : "rgba(148, 163, 184, 0.22)" },
-          label: { color: axisColor, fontSize: 10 },
-          data: heartRateDriftChartData.excludedRanges.map((range) => [
-            { xAxis: range.startMs, name: range.kind === "gap" ? "" : heartRateDriftRangeLabel(range.kind, tr) },
-            { xAxis: range.endMs },
-          ]),
-        } : undefined,
-        markLine: heartRateDriftChartData.markers.length ? {
-          animation: false,
-          symbol: ["none", "none"],
-          label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
-          data: heartRateDriftChartData.markers.map((marker) => ({
-            xAxis: marker.elapsedMs,
-            name: marker.kind === "cooldown" ? "" : heartRateDriftMarkerLabel(marker, heartRateDriftChartData.outputMode, tr),
-            lineStyle: {
-              color: marker.kind === "bin"
-                ? (isDark ? "rgba(96, 165, 250, 0.72)" : "rgba(37, 99, 235, 0.65)")
-                : (isDark ? "rgba(245, 158, 11, 0.76)" : "rgba(217, 119, 6, 0.72)"),
-              type: "dashed",
-              width: 1,
-            },
-          })),
-        } : undefined,
-      },
-      {
-        name: heartRateDriftOutputLabel, type: "line", yAxisIndex: 1, smooth: smoothGraphs, showSymbol: false,
-        lineStyle: { width: 2, color: "#f59e0b" },
-        sampling: smoothGraphs ? "lttb" : undefined,
-        data: heartRateDriftOutputDataSmoothed,
-      },
-    ],
+    series: heartRateDriftSeries,
   } : null;
 
 
@@ -935,9 +938,9 @@ export function ActivityInsights({
             </div>
             {heartRateDriftHelpOpen && (
               <div className="heart-rate-drift-help-panel">
-                <p><strong>What this shows:</strong> Heart Rate Drift compares Efficiency Factor (EF), the activity output divided by average heart rate, between the first and second halves of the analyzed section. Lower drift usually means steadier aerobic efficiency.</p>
-                <p><strong>Chart lines:</strong> Heart rate is plotted with the selected output metric. Cycling uses normalized power when it can be calculated. If normalized power is unavailable, speed can be used as a low-confidence fallback. Running, walking, and hiking are displayed as pace, while the calculation uses speed internally.</p>
-                <p><strong>Regions:</strong> Shaded regions are excluded from the calculation. Longer activities are split into approximately 30-minute bins, with each bin EF shown on its Bin label.</p>
+                <p><strong>What this shows:</strong> Heart Rate Drift compares Efficiency Factor (EF), the activity output divided by average heart rate, between the first and second halves of the analyzed section. Constant-effort machine results compare heart rate only. Lower drift usually means steadier aerobic efficiency.</p>
+                <p><strong>Chart lines:</strong> Heart rate is plotted with the selected output metric when one is used. Cycling uses normalized power when it can be calculated. If normalized power is unavailable, speed can be used as a low-confidence fallback. Running, walking, and hiking are displayed as pace, while the calculation uses speed internally.</p>
+                <p><strong>Regions:</strong> Shaded regions are excluded from the calculation. Longer activities are split into approximately 30-minute bins, with each bin EF shown on its Bin label when an output metric is used.</p>
                 <p><strong>Use with care:</strong> This is most useful on steady aerobic efforts. Intervals, stops, hills, heat, dehydration, fatigue, caffeine, poor sleep, or bad sensor data can distort the result. Confidence reflects data quality and mode assumptions, not medical certainty.</p>
               </div>
             )}
