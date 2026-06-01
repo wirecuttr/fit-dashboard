@@ -19,6 +19,7 @@ import {
   describeCardiacDecouplingBand,
   describeCardiacDecouplingConfidence,
   type CardiacDecouplingConfidence,
+  type CardiacDecouplingWarning,
   type HeartRateDriftChartMarker,
   type HeartRateDriftExcludedRange,
   type CardiacDecouplingMode,
@@ -163,6 +164,18 @@ function cardiacConfidenceLabel(confidence: CardiacDecouplingConfidence | undefi
   return "";
 }
 
+function cardiacConfidenceReasonLabel(
+  result: CardiacDecouplingModeResult | undefined,
+  warnings: CardiacDecouplingWarning[] | undefined,
+  t: (key: string) => string,
+): string {
+  if (!result?.available) return "";
+  if (warnings?.includes("high_variability_effort")) return t("insights.cardiacConfidenceReasonHighVariability");
+  if (result.assumption === "cycling_speed_fallback") return t("insights.cardiacConfidenceReasonSpeedFallback");
+  if (result.assumption === "constant_output") return t("insights.cardiacConfidenceReasonConstantOutput");
+  return "";
+}
+
 function cardiacEfficiencyDigits(mode: CardiacDecouplingMode): number {
   return mode === "speed" ? 4 : 2;
 }
@@ -280,6 +293,7 @@ export function ActivityInsights({
   const cardiacResult = cardiacDecoupling ? selectCardiacResult(cardiacDecoupling.results, cardiacDecoupling.defaultMode) : undefined;
   const cardiacBand = cardiacResult?.available ? describeCardiacDecouplingBand(cardiacResult.decouplingPct ?? 0) : undefined;
   const cardiacConfidence = describeCardiacDecouplingConfidence(cardiacResult, cardiacDecoupling?.warnings);
+  const cardiacConfidenceReason = cardiacConfidenceReasonLabel(cardiacResult, cardiacDecoupling?.warnings, tr);
   const cardiacEfficiencyPrecision = cardiacResult ? cardiacEfficiencyDigits(cardiacResult.mode) : 2;
   const cardiacIsNegative = (cardiacResult?.decouplingPct ?? 0) < 0;
   const usePaceDisplay = activityUsesPaceDisplay(activity);
@@ -963,14 +977,17 @@ export function ActivityInsights({
             </div>
             <div className="heart-rate-drift-detail-summary">
               <div className={`heart-rate-drift-detail-value ${cardiacBand ?? ""}`}>{formatPercent(cardiacResult.decouplingPct)}</div>
-              <div className="heart-rate-drift-detail-badges">
-                <span className={`heart-rate-drift-status-badge drift-${cardiacIsNegative ? "negative" : cardiacBand ?? "unknown"}`}>
-                  {cardiacIsNegative ? tr("insights.cardiacIncreasedEfficiency") : cardiacBandLabel(cardiacResult.decouplingPct, tr)}
-                </span>
-                {cardiacConfidence && (
-                  <span className={`heart-rate-drift-status-badge confidence-${cardiacConfidence}`}>
-                    {cardiacConfidenceLabel(cardiacConfidence, tr)}
+              <div className="heart-rate-drift-detail-status">
+                <div className="heart-rate-drift-detail-badges">
+                  <span className={`heart-rate-drift-status-badge drift-${cardiacIsNegative ? "negative" : cardiacBand ?? "unknown"}`}>
+                    {cardiacIsNegative ? tr("insights.cardiacIncreasedEfficiency") : cardiacBandLabel(cardiacResult.decouplingPct, tr)}
                   </span>
+                </div>
+                {cardiacConfidence && (
+                  <div className={`heart-rate-drift-confidence-text confidence-${cardiacConfidence}`}>
+                    <span>{cardiacConfidenceLabel(cardiacConfidence, tr)}</span>
+                    {cardiacConfidenceReason && <span className="heart-rate-drift-confidence-reason"> · {cardiacConfidenceReason}</span>}
+                  </div>
                 )}
               </div>
             </div>
