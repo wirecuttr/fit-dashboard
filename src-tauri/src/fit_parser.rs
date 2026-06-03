@@ -212,43 +212,6 @@ fn activity_type_label(sport: &str, sub_sport: Option<&str>) -> String {
     }
 }
 
-fn looks_like_export_id_name(name: &str) -> bool {
-    let name = name.trim();
-    if name.is_empty() {
-        return false;
-    }
-
-    let is_long_numeric_id = |value: &str| {
-        value.len() >= 8 && value.chars().all(|c| c.is_ascii_digit())
-    };
-
-    if is_long_numeric_id(name) {
-        return true;
-    }
-
-    let parts: Vec<&str> = name.split('_').collect();
-    if parts.len() >= 2 && parts.iter().all(|part| is_long_numeric_id(part)) {
-        return true;
-    }
-
-    if parts.len() == 2
-        && is_long_numeric_id(parts[0])
-        && parts[1].eq_ignore_ascii_case("ACTIVITY")
-    {
-        return true;
-    }
-
-    if (parts.len() == 2 || parts.len() == 3)
-        && parts[0].contains('@')
-        && is_long_numeric_id(parts[1])
-        && (parts.len() == 2 || parts[2].eq_ignore_ascii_case("ACTIVITY"))
-    {
-        return true;
-    }
-
-    false
-}
-
 fn generated_activity_name(sport: &str, sub_sport: Option<&str>) -> String {
     activity_type_label(sport, sub_sport)
 }
@@ -260,7 +223,7 @@ fn build_activity_name(
     points: &[RecordPoint],
 ) -> String {
     let fallback = strip_known_extension(file_name);
-    let activity_label = activity_type_label(sport, sub_sport);
+    let activity_label = generated_activity_name(sport, sub_sport);
 
     if let Some(pos) = points.iter().find(|p| p.latitude.is_some() && p.longitude.is_some()) {
         let geocoder = reverse_geocoder::ReverseGeocoder::new();
@@ -275,13 +238,13 @@ fn build_activity_name(
             loc_parts.push(record.admin1.as_str());
         }
         let loc = loc_parts.join(", ");
-        if !loc.is_empty() {
+        if !loc.is_empty() && activity_label != "Activity" {
             return format!("{} — {}", loc, activity_label);
         }
     }
 
-    if looks_like_export_id_name(&fallback) {
-        return generated_activity_name(sport, sub_sport);
+    if activity_label != "Activity" {
+        return activity_label;
     }
 
     fallback
@@ -1242,20 +1205,7 @@ mod tests {
     }
 
     #[test]
-    fn detects_garmin_export_id_names() {
-        assert!(looks_like_export_id_name("123456789_987654321"));
-        assert!(looks_like_export_id_name("123456789"));
-        assert!(looks_like_export_id_name("23073077727_ACTIVITY"));
-        assert!(looks_like_export_id_name("23073077727_activity"));
-        assert!(looks_like_export_id_name("chiang.jim@gmail.com_257082758918"));
-        assert!(looks_like_export_id_name("chiang.jim@gmail.com_257082758918_ACTIVITY"));
-        assert!(!looks_like_export_id_name("Lunch Ride"));
-        assert!(!looks_like_export_id_name("2026-05-30"));
-        assert!(!looks_like_export_id_name("Workout_20260531"));
-    }
-
-    #[test]
-    fn uses_indoor_sub_sport_for_generated_fallback() {
+    fn uses_indoor_sub_sport_for_non_gps_name() {
         let name = build_activity_name(
             "123456789_987654321.fit",
             "cycling",
@@ -1267,8 +1217,15 @@ mod tests {
     }
 
     #[test]
-    fn keeps_meaningful_filename_fallbacks() {
+    fn uses_activity_type_for_non_gps_even_with_meaningful_filename() {
         let name = build_activity_name("Lunch Ride.fit", "cycling", None, &[]);
+
+        assert_eq!(name, "Cycling");
+    }
+
+    #[test]
+    fn falls_back_to_filename_when_activity_type_is_unknown() {
+        let name = build_activity_name("Lunch Ride.fit", "unknown", None, &[]);
 
         assert_eq!(name, "Lunch Ride");
     }
