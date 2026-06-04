@@ -6,6 +6,8 @@ Cardiac decoupling, also called heart-rate drift or aerobic decoupling, measures
 
 The first implementation should produce one or more mode-specific percentage values plus enough supporting fields to explain why values are available or unavailable.
 
+The first slice is a frontend-only implementation shown on the Individual activity detail view. It calculates from existing activity metadata and records already exposed by the backend. Backend ownership, persistence, export, activity-list integration, and overview integration are deferred unless they are later judged valuable.
+
 ## Goals
 
 - Calculate cardiac decoupling from recorded time-series data rather than relying on optional FIT summary fields.
@@ -23,6 +25,7 @@ The first implementation should produce one or more mode-specific percentage val
 - No automatic rewriting of historical activities outside normal derived metric refresh behavior.
 - No complex interval detection in the first release.
 - No assumption that every eligible activity is a formal heart-rate drift test.
+- No backend API, database persistence, activity-list column, overview aggregation, or export support in the first slice.
 
 ## Definitions
 
@@ -86,7 +89,7 @@ type CardiacDecouplingConfig = {
 };
 ```
 
-Keep these defaults internal/constants in the first release; a user-facing settings UI is not required initially. Suggested location: `src/lib/cardiacDecoupling.ts` exports `DEFAULT_CARDIAC_DECOUPLING_CONFIG`. If the calculation moves backend-side later, mirror the defaults in Rust or load them from app settings.
+Keep these defaults internal/constants in the first release; a user-facing settings UI is not required initially. The first slice stores them in `src/lib/cardiacDecoupling.ts` as `DEFAULT_CARDIAC_DECOUPLING_CONFIG`. If the calculation moves backend-side later, mirror the defaults in Rust or load them from app settings.
 
 ## Eligibility
 
@@ -424,7 +427,7 @@ Suggested unavailable reasons:
 
 ## Result Shape
 
-Backend/internal result:
+Frontend/internal result for the first slice:
 
 ```ts
 type CardiacDecouplingMode = "average_power" | "normalized_power" | "speed" | "constant_output_hr";
@@ -491,7 +494,7 @@ type CardiacDecouplingResult = {
 };
 ```
 
-The exact TypeScript type can live in the frontend if the calculation is frontend-only. If the calculation is backend-owned later, mirror the shape in Rust models.
+The exact TypeScript type lives in the frontend for the first slice. If the calculation becomes backend-owned later, mirror this shape in Rust models or introduce an equivalent serialized API response.
 
 Result behavior:
 
@@ -591,16 +594,23 @@ Context copy should avoid presenting decoupling as a standalone fitness verdict.
 
 ## Implementation Location
 
-Preferred first implementation:
+First-slice implementation:
 
 - Add a frontend utility that calculates the metric from `RecordPoint[]` and selected activity metadata.
 - Keep the calculation pure and unit-testable.
 - Use existing parsed records and metadata without a database migration.
+- Fetch a 1-second downsampled record stream for analysis through the existing `getRecords(activityId, 1000)` path.
+- Show the result only in the Individual activity detail view.
+- Do not persist the result in DuckDB.
+- Do not expose a dedicated backend REST endpoint or Tauri command.
 
-Possible later implementation:
+Deferred implementation options:
 
 - Move calculation to Rust if metrics need to be persisted, exported, or shared through API responses.
-- Store derived metrics in `metadata_json` or a dedicated derived-metrics table if recalculation becomes expensive.
+- Store derived metrics in `metadata_json` or a dedicated derived-metrics table if recalculation becomes expensive or if list/overview/export use cases need queryable values.
+- Add a dedicated REST endpoint and Tauri command if the metric needs to be shared outside the current frontend detail component.
+
+See `heart-rate-drift-implementation.md` for the first-slice implementation notes and `heart-rate-drift-deferred.md` for optional future work.
 
 ## Testing
 
@@ -644,7 +654,7 @@ Fixture strategy:
 ## Open Questions
 
 - Are the initial defaults for `maxInterpolationGapS`, `maxRecordGapS`, and `minRollingWindowCoveragePct` strict enough for real FIT files?
-- Should decoupling be exportable in CSV/JSON activity exports?
+- Are backend ownership, database persistence, activity-list visibility, overview aggregation, or export support valuable enough to justify the added implementation and migration scope?
 
 ## References
 
