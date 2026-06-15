@@ -24,10 +24,10 @@ FROM backend-chef AS backend-builder
 ARG CARGO_BUILD_JOBS
 
 COPY --from=backend-planner /app/src-tauri/recipe.json recipe.json
-RUN if [ -n "${CARGO_BUILD_JOBS}" ]; then export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS}"; fi \
+RUN if [ -z "${CARGO_BUILD_JOBS:-}" ]; then unset CARGO_BUILD_JOBS; fi \
 	&& cargo chef cook --release --locked --features web --recipe-path recipe.json
 COPY src-tauri ./
-RUN if [ -n "${CARGO_BUILD_JOBS}" ]; then export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS}"; fi \
+RUN if [ -z "${CARGO_BUILD_JOBS:-}" ]; then unset CARGO_BUILD_JOBS; fi \
 	&& cargo build --release --locked --features web
 
 FROM debian:bookworm-slim

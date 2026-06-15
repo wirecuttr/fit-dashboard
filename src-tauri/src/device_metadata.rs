@@ -504,7 +504,7 @@ impl DeviceAccumulator {
         let manufacturer = resolve_manufacturer(raw.manufacturer_value.as_deref());
         let product = resolve_product(raw.product_field.as_deref(), raw.product_value.as_deref(), &manufacturer);
         let role = role_for(raw, &source_type);
-        let mut device = DeviceMetadata {
+        let device = DeviceMetadata {
             role,
             device_indices: Vec::new(),
             source_type,
