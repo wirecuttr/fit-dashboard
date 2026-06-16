@@ -844,7 +844,7 @@ export function ActivityInsights({
       formatter: (params: any[]) => {
         const p = params?.[0];
         const rel = Number(p?.value?.[0] ?? 0);
-        let html = formatTooltipHeader(rel);
+        let html = formatTooltipHeader(rel, null);
         for (const row of params) {
           if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
             const isHeartRate = row.seriesName === tr("chart.heartRate");
