@@ -1,4 +1,5 @@
 import type { Activity } from "../types";
+import type { TelemetryTimerMetadata } from "./telemetryAxis";
 
 export type CodeNameLabel = {
   code?: number | null;
@@ -61,6 +62,7 @@ export type ActivityMetadata = {
     serial_number?: number | null;
   };
   device_info?: DeviceInfoMetadata | null;
+  timer?: TelemetryTimerMetadata | null;
   activity_metrics?: {
     vo2_max?: number | null;
   };

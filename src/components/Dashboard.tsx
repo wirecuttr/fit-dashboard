@@ -1644,10 +1644,10 @@ export function Dashboard({ onLogout }: Props) {
                 </div>
               </div>
               <div className="detail-grid">
-                <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></div>
+                <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} /></div>
                 <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />
               </div>
-              <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
+              <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
                   <h3>{t("detail.laps")}</h3>

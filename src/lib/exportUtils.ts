@@ -114,6 +114,7 @@ export function buildJson(activity: Activity, records: RecordPoint[]): string {
         durationS: activity.duration_s,
         distanceM: activity.distance_m,
       },
+      metadata,
       deviceInfo: buildExportDeviceInfo(metadata),
       records,
     },
