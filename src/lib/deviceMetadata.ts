@@ -76,6 +76,7 @@ export type ActivityMetadata = {
     total_elapsed_time_s?: number | null;
     total_distance_m?: number | null;
     total_calories?: number | null;
+    normalized_power?: number | null;
   };
   laps?: Array<{
     start_ts_utc?: string | null;
@@ -93,6 +94,7 @@ export type ActivityMetadata = {
     max_cadence?: number | null;
     total_calories?: number | null;
     best_speed_m_s?: number | null;
+    normalized_power?: number | null;
   }>;
 };
 
