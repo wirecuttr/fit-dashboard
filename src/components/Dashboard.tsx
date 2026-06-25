@@ -19,6 +19,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { exportSingleActivity, exportBulkActivities, type ExportFormat, type BulkExportProgress } from "../lib/exportUtils";
 import { useSettingsStore } from "../stores/settingsStore";
+import { getRecordDataAvailability } from "../lib/recordDataAvailability";
 import type { Activity, RecordPoint } from "../types";
 import appIcon from "../assets/app-icon.svg";
 import {
@@ -480,6 +481,9 @@ export function Dashboard({ onLogout }: Props) {
   const filteredSports = Array.from(new Set(filtered.map((a) => a.sport).filter(Boolean)));
   const filteredDevices = Array.from(new Set(filtered.map((a) => a.device).filter(Boolean)));
   const selectedRecords = tab === "overview" ? overviewRecords : records;
+  const selectedAvailability = useMemo(() => getRecordDataAvailability(selectedRecords), [selectedRecords]);
+  const hasTelemetryCharts = selectedAvailability.hasHeartRate || selectedAvailability.hasPace;
+  const hasDetailRoute = selectedAvailability.hasGpsRoute;
   const hasTelemetryDistanceAxis = useMemo(() => hasUsableDistanceAxis(records), [records]);
   const distanceDivisorValue = distanceDivisor(distanceUnit);
   const distanceSuffix = distanceLabel(distanceUnit);
@@ -1657,10 +1661,14 @@ export function Dashboard({ onLogout }: Props) {
                   ))}
                 </div>
               </div>
-              <div className="detail-grid">
-                <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} /></div>
-                <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />
-              </div>
+              {(hasTelemetryCharts || hasDetailRoute) && (
+                <div className="detail-grid">
+                  {hasTelemetryCharts && (
+                    <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} /></div>
+                  )}
+                  {hasDetailRoute && <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />}
+                </div>
+              )}
               <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
