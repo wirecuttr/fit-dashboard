@@ -56,25 +56,25 @@ export type DeviceInfoMetadata = {
 };
 
 export type WorkoutMetadata = {
-  wkt_name?: string | null;
-  wkt_description?: string | null;
-  sport?: string | null;
-  sub_sport?: string | null;
+  wkt_name?: string | number | null;
+  wkt_description?: string | number | null;
+  sport?: string | number | null;
+  sub_sport?: string | number | null;
   num_valid_steps?: number | null;
   capabilities?: string | number | null;
 };
 
 export type WorkoutStepMetadata = {
   message_index?: number | null;
-  wkt_step_name?: string | null;
-  duration_type?: string | null;
+  wkt_step_name?: string | number | null;
+  duration_type?: string | number | null;
   duration_value?: number | null;
-  target_type?: string | null;
+  target_type?: string | number | null;
   target_value?: string | number | null;
   custom_target_value_low?: number | null;
   custom_target_value_high?: number | null;
   intensity?: string | number | null;
-  notes?: string | null;
+  notes?: string | number | null;
 };
 
 export type ActivityMetadata = {
@@ -88,10 +88,10 @@ export type ActivityMetadata = {
   workout?: WorkoutMetadata | null;
   workout_steps?: WorkoutStepMetadata[];
   training_file?: {
-    type?: string | null;
-    manufacturer?: string | null;
-    garmin_product?: string | null;
-    product?: string | null;
+    type?: string | number | null;
+    manufacturer?: string | number | null;
+    garmin_product?: string | number | null;
+    product?: string | number | null;
   } | null;
   activity_metrics?: {
     vo2_max?: number | null;

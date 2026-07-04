@@ -89,6 +89,12 @@ function isCyclingSport(sport: string | null | undefined): boolean {
   return normalized.includes("cycling") || normalized.includes("biking") || normalized.includes("bike");
 }
 
+function metadataLabel(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
 function humanizeToken(value: string): string {
   return value
     .split(/[\s_]+/)
@@ -1152,7 +1158,7 @@ export function Dashboard({ onLogout }: Props) {
 
   const lapRows = useMemo(() => {
     const laps = selectedMetadata?.laps ?? [];
-    const workoutSport = selectedMetadata?.workout?.sport ?? selectedActivity?.sport ?? "";
+    const workoutSport = metadataLabel(selectedMetadata?.workout?.sport) || selectedActivity?.sport || "";
     const stepMap = new Map<number, WorkoutStepMetadata>();
     for (const step of selectedMetadata?.workout_steps ?? []) {
       if (isNumber(step.message_index)) {
@@ -1178,7 +1184,9 @@ export function Dashboard({ onLogout }: Props) {
         : "-";
       const step = isNumber(lap.wkt_step_index) ? stepMap.get(lap.wkt_step_index) : undefined;
       const rawIntensity = step?.intensity ?? lap.intensity ?? "";
-      const intensity = String(rawIntensity).trim().toLowerCase();
+      const intensity = metadataLabel(rawIntensity).toLowerCase();
+      const stepName = metadataLabel(step?.wkt_step_name);
+      const stepNotes = metadataLabel(step?.notes);
       const stepType = workoutStepTypeLabel(intensity, workoutSport, t);
       let intervalLabel = String(index + 1);
 
@@ -1191,8 +1199,8 @@ export function Dashboard({ onLogout }: Props) {
           intervalLabel = String(currentWorkInterval);
         } else if (stepType !== "-") {
           intervalLabel = stepType;
-        } else if (step?.wkt_step_name) {
-          intervalLabel = step.wkt_step_name;
+        } else if (stepName) {
+          intervalLabel = stepName;
         }
       }
 
@@ -1200,7 +1208,7 @@ export function Dashboard({ onLogout }: Props) {
         index: index + 1,
         intervalLabel,
         stepType,
-        stepNotes: step?.notes ?? null,
+        stepNotes: stepNotes || null,
         lapTimeSec,
         cumulativeSeconds,
         distanceMeters,
