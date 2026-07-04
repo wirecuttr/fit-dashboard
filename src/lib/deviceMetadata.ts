@@ -1,3 +1,4 @@
+import productLookup from "../data/deviceProductLookup.json";
 import type { Activity } from "../types";
 
 export type CodeNameLabel = {
@@ -13,6 +14,23 @@ export type ProductMetadata = {
   label?: string | null;
   lookup_source?: string | null;
 };
+
+type ProductLookupEntry = {
+  manufacturer: string;
+  manufacturerCode?: number;
+  productField?: string;
+  productCode: number;
+  productName?: string | null;
+  displayName: string;
+  source: string;
+  roles?: string[];
+  sourceTypes?: string[];
+  sourceTypeCodes?: number[];
+  deviceTypes?: string[];
+  deviceTypeCodes?: number[];
+};
+
+const DEVICE_PRODUCT_LOOKUP = productLookup as ProductLookupEntry[];
 
 export type DeviceMetadata = {
   role?: string | null;
@@ -126,38 +144,125 @@ function firstDeviceTypeLabel(device: DeviceMetadata): string | null {
     ?? null;
 }
 
-function hasDeviceType(device: DeviceMetadata, names: string[], codes: number[]): boolean {
-  return (device.device_types ?? []).some((type) => {
-    const name = type.name?.toLowerCase();
-    return (name ? names.includes(name) : false)
-      || (typeof type.code === "number" ? codes.includes(type.code) : false);
-  });
-}
-
-function isExternalSource(device: DeviceMetadata): boolean {
-  return ["ant", "antplus", "bluetooth", "bluetooth_low_energy"].includes(
-    device.source_type?.name?.toLowerCase() ?? ""
-  );
-}
-
-function isGarmin(device: DeviceMetadata): boolean {
-  return device.manufacturer?.name?.toLowerCase() === "garmin" || device.manufacturer?.code === 1;
-}
-
 function displayManufacturerLabel(device: DeviceMetadata): string | null {
   return device.manufacturer?.label
     ?? labelFromIdentifier(device.manufacturer?.name)
     ?? null;
 }
 
+function normalizedIdentifier(value?: string | null): string | null {
+  const normalized = value?.trim().toLowerCase();
+  return normalized || null;
+}
+
+function hasLookupConstraints(entry: ProductLookupEntry): boolean {
+  return Boolean(
+    entry.roles?.length
+    || entry.sourceTypes?.length
+    || entry.sourceTypeCodes?.length
+    || entry.deviceTypes?.length
+    || entry.deviceTypeCodes?.length
+  );
+}
+
+function includesNormalized(values: string[] | undefined, value?: string | null): boolean {
+  const normalized = normalizedIdentifier(value);
+  return Boolean(
+    normalized
+    && values?.some((candidate) => normalizedIdentifier(candidate) === normalized)
+  );
+}
+
+function matchesCodeNameConstraint(
+  value: CodeNameLabel | null | undefined,
+  names?: string[],
+  codes?: number[]
+): boolean {
+  if (!names?.length && !codes?.length) return true;
+  return includesNormalized(names, value?.name)
+    || (typeof value?.code === "number" && Boolean(codes?.includes(value.code)));
+}
+
+function matchesAnyCodeNameConstraint(
+  values: CodeNameLabel[] | null | undefined,
+  names?: string[],
+  codes?: number[]
+): boolean {
+  if (!names?.length && !codes?.length) return true;
+  return (values ?? []).some((value) => matchesCodeNameConstraint(value, names, codes));
+}
+
+function lookupEntryMatchesDevice(entry: ProductLookupEntry, device: DeviceMetadata): boolean {
+  const product = device.product;
+  if (typeof product?.code !== "number" || entry.productCode !== product.code) return false;
+
+  const manufacturerName = normalizedIdentifier(device.manufacturer?.name);
+  const manufacturerCode = device.manufacturer?.code;
+  const productField = normalizedIdentifier(product.field);
+  const candidateManufacturer = normalizedIdentifier(entry.manufacturer);
+  const candidateField = normalizedIdentifier(entry.productField);
+  const manufacturerMatches =
+    (
+      typeof entry.manufacturerCode === "number"
+      && manufacturerCode === entry.manufacturerCode
+    ) || (candidateManufacturer != null && candidateManufacturer === manufacturerName);
+  const fieldMatches = !candidateField || !productField || candidateField === productField;
+
+  if (!manufacturerMatches || !fieldMatches) return false;
+
+  if (entry.roles?.length && !includesNormalized(entry.roles, device.role)) return false;
+
+  if (!matchesCodeNameConstraint(device.source_type, entry.sourceTypes, entry.sourceTypeCodes)) {
+    return false;
+  }
+
+  if (!matchesAnyCodeNameConstraint(device.device_types, entry.deviceTypes, entry.deviceTypeCodes)) {
+    return false;
+  }
+
+  return true;
+}
+
+function supplementalProductLabel(device: DeviceMetadata, constrained: boolean): string | null {
+  const entry = DEVICE_PRODUCT_LOOKUP.find((candidate) => (
+    hasLookupConstraints(candidate) === constrained && lookupEntryMatchesDevice(candidate, device)
+  ));
+
+  return entry?.displayName ?? null;
+}
+
+function supplementalDecodedProductLabel(
+  product?: ProductMetadata | null,
+  manufacturer?: CodeNameLabel | null
+): string | null {
+  if (typeof product?.code !== "number") return null;
+
+  return DEVICE_PRODUCT_LOOKUP.find((candidate) => (
+    !hasLookupConstraints(candidate)
+    && candidate.productCode === product.code
+    && (
+      (
+        typeof candidate.manufacturerCode === "number"
+        && manufacturer?.code === candidate.manufacturerCode
+      ) || normalizedIdentifier(candidate.manufacturer) === normalizedIdentifier(manufacturer?.name)
+    )
+    && (
+      !candidate.productField
+      || !product.field
+      || normalizedIdentifier(candidate.productField) === normalizedIdentifier(product.field)
+    )
+  ))?.displayName ?? null;
+}
+
 function forerunnerLabel(value?: string | null): string | null {
-  const match = value?.match(/^fr(\d+)(m)?(?:_(.*))?$/i);
+  const match = value?.match(/^fr(\d+)(xt|m)?(?:_(.*))?$/i);
   if (!match) return null;
 
-  const [, model, musicSuffix, rawRest] = match;
+  const [, model, rawModelSuffix, rawRest] = match;
   let modelSuffix = "";
   const descriptors = new Set<string>();
-  if (musicSuffix) descriptors.add("Music");
+  if (rawModelSuffix?.toLowerCase() === "xt") modelSuffix += "XT";
+  if (rawModelSuffix?.toLowerCase() === "m") descriptors.add("Music");
 
   for (const part of rawRest?.split("_").filter(Boolean) ?? []) {
     const lower = part.toLowerCase();
@@ -192,27 +297,9 @@ function rawProductCodeLabel(product?: ProductMetadata | null): string | null {
 
 function derivedProductLabel(device: DeviceMetadata): string | null {
   const product = device.product;
-  if (isGarmin(device)) {
-    if (
-      product?.code === 3592
-      && hasDeviceType(device, ["bike_light_main", "bike_light_shared", "bike_radar"], [35, 40])
-    ) {
-      return "Varia RTL515";
-    }
-
-    if (
-      (product?.code === 4606 || product?.name === "hrm_200")
-      || (
-        product?.code === 255
-        && isExternalSource(device)
-        && hasDeviceType(device, ["heart_rate"], [120])
-      )
-    ) {
-      return "HRM 200";
-    }
-  }
-
-  return profileProductLabel(product);
+  return supplementalProductLabel(device, true)
+    ?? profileProductLabel(product)
+    ?? supplementalProductLabel(device, false);
 }
 
 export function formatDeviceLabel(device: DeviceMetadata): string {
@@ -263,8 +350,8 @@ function decodedFileIdLabel(info?: DeviceInfoMetadata | null): string | null {
   const manufacturer = decoded.manufacturer?.label
     ?? labelFromIdentifier(decoded.manufacturer?.name)
     ?? null;
-  const product = decoded.product?.label
-    ?? labelFromIdentifier(decoded.product?.name)
+  const product = profileProductLabel(decoded.product)
+    ?? supplementalDecodedProductLabel(decoded.product, decoded.manufacturer)
     ?? null;
   const label = [manufacturer, product].filter(Boolean).join(" ").trim();
   return label || null;
