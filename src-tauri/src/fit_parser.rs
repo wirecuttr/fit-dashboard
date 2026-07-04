@@ -413,6 +413,7 @@ fn build_generated_title(
     fallback
 }
 
+#[cfg(test)]
 fn build_activity_name(
     file_name: &str,
     sport: &str,
