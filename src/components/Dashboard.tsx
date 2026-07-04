@@ -43,6 +43,7 @@ import {
   getAccessoryDevices,
   getPrimaryDeviceLabel,
   parseActivityMetadata,
+  type WorkoutStepMetadata,
 } from "../lib/deviceMetadata";
 import { hasUsableDistanceAxis, type TelemetryXAxisMode } from "../lib/telemetryAxis";
 
@@ -86,6 +87,47 @@ function shortenFileName(name: string, maxLength = 45): string {
 function isCyclingSport(sport: string | null | undefined): boolean {
   const normalized = String(sport ?? "").trim().toLowerCase().replace(/[ -]/g, "_");
   return normalized.includes("cycling") || normalized.includes("biking") || normalized.includes("bike");
+}
+
+function humanizeToken(value: string): string {
+  return value
+    .split(/[\s_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function workoutStepTypeLabel(
+  intensity: string,
+  sport: string,
+  t: (key: string) => string
+): string {
+  const normalized = intensity.trim().toLowerCase();
+  if (normalized === "warmup") return t("detail.stepWarmUp");
+  if (normalized === "cooldown") return t("detail.stepCoolDown");
+  if (normalized === "rest" || normalized === "recovery") return t("detail.stepRecovery");
+
+  if (normalized === "interval" || normalized === "active") {
+    const sportName = sport.toLowerCase();
+    if (sportName.includes("run")) return t("detail.stepRun");
+    if (sportName.includes("cycl") || sportName.includes("bike")) return t("detail.stepBike");
+    if (sportName.includes("swim")) return t("detail.stepSwim");
+    return t("detail.stepActive");
+  }
+
+  return normalized ? humanizeToken(normalized) : "-";
+}
+
+function isNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isWorkStepIntensity(intensity: string): boolean {
+  return intensity === "interval" || intensity === "active";
+}
+
+function isRecoveryStepIntensity(intensity: string): boolean {
+  return intensity === "rest" || intensity === "recovery";
 }
 
 function isTauriRuntime(): boolean {
@@ -1033,6 +1075,11 @@ export function Dashboard({ onLogout }: Props) {
       .filter((ts) => !!ts),
     [selectedMetadata]
   );
+  const hasPlannedWorkoutIntervals = useMemo(() => {
+    const steps = selectedMetadata?.workout_steps ?? [];
+    if (steps.length === 0) return false;
+    return (selectedMetadata?.laps ?? []).some((lap) => isNumber(lap.wkt_step_index));
+  }, [selectedMetadata]);
   useEffect(() => {
     if (selectedActivity && records.length > 0 && !hasTelemetryDistanceAxis && telemetryXAxisMode === "distance") {
       setTelemetryXAxisMode("time");
@@ -1091,14 +1138,31 @@ export function Dashboard({ onLogout }: Props) {
     }
     if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", "VO2 Max", `${metric.vo2_max.toFixed(1)}`, "vo2");
     if (typeof session.total_calories === "number" && session.total_calories > 0) push("total_calories", t("detail.calories"), `${Math.round(session.total_calories)} kcal`, "flame");
-    if (lapTimestampsUtc.length > 0) push("laps", t("detail.laps"), String(lapTimestampsUtc.length), "avg");
+    if (lapTimestampsUtc.length > 0) {
+      push(
+        "laps",
+        hasPlannedWorkoutIntervals ? t("detail.intervals") : t("detail.laps"),
+        String(lapTimestampsUtc.length),
+        "avg"
+      );
+    }
 
     return out;
-  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, sessionNormalizedPower, lapTimestampsUtc.length, t]);
+  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, sessionNormalizedPower, lapTimestampsUtc.length, hasPlannedWorkoutIntervals, t]);
 
   const lapRows = useMemo(() => {
     const laps = selectedMetadata?.laps ?? [];
+    const workoutSport = selectedMetadata?.workout?.sport ?? selectedActivity?.sport ?? "";
+    const stepMap = new Map<number, WorkoutStepMetadata>();
+    for (const step of selectedMetadata?.workout_steps ?? []) {
+      if (isNumber(step.message_index)) {
+        stepMap.set(step.message_index, step);
+      }
+    }
+
     let cumulativeSeconds = 0;
+    let workIntervalCount = 0;
+    let currentWorkInterval: number | null = null;
 
     return laps.map((lap, index) => {
       const lapTimeSec = typeof lap.total_timer_time_s === "number"
@@ -1112,8 +1176,31 @@ export function Dashboard({ onLogout }: Props) {
       const bestPace = lap.best_speed_m_s && lap.best_speed_m_s > 0
         ? formatPace((distanceDivisorValue / lap.best_speed_m_s), distanceSuffix)
         : "-";
+      const step = isNumber(lap.wkt_step_index) ? stepMap.get(lap.wkt_step_index) : undefined;
+      const rawIntensity = step?.intensity ?? lap.intensity ?? "";
+      const intensity = String(rawIntensity).trim().toLowerCase();
+      const stepType = workoutStepTypeLabel(intensity, workoutSport, t);
+      let intervalLabel = String(index + 1);
+
+      if (hasPlannedWorkoutIntervals) {
+        if (isWorkStepIntensity(intensity)) {
+          workIntervalCount += 1;
+          currentWorkInterval = workIntervalCount;
+          intervalLabel = String(workIntervalCount);
+        } else if (isRecoveryStepIntensity(intensity) && currentWorkInterval != null) {
+          intervalLabel = String(currentWorkInterval);
+        } else if (stepType !== "-") {
+          intervalLabel = stepType;
+        } else if (step?.wkt_step_name) {
+          intervalLabel = step.wkt_step_name;
+        }
+      }
+
       return {
         index: index + 1,
+        intervalLabel,
+        stepType,
+        stepNotes: step?.notes ?? null,
         lapTimeSec,
         cumulativeSeconds,
         distanceMeters,
@@ -1128,7 +1215,7 @@ export function Dashboard({ onLogout }: Props) {
         bestPace,
       };
     });
-  }, [selectedMetadata?.laps, distanceDivisorValue, distanceSuffix]);
+  }, [selectedActivity?.sport, selectedMetadata, distanceDivisorValue, distanceSuffix, hasPlannedWorkoutIntervals, t]);
   const showLapNormalizedPower = isSelectedCycling && lapRows.some((lap) => typeof lap.normalizedPower === "number" && lap.normalizedPower > 0);
 
   return (
@@ -1672,12 +1759,14 @@ export function Dashboard({ onLogout }: Props) {
               <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
-                  <h3>{t("detail.laps")}</h3>
+                  <h3>{hasPlannedWorkoutIntervals ? t("detail.intervals") : t("detail.laps")}</h3>
                   <div className="laps-table-wrap">
                     <table className="laps-table">
                       <thead>
                         <tr>
-                          <th>{t("detail.laps")}</th>
+                          <th>{hasPlannedWorkoutIntervals ? t("detail.interval") : t("detail.laps")}</th>
+                          {hasPlannedWorkoutIntervals && <th>{t("detail.stepType")}</th>}
+                          {hasPlannedWorkoutIntervals && <th>{t("detail.laps")}</th>}
                           <th>{t("detail.time")}</th>
                           <th>{t("detail.cumulativeTime")}</th>
                           <th>{t("detail.distance")}</th>
@@ -1694,7 +1783,9 @@ export function Dashboard({ onLogout }: Props) {
                       <tbody>
                         {lapRows.map((lap) => (
                           <tr key={`lap-${lap.index}`}>
-                            <td>{lap.index}</td>
+                            <td title={lap.stepNotes ?? undefined}>{hasPlannedWorkoutIntervals ? lap.intervalLabel : lap.index}</td>
+                            {hasPlannedWorkoutIntervals && <td title={lap.stepNotes ?? undefined}>{lap.stepType}</td>}
+                            {hasPlannedWorkoutIntervals && <td>{lap.index}</td>}
                             <td>{lap.lapTimeSec != null ? formatDuration(lap.lapTimeSec) : "-"}</td>
                             <td>{formatDuration(lap.cumulativeSeconds)}</td>
                             <td>{lap.distanceMeters != null ? `${(lap.distanceMeters / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-"}</td>
@@ -1712,6 +1803,8 @@ export function Dashboard({ onLogout }: Props) {
                       <tfoot>
                         <tr>
                           <td>{t("detail.summary")}</td>
+                          {hasPlannedWorkoutIntervals && <td>-</td>}
+                          {hasPlannedWorkoutIntervals && <td>-</td>}
                           <td>{formatDuration(lapRows.reduce((a, b) => a + (b.lapTimeSec || 0), 0))}</td>
                           <td>-</td>
                           <td>{(() => {
