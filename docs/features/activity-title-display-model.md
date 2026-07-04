@@ -337,15 +337,8 @@ implementation must either duplicate the small `Workout.wkt_name` extraction
 needed for `source_title`, or wait/rebase after Feature 33 lands. The title model
 itself does not require the full planned-workout interval-table feature.
 
-## Open Questions
+## Deferred Considerations
 
-- How should the app identify existing user-edited names if a future backfill or
-  reset-to-generated-title tool is added?
-- Should city-only generated titles always omit province/region, or should the
-  list add region for ambiguous city names?
-- Should source titles from non-FIT formats be supported later?
-- Should the search index store displayed title, source title, generated title,
-  location, and activity type as separate searchable fields, or collapse them
-  into one search string?
-- If icons are added later, what sub-sport-level icon coverage is needed for a
-  useful first pass?
+Deferred follow-up topics are tracked separately in
+`activity-title-display-model-future-considerations.md`. None of those topics
+block the first implementation described here.
