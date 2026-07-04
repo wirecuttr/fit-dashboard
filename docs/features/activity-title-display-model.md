@@ -146,7 +146,9 @@ activity_name = source_title ?? generated_title ?? file_name fallback
 
 After import, the UI displays `activity_name` / `activity_title`. If the user
 edits the activity name, only that displayed title changes; `source_title` and
-`generated_title` remain as reference/provenance fields.
+`generated_title` remain as reference/provenance fields. UI surfaces can treat an
+`activity_name` that differs from `generated_title` as an independent title and
+show type/location context around it.
 
 Generated title resolver:
 
@@ -245,6 +247,8 @@ Implementation decision:
 - Add `source_title` and `generated_title` as provenance/reference fields.
 - Add location columns so generated titles and the left-side list do not need to
   reverse-parse `activity_name` or recompute location context.
+- Add a `sub_sport` column so activity type labels can be derived from raw
+  imported values instead of stored display wording.
 - Preserve raw metadata needed to compute labels.
 - Resolve the displayed title at import time rather than requiring every UI
   surface to repeat the same fallback chain.
@@ -255,6 +259,8 @@ Database fields:
 activity_name TEXT NOT NULL
 source_title TEXT NULL
 generated_title TEXT NULL
+sport TEXT NULL
+sub_sport TEXT NULL
 location_city TEXT NULL
 location_region TEXT NULL
 location_country TEXT NULL
@@ -262,7 +268,8 @@ location_label TEXT NULL
 ```
 
 The important point is that the displayed editable title, imported source title,
-generated fallback title, and location context are not the same concept.
+generated fallback title, raw activity type values, and location context are not
+the same concept.
 
 ## Migration Strategy
 

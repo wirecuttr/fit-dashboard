@@ -148,39 +148,127 @@ fn child_node<'a>(node: roxmltree::Node<'a, 'a>, name: &str) -> Option<roxmltree
         .find(|n| n.is_element() && n.tag_name().name() == name)
 }
 
-fn title_case_sport(sport: &str) -> String {
-    if sport.is_empty() {
-        return "Activity".to_string();
-    }
-    let mut chars = sport.chars();
-    let Some(first) = chars.next() else {
-        return "Activity".to_string();
-    };
-    first.to_uppercase().collect::<String>() + chars.as_str()
+#[derive(Debug, Clone, Default)]
+struct ActivityLocation {
+    city: Option<String>,
+    region: Option<String>,
+    country: Option<String>,
+    label: Option<String>,
 }
 
-fn build_activity_name(file_name: &str, sport: &str, points: &[RecordPoint]) -> String {
-    let fallback = strip_known_extension(file_name);
-    let sport_label = title_case_sport(sport);
+fn clean_string(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
 
-    if let Some(pos) = points.iter().find(|p| p.latitude.is_some() && p.longitude.is_some()) {
-        let geocoder = reverse_geocoder::ReverseGeocoder::new();
-        let result = geocoder.search((pos.latitude.unwrap(), pos.longitude.unwrap()));
-        let record = result.record;
+fn humanize_token(value: &str) -> String {
+    value
+        .split(|c: char| c == '_' || c == '-' || c.is_whitespace())
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let lower = part.to_lowercase();
+            match lower.as_str() {
+                "gps" | "hr" | "hrm" | "bmx" | "hiit" => lower.to_uppercase(),
+                "ebike" | "ebiking" => "eBiking".to_string(),
+                _ => {
+                    let mut chars = lower.chars();
+                    match chars.next() {
+                        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                        None => String::new(),
+                    }
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
-        let mut loc_parts = Vec::new();
-        if !record.name.is_empty() {
-            loc_parts.push(record.name.as_str());
-        }
-        if !record.admin1.is_empty() {
-            loc_parts.push(record.admin1.as_str());
-        }
-        let loc = loc_parts.join(", ");
-        if !loc.is_empty() {
-            return format!("{} — {}", loc, sport_label);
+fn activity_type_label(sport: &str, sub_sport: &str) -> Option<String> {
+    let sport = sport.trim().to_lowercase();
+    let sub_sport = sub_sport.trim().to_lowercase();
+    let has_sub_sport = !sub_sport.is_empty() && sub_sport != "generic" && sub_sport != "unknown";
+
+    if has_sub_sport {
+        match (sport.as_str(), sub_sport.as_str()) {
+            ("cycling", "road") => return Some("Road Cycling".to_string()),
+            ("cycling", "indoor_cycling") | ("cycling", "spin") => {
+                return Some("Indoor Cycling".to_string())
+            }
+            ("cycling", "mountain") => return Some("Mountain Biking".to_string()),
+            ("cycling", "gravel_cycling") => return Some("Gravel Cycling".to_string()),
+            ("cycling", "e_bike_fitness") | ("e_biking", "e_bike_fitness") => {
+                return Some("eBiking".to_string())
+            }
+            ("cycling", "e_bike_mountain") | ("e_biking", "e_bike_mountain") => {
+                return Some("eMountain Biking".to_string())
+            }
+            ("cycling", "cyclocross") => return Some("Cyclocross".to_string()),
+            ("cycling", "track_cycling") => return Some("Track Cycling".to_string()),
+            ("running", "trail") => return Some("Trail Running".to_string()),
+            ("running", "treadmill") | ("running", "indoor_running") => {
+                return Some("Treadmill Running".to_string())
+            }
+            ("running", "track") => return Some("Track Running".to_string()),
+            ("running", "ultra") => return Some("Ultra Running".to_string()),
+            ("swimming", "lap_swimming") => return Some("Lap Swimming".to_string()),
+            ("swimming", "open_water") => return Some("Open Water Swimming".to_string()),
+            ("training", "strength_training") => return Some("Strength Training".to_string()),
+            ("training", "cardio_training") => return Some("Cardio Training".to_string()),
+            ("training", "yoga") => return Some("Yoga".to_string()),
+            ("training", "pilates") => return Some("Pilates".to_string()),
+            _ => return Some(humanize_token(&sub_sport)),
         }
     }
 
+    match sport.as_str() {
+        "" | "unknown" => None,
+        "e_biking" => Some("eBiking".to_string()),
+        _ => Some(humanize_token(&sport)),
+    }
+}
+
+fn derive_activity_location(points: &[RecordPoint]) -> ActivityLocation {
+    let Some(pos) = points.iter().find(|p| p.latitude.is_some() && p.longitude.is_some()) else {
+        return ActivityLocation::default();
+    };
+
+    let geocoder = reverse_geocoder::ReverseGeocoder::new();
+    let result = geocoder.search((pos.latitude.unwrap(), pos.longitude.unwrap()));
+    let record = result.record;
+
+    let city = clean_string(record.name.to_string());
+    let region = clean_string(record.admin1.to_string());
+    let country = clean_string(record.cc.to_string());
+    let label_parts = [city.as_deref(), region.as_deref()]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+
+    ActivityLocation {
+        city,
+        region,
+        country,
+        label: if label_parts.is_empty() {
+            None
+        } else {
+            Some(label_parts.join(", "))
+        },
+    }
+}
+
+fn build_generated_title(file_name: &str, sport: &str, sub_sport: &str, location: &ActivityLocation) -> String {
+    let fallback = strip_known_extension(file_name);
+    if let Some(activity_type) = activity_type_label(sport, sub_sport) {
+        if let Some(city) = location.city.as_deref().filter(|city| !city.is_empty()) {
+            return format!("{} {}", city, activity_type);
+        }
+        return activity_type;
+    }
     fallback
 }
 
@@ -286,6 +374,8 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
 
     let mut points: Vec<RecordPoint> = Vec::new();
     let mut sport = String::from("unknown");
+    let mut sub_sport = String::new();
+    let mut source_title: Option<String> = None;
     let mut device = String::new();
     let mut file_id_product_name: Option<String> = None;
     let mut file_id_manufacturer: Option<String> = None;
@@ -377,6 +467,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             for field in rec.fields() {
                 match field.name() {
                     "sport" => sport = value_string(field.value()).to_lowercase(),
+                    "sub_sport" => sub_sport = value_string(field.value()).to_lowercase(),
                     "beginning_body_battery" | "start_body_battery" => {
                         session_beginning_body_battery = value_i64(field.value())
                     }
@@ -391,6 +482,12 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     "total_distance" => session_total_distance_m = value_f64(field.value()),
                     "total_calories" => session_total_calories = value_i64(field.value()),
                     _ => {}
+                }
+            }
+        } else if rec.kind() == MesgNum::Workout {
+            for field in rec.fields() {
+                if field.name() == "wkt_name" && source_title.is_none() {
+                    source_title = clean_string(value_string(field.value()));
                 }
             }
         } else if rec.kind() == MesgNum::DeviceInfo {
@@ -616,6 +713,9 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     let duration_s = ((end_ts - start_ts).max(0) as f64) / 1000.0;
     let distance_m = total_distance_m(&points);
     let (start_latitude, start_longitude) = first_valid_coordinates(&points);
+    let location = derive_activity_location(&points);
+    let generated_title = build_generated_title(file_name, &sport, &sub_sport, &location);
+    let activity_name = source_title.clone().unwrap_or_else(|| generated_title.clone());
 
     let file_id_combined_name = combine_device_name(
         file_id_product_name.clone(),
@@ -639,7 +739,18 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         "record_count": points.len(),
         "device": device,
         "sport": sport,
+        "sub_sport": sub_sport.clone(),
         "source_format": "fit",
+        "title": {
+            "source_title": source_title.clone(),
+            "generated_title": generated_title.clone()
+        },
+        "location": {
+            "city": location.city.clone(),
+            "region": location.region.clone(),
+            "country": location.country.clone(),
+            "label": location.label.clone()
+        },
         "file_id": {
             "product_name": file_id_combined_name,
             "serial_number": resolved_serial_number
@@ -669,14 +780,19 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     })
     .to_string();
 
-    let activity_name = build_activity_name(file_name, &sport, &points);
-
     Ok(ParsedActivity {
         file_name: file_name.to_string(),
         source_format: "fit".to_string(),
         activity_name,
+        source_title,
+        generated_title: Some(generated_title),
         sport,
+        sub_sport,
         device,
+        location_city: location.city,
+        location_region: location.region,
+        location_country: location.country,
+        location_label: location.label,
         start_ts_utc: chrono::DateTime::from_timestamp_millis(start_ts)
             .ok_or_else(|| anyhow!("invalid start timestamp"))?
             .to_rfc3339(),
@@ -800,23 +916,44 @@ fn parse_tcx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     let duration_s = ((end_ts - start_ts).max(0) as f64) / 1000.0;
     let distance_m = total_distance_m(&points);
     let (start_latitude, start_longitude) = first_valid_coordinates(&points);
+    let sub_sport = String::new();
+    let source_title: Option<String> = None;
+    let location = derive_activity_location(&points);
+    let generated_title = build_generated_title(file_name, &sport, &sub_sport, &location);
+    let activity_name = generated_title.clone();
 
     let metadata_json = serde_json::json!({
         "record_count": points.len(),
         "device": device,
         "sport": sport,
-        "source_format": "tcx"
+        "sub_sport": sub_sport.clone(),
+        "source_format": "tcx",
+        "title": {
+            "source_title": source_title.clone(),
+            "generated_title": generated_title.clone()
+        },
+        "location": {
+            "city": location.city.clone(),
+            "region": location.region.clone(),
+            "country": location.country.clone(),
+            "label": location.label.clone()
+        }
     })
     .to_string();
-
-    let activity_name = build_activity_name(file_name, &sport, &points);
 
     Ok(ParsedActivity {
         file_name: file_name.to_string(),
         source_format: "tcx".to_string(),
         activity_name,
+        source_title,
+        generated_title: Some(generated_title),
         sport,
+        sub_sport,
         device,
+        location_city: location.city,
+        location_region: location.region,
+        location_country: location.country,
+        location_label: location.label,
         start_ts_utc: chrono::DateTime::from_timestamp_millis(start_ts)
             .ok_or_else(|| anyhow!("invalid start timestamp"))?
             .to_rfc3339(),
@@ -947,23 +1084,44 @@ fn parse_gpx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     let duration_s = ((end_ts - start_ts).max(0) as f64) / 1000.0;
     let distance_m = total_distance_m(&points);
     let (start_latitude, start_longitude) = first_valid_coordinates(&points);
+    let sub_sport = String::new();
+    let source_title: Option<String> = None;
+    let location = derive_activity_location(&points);
+    let generated_title = build_generated_title(file_name, &sport, &sub_sport, &location);
+    let activity_name = generated_title.clone();
 
     let metadata_json = serde_json::json!({
         "record_count": points.len(),
         "device": device,
         "sport": sport,
-        "source_format": "gpx"
+        "sub_sport": sub_sport.clone(),
+        "source_format": "gpx",
+        "title": {
+            "source_title": source_title.clone(),
+            "generated_title": generated_title.clone()
+        },
+        "location": {
+            "city": location.city.clone(),
+            "region": location.region.clone(),
+            "country": location.country.clone(),
+            "label": location.label.clone()
+        }
     })
     .to_string();
-
-    let activity_name = build_activity_name(file_name, &sport, &points);
 
     Ok(ParsedActivity {
         file_name: file_name.to_string(),
         source_format: "gpx".to_string(),
         activity_name,
+        source_title,
+        generated_title: Some(generated_title),
         sport,
+        sub_sport,
         device,
+        location_city: location.city,
+        location_region: location.region,
+        location_country: location.country,
+        location_label: location.label,
         start_ts_utc: chrono::DateTime::from_timestamp_millis(start_ts)
             .ok_or_else(|| anyhow!("invalid start timestamp"))?
             .to_rfc3339(),

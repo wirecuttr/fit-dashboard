@@ -15,6 +15,7 @@ import { DateRange } from "react-day-picker";
 import { DonationBanner } from "./DonationBanner";
 import { SettingsPanel } from "./SettingsPanel";
 import { api } from "../lib/api";
+import { formatActivityTypeLabel } from "../lib/activityType";
 import { isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { exportSingleActivity, exportBulkActivities, type ExportFormat, type BulkExportProgress } from "../lib/exportUtils";
@@ -422,7 +423,25 @@ export function Dashboard({ onLogout }: Props) {
     return activities.filter((a) => {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        if (!`${a.activity_name} ${a.file_name} ${a.sport}`.toLowerCase().includes(q)) return false;
+        const typeLabel = formatActivityTypeLabel(a.sport, a.sub_sport);
+        const searchableText = [
+          a.activity_name,
+          a.file_name,
+          a.source_title,
+          a.generated_title,
+          a.sport,
+          a.sub_sport,
+          typeLabel,
+          a.device,
+          a.location_city,
+          a.location_region,
+          a.location_country,
+          a.location_label,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!searchableText.includes(q)) return false;
       }
       if (filterSport !== "all" && a.sport !== filterSport) return false;
       const ts = parseUtcDate(a.start_ts_utc).getTime();
@@ -1398,9 +1417,19 @@ export function Dashboard({ onLogout }: Props) {
             <div className="activity-list-box">
               <div className="activity-list">
                 {sortedForList.map((a) => {
-                const isRenaming = renameTarget?.id === a.id;
-                const isDeleting = deleteTarget === a.id;
-                const isActive = selectedActivity?.id === a.id;
+                  const isRenaming = renameTarget?.id === a.id;
+                  const isDeleting = deleteTarget === a.id;
+                  const isActive = selectedActivity?.id === a.id;
+                  const activityTypeLabel = formatActivityTypeLabel(a.sport, a.sub_sport);
+                  const titleDiffersFromGenerated = Boolean(
+                    a.generated_title && (a.activity_name || "").trim() !== a.generated_title.trim(),
+                  );
+                  const hasIndependentTitle = Boolean(a.source_title || titleDiffersFromGenerated);
+                  const contextParts = [
+                    hasIndependentTitle || a.location_city ? activityTypeLabel : "",
+                    hasIndependentTitle ? a.location_city || a.location_label || "" : "",
+                    a.device,
+                  ].filter((part): part is string => Boolean(part));
 
                   return (
                   <div key={a.id} className={`activity-item ${isActive ? "active" : ""}`}>
@@ -1464,10 +1493,15 @@ export function Dashboard({ onLogout }: Props) {
                         >
                           <span className="activity-name">{a.activity_name || a.file_name}</span>
                           <div className="activity-meta-rows">
-                            <div className="activity-meta-row" style={{ color: "var(--text-muted)", marginBottom: "4px" }}>
+                            {contextParts.length > 0 && (
+                              <div className="activity-meta-row activity-context-row">
+                                <span>{contextParts.join(" - ")}</span>
+                              </div>
+                            )}
+                            <div className="activity-meta-row">
                               <span>{formatDateShort(a.start_ts_utc)} &bull; {formatTimeShort(a.start_ts_utc)}</span>
                             </div>
-                            <div className="activity-meta-row" style={{ fontWeight: 600 }}>
+                            <div className="activity-meta-row activity-stats-row">
                               <span className="activity-pill">{(a.distance_m / distanceDivisorValue).toFixed(1)} {distanceSuffix}</span>
                               <span className="spacer" />
                               <span className="activity-pill">{formatDuration(a.duration_s)}</span>

@@ -5,6 +5,7 @@
 
 import type { Activity, RecordPoint } from "../types";
 import { api } from "./api";
+import { formatActivityTypeLabel } from "./activityType";
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -57,8 +58,18 @@ export function buildCsv(activity: Activity, records: RecordPoint[]): string {
     format: "FIT Dashboard CSV Export",
     exported_at: new Date().toISOString(),
     activity_name: activity.activity_name || activity.file_name,
+    source_title: activity.source_title ?? null,
+    generated_title: activity.generated_title ?? null,
     sport: activity.sport,
+    sub_sport: activity.sub_sport ?? null,
+    activity_type_label: formatActivityTypeLabel(activity.sport, activity.sub_sport) || null,
     device: activity.device,
+    location: {
+      label: activity.location_label ?? null,
+      city: activity.location_city ?? null,
+      region: activity.location_region ?? null,
+      country: activity.location_country ?? null,
+    },
     start_ts_utc: activity.start_ts_utc,
     duration_s: activity.duration_s,
     distance_m: activity.distance_m,
@@ -103,8 +114,18 @@ export function buildJson(activity: Activity, records: RecordPoint[]): string {
         id: activity.id,
         fileName: activity.file_name,
         activityName: activity.activity_name,
+        sourceTitle: activity.source_title ?? null,
+        generatedTitle: activity.generated_title ?? null,
         sport: activity.sport,
+        subSport: activity.sub_sport ?? null,
+        activityTypeLabel: formatActivityTypeLabel(activity.sport, activity.sub_sport) || null,
         device: activity.device,
+        location: {
+          label: activity.location_label ?? null,
+          city: activity.location_city ?? null,
+          region: activity.location_region ?? null,
+          country: activity.location_country ?? null,
+        },
         startTimeUtc: activity.start_ts_utc,
         endTimeUtc: activity.end_ts_utc,
         durationS: activity.duration_s,

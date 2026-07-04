@@ -103,8 +103,15 @@ impl Database {
                 file_hash VARCHAR NOT NULL UNIQUE,
                 file_name VARCHAR NOT NULL,
                 activity_name VARCHAR NOT NULL,
+                source_title VARCHAR,
+                generated_title VARCHAR,
                 sport VARCHAR,
+                sub_sport VARCHAR,
                 device VARCHAR,
+                location_city VARCHAR,
+                location_region VARCHAR,
+                location_country VARCHAR,
+                location_label VARCHAR,
                 start_ts_utc TIMESTAMP,
                 end_ts_utc TIMESTAMP,
                 duration_s REAL,
@@ -146,36 +153,43 @@ impl Database {
             "#,
         )?;
 
-        self.migrate_numeric_types_if_needed(&conn)?;
+        conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS start_latitude DOUBLE", [])?;
+        conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS start_longitude DOUBLE", [])?;
+        conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS source_title VARCHAR", [])?;
+        conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS generated_title VARCHAR", [])?;
+        conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS sub_sport VARCHAR", [])?;
+        conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS location_city VARCHAR", [])?;
+        conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS location_region VARCHAR", [])?;
+        conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS location_country VARCHAR", [])?;
+        conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS location_label VARCHAR", [])?;
 
-                conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS start_latitude DOUBLE", [])?;
-                conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS start_longitude DOUBLE", [])?;
-                conn.execute(
-                        r#"
-                        UPDATE activities
-                        SET
-                                start_latitude = (
-                                        SELECT CAST(r.latitude AS DOUBLE)
-                                        FROM records r
-                                        WHERE r.activity_id = activities.id
-                                            AND r.latitude IS NOT NULL
-                                            AND r.longitude IS NOT NULL
-                                        ORDER BY r.timestamp_ms ASC
-                                        LIMIT 1
-                                ),
-                                start_longitude = (
-                                        SELECT CAST(r.longitude AS DOUBLE)
-                                        FROM records r
-                                        WHERE r.activity_id = activities.id
-                                            AND r.latitude IS NOT NULL
-                                            AND r.longitude IS NOT NULL
-                                        ORDER BY r.timestamp_ms ASC
-                                        LIMIT 1
-                                )
-                        WHERE start_latitude IS NULL OR start_longitude IS NULL
-                        "#,
-                        [],
-                )?;
+        self.migrate_numeric_types_if_needed(&conn)?;
+        conn.execute(
+            r#"
+            UPDATE activities
+            SET
+                start_latitude = (
+                    SELECT CAST(r.latitude AS DOUBLE)
+                    FROM records r
+                    WHERE r.activity_id = activities.id
+                        AND r.latitude IS NOT NULL
+                        AND r.longitude IS NOT NULL
+                    ORDER BY r.timestamp_ms ASC
+                    LIMIT 1
+                ),
+                start_longitude = (
+                    SELECT CAST(r.longitude AS DOUBLE)
+                    FROM records r
+                    WHERE r.activity_id = activities.id
+                        AND r.latitude IS NOT NULL
+                        AND r.longitude IS NOT NULL
+                    ORDER BY r.timestamp_ms ASC
+                    LIMIT 1
+                )
+            WHERE start_latitude IS NULL OR start_longitude IS NULL
+            "#,
+            [],
+        )?;
 
         // Re-assert indexes after any table rebuild migration.
         let _ = conn.execute(
@@ -203,33 +217,52 @@ impl Database {
                     file_hash VARCHAR NOT NULL UNIQUE,
                     file_name VARCHAR NOT NULL,
                     activity_name VARCHAR NOT NULL,
+                    source_title VARCHAR,
+                    generated_title VARCHAR,
                     sport VARCHAR,
+                    sub_sport VARCHAR,
                     device VARCHAR,
+                    location_city VARCHAR,
+                    location_region VARCHAR,
+                    location_country VARCHAR,
+                    location_label VARCHAR,
                     start_ts_utc TIMESTAMP,
                     end_ts_utc TIMESTAMP,
                     duration_s REAL,
                     distance_m REAL,
+                    start_latitude DOUBLE,
+                    start_longitude DOUBLE,
                     source VARCHAR,
                     imported_at TIMESTAMP DEFAULT now(),
                     metadata_json VARCHAR
                 );
 
                 INSERT INTO activities_migrated (
-                    id, file_hash, file_name, activity_name, sport, device,
-                    start_ts_utc, end_ts_utc, duration_s, distance_m, source,
-                    imported_at, metadata_json
+                    id, file_hash, file_name, activity_name, source_title, generated_title,
+                    sport, sub_sport, device, location_city, location_region, location_country,
+                    location_label, start_ts_utc, end_ts_utc, duration_s, distance_m,
+                    start_latitude, start_longitude, source, imported_at, metadata_json
                 )
                 SELECT
                     id,
                     file_hash,
                     file_name,
                     activity_name,
+                    source_title,
+                    generated_title,
                     sport,
+                    sub_sport,
                     device,
+                    location_city,
+                    location_region,
+                    location_country,
+                    location_label,
                     start_ts_utc,
                     end_ts_utc,
                     CAST(duration_s AS REAL),
                     CAST(distance_m AS REAL),
+                    CAST(start_latitude AS DOUBLE),
+                    CAST(start_longitude AS DOUBLE),
                     source,
                     imported_at,
                     metadata_json
@@ -400,15 +433,22 @@ impl Database {
             let distance_m = round_6_to_f32(p.distance_m);
 
             conn.execute(
-                "INSERT INTO activities (id, file_hash, file_name, activity_name, sport, device, start_ts_utc, end_ts_utc, duration_s, distance_m, start_latitude, start_longitude, source, metadata_json)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                "INSERT INTO activities (id, file_hash, file_name, activity_name, source_title, generated_title, sport, sub_sport, device, location_city, location_region, location_country, location_label, start_ts_utc, end_ts_utc, duration_s, distance_m, start_latitude, start_longitude, source, metadata_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
                 params![
                     activity_id,
                     p.file_hash,
                     p.file_name,
                     p.activity_name,
+                    p.source_title,
+                    p.generated_title,
                     p.sport,
+                    p.sub_sport,
                     p.device,
+                    p.location_city,
+                    p.location_region,
+                    p.location_country,
+                    p.location_label,
                     p.start_ts_utc,
                     p.end_ts_utc,
                     duration_s,
@@ -442,7 +482,7 @@ impl Database {
     pub fn list_activities(&self) -> Result<Vec<Activity>> {
         let conn = self.conn.lock().expect("db mutex poisoned");
         let mut stmt = conn.prepare(
-            "SELECT id, file_name, activity_name, COALESCE(sport,''), COALESCE(device,''), CAST(start_ts_utc AS VARCHAR), CAST(end_ts_utc AS VARCHAR), CAST(COALESCE(duration_s,0) AS DOUBLE), CAST(COALESCE(distance_m,0) AS DOUBLE), CAST(start_latitude AS DOUBLE), CAST(start_longitude AS DOUBLE), COALESCE(metadata_json,'')
+            "SELECT id, file_name, activity_name, source_title, generated_title, COALESCE(sport,''), COALESCE(sub_sport,''), COALESCE(device,''), location_city, location_region, location_country, location_label, CAST(start_ts_utc AS VARCHAR), CAST(end_ts_utc AS VARCHAR), CAST(COALESCE(duration_s,0) AS DOUBLE), CAST(COALESCE(distance_m,0) AS DOUBLE), CAST(start_latitude AS DOUBLE), CAST(start_longitude AS DOUBLE), COALESCE(metadata_json,'')
              FROM activities ORDER BY start_ts_utc DESC",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -450,15 +490,22 @@ impl Database {
                 id: row.get(0)?,
                 file_name: row.get(1)?,
                 activity_name: row.get(2)?,
-                sport: row.get(3)?,
-                device: row.get(4)?,
-                start_ts_utc: row.get(5)?,
-                end_ts_utc: row.get(6)?,
-                duration_s: row.get(7)?,
-                distance_m: row.get(8)?,
-                start_latitude: row.get(9)?,
-                start_longitude: row.get(10)?,
-                metadata_json: row.get(11)?,
+                source_title: row.get(3)?,
+                generated_title: row.get(4)?,
+                sport: row.get(5)?,
+                sub_sport: row.get(6)?,
+                device: row.get(7)?,
+                location_city: row.get(8)?,
+                location_region: row.get(9)?,
+                location_country: row.get(10)?,
+                location_label: row.get(11)?,
+                start_ts_utc: row.get(12)?,
+                end_ts_utc: row.get(13)?,
+                duration_s: row.get(14)?,
+                distance_m: row.get(15)?,
+                start_latitude: row.get(16)?,
+                start_longitude: row.get(17)?,
+                metadata_json: row.get(18)?,
             })
         })?;
 
