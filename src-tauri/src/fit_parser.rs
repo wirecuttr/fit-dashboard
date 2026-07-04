@@ -243,21 +243,18 @@ fn derive_activity_location(points: &[RecordPoint]) -> ActivityLocation {
     let city = clean_string(record.name.to_string());
     let region = clean_string(record.admin1.to_string());
     let country = clean_string(record.cc.to_string());
-    let label_parts = [city.as_deref(), region.as_deref()]
+    let label = [city.as_deref(), region.as_deref()]
         .into_iter()
         .flatten()
         .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>();
+        .collect::<Vec<_>>()
+        .join(", ");
 
     ActivityLocation {
         city,
         region,
         country,
-        label: if label_parts.is_empty() {
-            None
-        } else {
-            Some(label_parts.join(", "))
-        },
+        label: if label.is_empty() { None } else { Some(label) },
     }
 }
 
