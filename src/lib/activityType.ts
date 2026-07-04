@@ -9,17 +9,35 @@ type ActivityMetadata = {
 
 const IGNORED_SUB_SPORTS = new Set(["generic", "all", "unknown", "invalid"]);
 
-const CYCLING_SUB_SPORT_LABELS: Record<string, string> = {
-  e_bike_fitness: "eBiking",
-  indoor_cycling: "Indoor Cycling",
-  spin: "Indoor Cycling",
-  mountain: "Mountain Biking",
-  mountain_biking: "Mountain Biking",
+const SUB_SPORT_LABELS: Record<string, string> = {
+  "cycling:road": "Road Cycling",
+  "cycling:indoor_cycling": "Indoor Cycling",
+  "cycling:spin": "Indoor Cycling",
+  "cycling:mountain": "Mountain Biking",
+  "cycling:mountain_biking": "Mountain Biking",
+  "cycling:gravel_cycling": "Gravel Cycling",
+  "cycling:e_bike_fitness": "eBiking",
+  "e_biking:e_bike_fitness": "eBiking",
+  "cycling:e_bike_mountain": "eMountain Biking",
+  "e_biking:e_bike_mountain": "eMountain Biking",
+  "cycling:cyclocross": "Cyclocross",
+  "cycling:track_cycling": "Track Cycling",
+  "running:trail": "Trail Running",
+  "running:treadmill": "Treadmill Running",
+  "running:indoor_running": "Treadmill Running",
+  "running:track": "Track Running",
+  "running:ultra": "Ultra Running",
+  "swimming:lap_swimming": "Lap Swimming",
+  "swimming:open_water": "Open Water Swimming",
+  "training:strength_training": "Strength Training",
+  "training:cardio_training": "Cardio Training",
+  "training:yoga": "Yoga",
+  "training:pilates": "Pilates",
 };
 
-const CYCLING_SUB_SPORT_ALIASES: Record<string, string> = {
-  spin: "indoor_cycling",
-  mountain_biking: "mountain",
+const SUB_SPORT_ALIASES: Record<string, string> = {
+  "cycling:spin": "cycling:indoor_cycling",
+  "cycling:mountain_biking": "cycling:mountain",
 };
 
 function titleCaseWords(value: string): string {
@@ -72,11 +90,9 @@ function normalizedSubSport(sport?: string | null, subSport?: string | null): st
   if (!trimmedSubSport || IGNORED_SUB_SPORTS.has(trimmedSubSport)) return null;
 
   const sportKey = normalizedSport(sport);
-  if (sportKey === "cycling") {
-    return CYCLING_SUB_SPORT_ALIASES[trimmedSubSport] ?? trimmedSubSport;
-  }
-
-  return trimmedSubSport;
+  const scopedKey = sportKey ? `${sportKey}:${trimmedSubSport}` : trimmedSubSport;
+  const alias = SUB_SPORT_ALIASES[scopedKey];
+  return alias ? alias.split(":")[1] ?? trimmedSubSport : trimmedSubSport;
 }
 
 export function formatActivityType(sport?: string | null, subSport?: string | null): string {
@@ -85,9 +101,8 @@ export function formatActivityType(sport?: string | null, subSport?: string | nu
   if (!subSportKey) return sportLabel;
 
   const sportKey = normalizedSport(sport) ?? "";
-  if (sportKey === "cycling" && CYCLING_SUB_SPORT_LABELS[subSportKey]) {
-    return CYCLING_SUB_SPORT_LABELS[subSportKey];
-  }
+  const mappedLabel = SUB_SPORT_LABELS[`${sportKey}:${subSportKey}`];
+  if (mappedLabel) return mappedLabel;
 
   const subSportLabel = titleCaseWords(subSportKey);
   if (!subSportLabel) return sportLabel;
@@ -99,8 +114,12 @@ export function formatActivityType(sport?: string | null, subSport?: string | nu
   return `${subSportLabel} ${sportLabel}`;
 }
 
-export function formatActivityTypeLabel(activity: Pick<Activity, "sport" | "metadata_json">): string {
-  return formatActivityType(activity.sport, metadataSubSport(activity.metadata_json));
+function activitySubSport(activity: Pick<Activity, "metadata_json" | "sub_sport">): string | null {
+  return activity.sub_sport?.trim() || metadataSubSport(activity.metadata_json);
+}
+
+export function formatActivityTypeLabel(activity: Pick<Activity, "sport" | "metadata_json" | "sub_sport">): string {
+  return formatActivityType(activity.sport, activitySubSport(activity));
 }
 
 export function formatSportLabel(sport?: string | null): string {
@@ -116,15 +135,15 @@ export function getActivitySportFilterValue(activity: Pick<Activity, "sport">): 
   return getSportFilterValue(activity.sport);
 }
 
-export function getActivityTypeFilterValue(activity: Pick<Activity, "sport" | "metadata_json">): string | null {
+export function getActivityTypeFilterValue(activity: Pick<Activity, "sport" | "metadata_json" | "sub_sport">): string | null {
   const sportKey = normalizedSport(activity.sport);
-  const subSportKey = normalizedSubSport(activity.sport, metadataSubSport(activity.metadata_json));
+  const subSportKey = normalizedSubSport(activity.sport, activitySubSport(activity));
   if (!sportKey || !subSportKey) return null;
   return `type:${sportKey}:${subSportKey}`;
 }
 
 export function activityMatchesTypeFilter(
-  activity: Pick<Activity, "sport" | "metadata_json">,
+  activity: Pick<Activity, "sport" | "metadata_json" | "sub_sport">,
   filterValue: string,
 ): boolean {
   if (filterValue === "all") return true;

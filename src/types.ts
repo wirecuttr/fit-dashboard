@@ -2,8 +2,15 @@ export type Activity = {
   id: number;
   file_name: string;
   activity_name: string;
+  source_title?: string | null;
+  generated_title?: string | null;
   sport: string;
+  sub_sport?: string;
   device: string;
+  location_city?: string | null;
+  location_region?: string | null;
+  location_country?: string | null;
+  location_label?: string | null;
   start_ts_utc: string;
   end_ts_utc: string;
   duration_s: number;
