@@ -1545,10 +1545,11 @@ export function Dashboard({ onLogout }: Props) {
                     a.generated_title && (a.activity_name || "").trim() !== a.generated_title.trim(),
                   );
                   const hasIndependentTitle = Boolean(a.source_title || titleDiffersFromGenerated);
+                  const deviceLabel = getPrimaryDeviceLabel(parseActivityMetadata(a.metadata_json), a);
                   const contextParts = [
                     hasIndependentTitle || a.location_city ? activityTypeLabel : "",
                     hasIndependentTitle ? a.location_city || a.location_label || "" : "",
-                    a.device,
+                    deviceLabel,
                   ].filter((part): part is string => Boolean(part));
 
                   return (
