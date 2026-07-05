@@ -501,6 +501,15 @@ export function Dashboard({ onLogout }: Props) {
     return list;
   }, [filtered, sortBy, sortDirection]);
 
+  const sidebarDeviceLabels = useMemo(() => {
+    return new Map<number, string>(
+      sortedForList.map((activity): [number, string] => [
+        activity.id,
+        getPrimaryDeviceLabel(parseActivityMetadata(activity.metadata_json), activity),
+      ])
+    );
+  }, [sortedForList]);
+
   const overviewRecords = useMemo(() => {
     if (tab !== "overview") return [];
     return filtered
@@ -1545,7 +1554,7 @@ export function Dashboard({ onLogout }: Props) {
                     a.generated_title && (a.activity_name || "").trim() !== a.generated_title.trim(),
                   );
                   const hasIndependentTitle = Boolean(a.source_title || titleDiffersFromGenerated);
-                  const deviceLabel = getPrimaryDeviceLabel(parseActivityMetadata(a.metadata_json), a);
+                  const deviceLabel = sidebarDeviceLabels.get(a.id) ?? a.device;
                   const contextParts = [
                     hasIndependentTitle || a.location_city ? activityTypeLabel : "",
                     hasIndependentTitle ? a.location_city || a.location_label || "" : "",
