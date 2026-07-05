@@ -28,8 +28,12 @@ The local audit scanned 133 activity FIT files.
   `hr_zone_high_boundary`.
 - Edge 1040 road/MTB FIT files include `time_in_power_zone`, FTP, and
   `pwr_calc_type = percent_ftp`, but omit `power_zone_high_boundary`.
-- Some FR255 indoor cycling/multisport FIT files include
+- FR255 indoor cycling/multisport FIT files can include
   `power_zone_high_boundary`.
+- Older FR935 cycling and indoor cycling FIT files also include
+  `power_zone_high_boundary` when FTP/power-zone data is present. A full local
+  scan of 768 FR935 files found 200 files with FTP, and all 200 also had
+  explicit power-zone boundaries.
 - TrainerRoad FIT files include session metrics such as threshold power, but do
   not include `TimeInZone`, `UserProfile`, or `ZonesTarget`.
 
@@ -44,6 +48,14 @@ Those map to approximately:
 
 ```text
 55%, 75%, 90%, 105%, 120%, 150%, 200%, capped maximum
+```
+
+Older FR935 files used a similar percent-FTP pattern, with a leading zero lower
+sentinel and a high cap:
+
+```text
+functional_threshold_power = 240
+power_zone_high_boundary = 0|132|180|216|252|288|360|3880
 ```
 
 ## FIT Fields
