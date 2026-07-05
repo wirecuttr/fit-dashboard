@@ -1,6 +1,7 @@
 import productLookup from "../data/deviceProductLookup.json";
 import type { Activity } from "../types";
 import type { TelemetryTimerMetadata } from "./telemetryAxis";
+import type { ActivityZones } from "./zones";
 
 export type CodeNameLabel = {
   code?: number | null;
@@ -97,6 +98,7 @@ export type WorkoutStepMetadata = {
 
 export type ActivityMetadata = {
   heart_rate_zone_bounds_bpm?: number[];
+  zones?: ActivityZones | null;
   file_id?: {
     product_name?: string | null;
     serial_number?: number | null;

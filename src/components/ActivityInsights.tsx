@@ -3,6 +3,7 @@ import ReactECharts from "echarts-for-react";
 import type { Activity, RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
 import { buildHeartRateZones, resolveHeartRateZoneIndex } from "../lib/hrZones";
+import { buildPowerZones, resolveNumericZoneIndex, zoneSecondsToMinutes, type ActivityZones } from "../lib/zones";
 import { applyRollingAverageSeries, getDynamicSmoothingWindow } from "../lib/chartSmoothing";
 import { getRecordDataAvailability } from "../lib/recordDataAvailability";
 import {
@@ -44,6 +45,7 @@ type Props = {
   theme: "light" | "dark";
   distanceUnit: DistanceUnit;
   xAxisMode?: TelemetryXAxisMode;
+  zones?: ActivityZones | null;
   heartRateZoneBoundsBpm?: number[];
   zoomRange?: { start: number; end: number } | null;
   onZoomChange?: (range: { start: number; end: number }) => void;
@@ -197,6 +199,7 @@ export function ActivityInsights({
   theme,
   distanceUnit,
   xAxisMode = "time",
+  zones,
   heartRateZoneBoundsBpm,
   zoomRange,
   onZoomChange,
@@ -205,6 +208,7 @@ export function ActivityInsights({
   timerMetadata,
 }: Props) {
   const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
+  const powerZones = buildPowerZones(zones?.power?.upper_bounds_watts);
   const isDark = theme === "dark";
   const { t: tr } = useTranslation();
   const [heartRateDriftHelpOpen, setHeartRateDriftHelpOpen] = useState(false);
@@ -340,16 +344,34 @@ export function ActivityInsights({
   const hrValues = timeline
     .map((d) => d.heartRate)
     .filter((n): n is number => typeof n === "number" && n > 0);
-  const zoneMinutes = hrZones.map(() => 0);
-  if (hrValues.length > 0) {
+  const hasRealHeartRateZones = hrZones.length > 0;
+  const fitHrZoneMinutes = hasRealHeartRateZones ? zoneSecondsToMinutes(zones?.heart_rate?.time_in_zone_s, hrZones.length) : [];
+  const zoneMinutes = fitHrZoneMinutes.some((value) => value > 0) ? fitHrZoneMinutes : hrZones.map(() => 0);
+  if (hasRealHeartRateZones && !fitHrZoneMinutes.some((value) => value > 0) && hrValues.length > 0) {
     for (let i = 0; i < timeline.length - 1; i += 1) {
       const hr = timeline[i].heartRate;
       if (typeof hr !== "number" || hr <= 0) continue;
       const dtMin = Math.max(0, (timeline[i + 1].relMs - timeline[i].relMs) / 60000);
       const zoneIndex = resolveHeartRateZoneIndex(hr, hrZones);
-      zoneMinutes[zoneIndex] += dtMin;
+      if (zoneIndex !== null) {
+        zoneMinutes[zoneIndex] += dtMin;
+      }
     }
   }
+  const hasHeartRateZoneData = hasRealHeartRateZones && (hasHeartRateData || zoneMinutes.some((value) => value > 0));
+
+  const fitPowerZoneMinutes = zoneSecondsToMinutes(zones?.power?.time_in_zone_s, powerZones.length);
+  const powerZoneMinutes = fitPowerZoneMinutes.some((value) => value > 0) ? fitPowerZoneMinutes : powerZones.map(() => 0);
+  if (!fitPowerZoneMinutes.some((value) => value > 0) && powerZones.length > 0 && hasPowerData) {
+    for (let i = 0; i < timeline.length - 1; i += 1) {
+      const power = timeline[i].power;
+      if (typeof power !== "number" || power < 0) continue;
+      const dtMin = Math.max(0, (timeline[i + 1].relMs - timeline[i].relMs) / 60000);
+      const zoneIndex = resolveNumericZoneIndex(power, powerZones);
+      powerZoneMinutes[zoneIndex] += dtMin;
+    }
+  }
+  const hasPowerZoneData = powerZones.length > 0 && (hasPowerData || powerZoneMinutes.some((value) => value > 0));
 
   const sharedXAxis = {
     type: "value",
@@ -480,6 +502,33 @@ export function ActivityInsights({
         data: hrZones.map((zone, idx) => ({
           name: zone.name,
           value: zoneMinutes[idx],
+          itemStyle: { color: zone.color },
+        })),
+      },
+    ],
+  };
+
+  const powerZoneOption = {
+    tooltip: {
+      trigger: "item",
+      ...tooltipStyle,
+      formatter: (p: any) => `${p.marker} ${p.name}: <strong>${Number(p.value).toFixed(2)} min</strong>`
+    },
+    legend: { bottom: 0, textStyle: { color: axisColor, fontSize: 12 } },
+    series: [
+      {
+        type: "pie",
+        radius: ["38%", "72%"],
+        padAngle: 2,
+        itemStyle: {
+          borderRadius: 8,
+          borderColor: isDark ? "#0b1220" : "#ffffff",
+          borderWidth: 3,
+        },
+        label: { color: axisColor, fontSize: 12, formatter: (p: any) => `${p.name}\n${Number(p.value).toFixed(1)} min` },
+        data: powerZones.map((zone, idx) => ({
+          name: zone.name,
+          value: powerZoneMinutes[idx],
           itemStyle: { color: zone.color },
         })),
       },
@@ -650,10 +699,11 @@ export function ActivityInsights({
         itemStyle: { borderRadius: [2, 2, 0, 0] },
         data: hrHistogram.counts.map((count, idx) => {
           const centerHr = hrHistogram.centers[idx] ?? 0;
-          const zone = hrZones[resolveHeartRateZoneIndex(centerHr, hrZones)];
+          const zoneIndex = resolveHeartRateZoneIndex(centerHr, hrZones);
+          const color = zoneIndex === null ? (isDark ? "#64748b" : "#94a3b8") : hrZones[zoneIndex].color;
           return {
             value: count,
-            itemStyle: { color: zone.color },
+            itemStyle: { color },
           };
         }),
       },
@@ -928,9 +978,17 @@ export function ActivityInsights({
     },
     {
       id: "heart-rate-zones",
-      available: hasHeartRateData,
+      available: hasHeartRateZoneData,
       title: tr("insights.heartRateZoneTime"),
       option: zoneOption,
+      onEvents: undefined,
+      height: insightChartHeight,
+    },
+    {
+      id: "power-zones",
+      available: hasPowerZoneData,
+      title: tr("insights.powerZoneTime"),
+      option: powerZoneOption,
       onEvents: undefined,
       height: insightChartHeight,
     },

@@ -221,6 +221,7 @@
   "insights.emptyState": "분석을 위해 활동을 가져오고 선택하세요.",
   "insights.speedTrend": "속도 추세",
   "insights.heartRateZoneTime": "심박 구간 시간",
+  "insights.powerZoneTime": "파워 구간 시간",
   "insights.hrHistogram": "심박 히스토그램",
   "insights.cadenceAndPower": "케이던스 & 파워",
   "insights.cadence": "케이던스",

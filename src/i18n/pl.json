@@ -221,6 +221,7 @@
   "insights.emptyState": "Zaimportuj i wybierz aktywność dla analiz.",
   "insights.speedTrend": "Trend prędkości",
   "insights.heartRateZoneTime": "Czas w strefach tętna",
+  "insights.powerZoneTime": "Czas w strefach mocy",
   "insights.hrHistogram": "Histogram tętna",
   "insights.cadenceAndPower": "Kadencja i moc",
   "insights.cadence": "Kadencja",

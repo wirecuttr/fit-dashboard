@@ -7,6 +7,7 @@ import type { Activity, RecordPoint } from "../types";
 import { api } from "./api";
 import { formatActivityTypeLabel } from "./activityType";
 import { buildExportDeviceInfo, parseActivityMetadata } from "./deviceMetadata";
+import { buildExportZones } from "./zones";
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -106,6 +107,7 @@ export function buildCsv(activity: Activity, records: RecordPoint[]): string {
 
 export function buildJson(activity: Activity, records: RecordPoint[]): string {
   const metadata = parseActivityMetadata(activity.metadata_json);
+  const zones = buildExportZones(activity.metadata_json);
 
   return JSON.stringify(
     {
@@ -137,6 +139,7 @@ export function buildJson(activity: Activity, records: RecordPoint[]): string {
       },
       metadata,
       deviceInfo: buildExportDeviceInfo(metadata),
+      ...(zones ? { zones } : {}),
       records,
     },
     null,

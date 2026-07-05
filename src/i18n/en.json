@@ -250,6 +250,7 @@
   "insights.emptyState": "Import and select an activity to unlock pace, power, cadence, and effort insights.",
   "insights.speedTrend": "Speed Trend",
   "insights.heartRateZoneTime": "Heart Rate Zone Time",
+  "insights.powerZoneTime": "Power Zone Time",
   "insights.hrHistogram": "HR Histogram",
   "insights.cadenceAndPower": "Cadence & Power",
   "insights.cadence": "Cadence",

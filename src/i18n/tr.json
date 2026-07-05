@@ -221,6 +221,7 @@
   "insights.emptyState": "Analizler için bir aktivite içe aktarın ve seçin.",
   "insights.speedTrend": "Hız Trendi",
   "insights.heartRateZoneTime": "KAH Bölge Süresi",
+  "insights.powerZoneTime": "Güç Bölgesi Süresi",
   "insights.hrHistogram": "KAH Histogramı",
   "insights.cadenceAndPower": "Kadans ve Güç",
   "insights.cadence": "Kadans",

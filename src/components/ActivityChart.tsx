@@ -103,6 +103,21 @@ export function ActivityChart({
     splitLine: { show: false },
   };
 
+  const hrVisualMap = hrZones.length > 0 ? {
+    show: false,
+    seriesIndex: 0,
+    dimension: 1,
+    pieces: hrZones.map((zone) => {
+      if (zone.maxInclusive === null) {
+        return { gt: zone.minExclusive, color: zone.color };
+      }
+      if (!Number.isFinite(zone.minExclusive)) {
+        return { lte: zone.maxInclusive, color: zone.color };
+      }
+      return { gt: zone.minExclusive, lte: zone.maxInclusive, color: zone.color };
+    }),
+  } : undefined;
+
   const hrOption = {
     tooltip: {
       trigger: "axis",
@@ -127,20 +142,7 @@ export function ActivityChart({
       textStyle: { color: axisColor, fontSize: 12 },
       top: 0,
     },
-    visualMap: {
-      show: false,
-      seriesIndex: 0,
-      dimension: 1,
-      pieces: hrZones.map((zone) => {
-        if (zone.maxInclusive === null) {
-          return { gt: zone.minExclusive, color: zone.color };
-        }
-        if (!Number.isFinite(zone.minExclusive)) {
-          return { lte: zone.maxInclusive, color: zone.color };
-        }
-        return { gt: zone.minExclusive, lte: zone.maxInclusive, color: zone.color };
-      }),
-    },
+    visualMap: hrVisualMap,
     grid: { left: 48, right: 16, top: 36, bottom: 38 },
     xAxis: sharedXAxis,
     yAxis: {

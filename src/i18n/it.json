@@ -221,6 +221,7 @@
   "insights.emptyState": "Importa e seleziona un'attività per le analisi.",
   "insights.speedTrend": "Tendenza velocità",
   "insights.heartRateZoneTime": "Tempo zone FC",
+  "insights.powerZoneTime": "Tempo zone potenza",
   "insights.hrHistogram": "Istogramma FC",
   "insights.cadenceAndPower": "Cadenza e potenza",
   "insights.cadence": "Cadenza",
