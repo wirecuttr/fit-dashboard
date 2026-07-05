@@ -291,6 +291,22 @@ JSON export should include the persisted zone metadata. Inferred fields must kee
 their source marker so consumers can distinguish extracted values from inferred
 display helpers.
 
+Export should include a normalized `zones` object rather than dumping the full
+internal `metadata_json` blob. Field names should make activity result stats and
+configured zone/profile values distinct, for example `configuredMaxHeartRate`
+instead of `maxHeartRate`.
+
+## Future User-Entered Zones
+
+Future user-entered zones should be modelled as a separate source of zone
+boundaries, not as a replacement for imported FIT activity metadata. This branch
+keeps imported zones activity-scoped and source-marked so future charts can
+choose between FIT activity zones, a dated user zone profile, or default fallback
+zones.
+
+Do not add a user zone profile table, settings UI, backfill path, or profile
+history in this branch.
+
 ## Non-Goals
 
 - No user editing of zones in this branch.

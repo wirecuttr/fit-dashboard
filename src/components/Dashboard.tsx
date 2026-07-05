@@ -30,6 +30,7 @@ import {
   speedLabel,
 } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
+import { getHeartRateZoneBounds, type ActivityZones } from "../lib/zones";
 
 type Props = { onLogout: () => Promise<void> };
 
@@ -40,6 +41,7 @@ type VersionBadgeStatus = {
 
 type ActivityMetadata = {
   heart_rate_zone_bounds_bpm?: number[];
+  zones?: ActivityZones | null;
   file_id?: {
     product_name?: string | null;
     serial_number?: number | null;
@@ -1022,6 +1024,10 @@ export function Dashboard({ onLogout }: Props) {
       .filter((ts) => !!ts),
     [selectedMetadata]
   );
+  const heartRateZoneBoundsBpm = useMemo(
+    () => getHeartRateZoneBounds(selectedMetadata),
+    [selectedMetadata]
+  );
   const deviceBadgeSerial = typeof selectedMetadata?.file_id?.serial_number === "number"
     ? String(selectedMetadata.file_id.serial_number)
     : "";
@@ -1601,10 +1607,10 @@ export function Dashboard({ onLogout }: Props) {
                 </div>
               </div>
               <div className="detail-grid">
-                <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></div>
+                <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={heartRateZoneBoundsBpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></div>
                 <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />
               </div>
-              <ActivityInsights records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
+              <ActivityInsights records={selectedRecords} theme={theme} distanceUnit={distanceUnit} zones={selectedMetadata?.zones ?? null} heartRateZoneBoundsBpm={heartRateZoneBoundsBpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
                   <h3>{t("detail.laps")}</h3>

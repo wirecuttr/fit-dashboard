@@ -208,6 +208,7 @@
   "insights.emptyState": "导入并选择一项活动以查看分析。",
   "insights.speedTrend": "速度趋势",
   "insights.heartRateZoneTime": "心率区间时间",
+  "insights.powerZoneTime": "功率区间时间",
   "insights.hrHistogram": "心率直方图",
   "insights.cadenceAndPower": "步频与功率",
   "insights.cadence": "步频",

@@ -208,6 +208,7 @@
   "insights.emptyState": "Importáljon és válasszon tevékenységet az elemzésekhez.",
   "insights.speedTrend": "Sebességtrend",
   "insights.heartRateZoneTime": "Pulzuszóna idő",
+  "insights.powerZoneTime": "Teljesítményzóna idő",
   "insights.hrHistogram": "Pulzus hisztogram",
   "insights.cadenceAndPower": "Lépésfrekv. és teljesítmény",
   "insights.cadence": "Lépésfrekvencia",

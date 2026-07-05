@@ -5,6 +5,7 @@
 
 import type { Activity, RecordPoint } from "../types";
 import { api } from "./api";
+import { buildExportZones } from "./zones";
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -93,6 +94,8 @@ export function buildCsv(activity: Activity, records: RecordPoint[]): string {
 /* ── JSON ────────────────────────────────────────────────────────── */
 
 export function buildJson(activity: Activity, records: RecordPoint[]): string {
+  const zones = buildExportZones(activity.metadata_json);
+
   return JSON.stringify(
     {
       _exportInfo: {
@@ -110,6 +113,7 @@ export function buildJson(activity: Activity, records: RecordPoint[]): string {
         durationS: activity.duration_s,
         distanceM: activity.distance_m,
       },
+      ...(zones ? { zones } : {}),
       records,
     },
     null,

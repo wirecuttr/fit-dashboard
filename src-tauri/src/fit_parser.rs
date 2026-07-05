@@ -39,11 +39,153 @@ fn value_i64(v: &Value) -> Option<i64> {
     value_f64(v).map(|n| n as i64)
 }
 
+fn value_i64_in_range(v: &Value, min: i64, max: i64) -> Option<i64> {
+    value_i64(v).filter(|value| *value >= min && *value <= max)
+}
+
 fn value_string(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         other => other.to_string(),
     }
+}
+
+fn value_f64_vec(v: &Value) -> Vec<f64> {
+    match v {
+        Value::Array(values) => values.iter().filter_map(value_f64).collect(),
+        _ => value_f64(v).into_iter().collect(),
+    }
+}
+
+fn value_i64_vec(v: &Value) -> Vec<i64> {
+    value_f64_vec(v).into_iter().map(|n| n as i64).collect()
+}
+
+fn clean_i64_bounds(values: Vec<i64>, min: i64, max: i64) -> Vec<i64> {
+    let mut cleaned: Vec<i64> = values
+        .into_iter()
+        .filter(|value| *value >= min && *value <= max)
+        .collect();
+    cleaned.sort_unstable();
+    cleaned.dedup();
+    cleaned
+}
+
+fn clean_duration_values(values: Vec<f64>) -> Vec<f64> {
+    values
+        .into_iter()
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .collect()
+}
+
+fn normalized_fit_label(value: &Value) -> Option<String> {
+    let value = value_string(value).trim().to_lowercase();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn set_string_if_present(target: &mut Option<String>, value: &Value) {
+    if let Some(label) = normalized_fit_label(value) {
+        *target = Some(label);
+    }
+}
+
+fn replace_vec_if_useful<T>(target: &mut Vec<T>, values: Vec<T>) {
+    if !values.is_empty() && values.len() >= target.len() {
+        *target = values;
+    }
+}
+
+#[derive(Default)]
+struct ZoneAccumulator {
+    time_in_hr_zone_s: Vec<f64>,
+    time_in_power_zone_s: Vec<f64>,
+    hr_zone_high_boundary: Vec<i64>,
+    power_zone_high_boundary: Vec<i64>,
+    hr_calc_type: Option<String>,
+    pwr_calc_type: Option<String>,
+    max_heart_rate: Option<i64>,
+    resting_heart_rate: Option<i64>,
+    threshold_heart_rate: Option<i64>,
+    functional_threshold_power: Option<i64>,
+}
+
+fn inferred_percent_ftp_power_bounds(ftp: i64) -> Vec<i64> {
+    [0.55, 0.75, 0.90, 1.05, 1.20, 1.50, 2.00]
+        .into_iter()
+        .map(|pct| (ftp as f64 * pct).round() as i64)
+        .chain(std::iter::once(4000))
+        .collect()
+}
+
+fn is_percent_ftp(calc_type: Option<&String>) -> bool {
+    calc_type
+        .map(|value| value.eq_ignore_ascii_case("percent_ftp") || value.eq_ignore_ascii_case("percent ftp"))
+        .unwrap_or(false)
+}
+
+fn build_zones_json(zones: &ZoneAccumulator) -> serde_json::Value {
+    let mut root = serde_json::Map::new();
+
+    let has_heart_rate_zone = !zones.hr_zone_high_boundary.is_empty()
+        || !zones.time_in_hr_zone_s.is_empty()
+        || zones.hr_calc_type.is_some()
+        || zones.max_heart_rate.is_some()
+        || zones.resting_heart_rate.is_some()
+        || zones.threshold_heart_rate.is_some();
+
+    if has_heart_rate_zone {
+        root.insert(
+            "heart_rate".to_string(),
+            serde_json::json!({
+                "source": "fit",
+                "calc_type": zones.hr_calc_type.clone(),
+                "upper_bounds_bpm": zones.hr_zone_high_boundary.clone(),
+                "time_in_zone_s": zones.time_in_hr_zone_s.clone(),
+                "configured_max_heart_rate": zones.max_heart_rate,
+                "resting_heart_rate": zones.resting_heart_rate,
+                "threshold_heart_rate": zones.threshold_heart_rate
+            }),
+        );
+    }
+
+    let explicit_power_bounds = !zones.power_zone_high_boundary.is_empty();
+    let inferred_power_bounds = if !explicit_power_bounds
+        && is_percent_ftp(zones.pwr_calc_type.as_ref())
+        && zones.functional_threshold_power.is_some()
+    {
+        zones.functional_threshold_power.map(inferred_percent_ftp_power_bounds)
+    } else {
+        None
+    };
+    let power_upper_bounds = if explicit_power_bounds {
+        zones.power_zone_high_boundary.clone()
+    } else {
+        inferred_power_bounds.clone().unwrap_or_default()
+    };
+
+    let has_power_zone = !zones.time_in_power_zone_s.is_empty()
+        || !power_upper_bounds.is_empty()
+        || zones.pwr_calc_type.is_some()
+        || zones.functional_threshold_power.is_some();
+
+    if has_power_zone {
+        root.insert(
+            "power".to_string(),
+            serde_json::json!({
+                "source": if inferred_power_bounds.is_some() { "inferred_default_percent_ftp" } else { "fit" },
+                "calc_type": zones.pwr_calc_type.clone(),
+                "functional_threshold_power": zones.functional_threshold_power,
+                "upper_bounds_watts": power_upper_bounds,
+                "time_in_zone_s": zones.time_in_power_zone_s.clone()
+            }),
+        );
+    }
+
+    serde_json::Value::Object(root)
 }
 
 fn combine_device_name(
@@ -309,7 +451,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     let mut session_total_distance_m: Option<f64> = None;
     let mut session_total_calories: Option<i64> = None;
     let mut lap_ranges: Vec<serde_json::Value> = Vec::new();
-    let mut heart_rate_zone_bounds_bpm: Vec<i64> = Vec::new();
+    let mut zones = ZoneAccumulator::default();
 
     let mut min_ts: Option<i64> = None;
     let mut max_ts: Option<i64> = None;
@@ -493,6 +635,76 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     }
                 }
             }
+        } else if rec.kind() == MesgNum::TimeInZone {
+            for field in rec.fields() {
+                match field.name() {
+                    "time_in_hr_zone" => replace_vec_if_useful(
+                        &mut zones.time_in_hr_zone_s,
+                        clean_duration_values(value_f64_vec(field.value())),
+                    ),
+                    "time_in_power_zone" => replace_vec_if_useful(
+                        &mut zones.time_in_power_zone_s,
+                        clean_duration_values(value_f64_vec(field.value())),
+                    ),
+                    "hr_zone_high_boundary" => replace_vec_if_useful(
+                        &mut zones.hr_zone_high_boundary,
+                        clean_i64_bounds(value_i64_vec(field.value()), 40, 260),
+                    ),
+                    "power_zone_high_boundary" => replace_vec_if_useful(
+                        &mut zones.power_zone_high_boundary,
+                        clean_i64_bounds(value_i64_vec(field.value()), 1, 5000),
+                    ),
+                    "hr_calc_type" => set_string_if_present(&mut zones.hr_calc_type, field.value()),
+                    "pwr_calc_type" => set_string_if_present(&mut zones.pwr_calc_type, field.value()),
+                    "max_heart_rate" => zones.max_heart_rate = value_i64_in_range(field.value(), 40, 260),
+                    "resting_heart_rate" => zones.resting_heart_rate = value_i64_in_range(field.value(), 20, 120),
+                    "threshold_heart_rate" => zones.threshold_heart_rate = value_i64_in_range(field.value(), 40, 260),
+                    "functional_threshold_power" => zones.functional_threshold_power = value_i64_in_range(field.value(), 50, 2000),
+                    _ => {}
+                }
+            }
+        } else if rec.kind() == MesgNum::ZonesTarget {
+            for field in rec.fields() {
+                match field.name() {
+                    "hr_calc_type" => {
+                        if zones.hr_calc_type.is_none() {
+                            set_string_if_present(&mut zones.hr_calc_type, field.value());
+                        }
+                    }
+                    "pwr_calc_type" => {
+                        if zones.pwr_calc_type.is_none() {
+                            set_string_if_present(&mut zones.pwr_calc_type, field.value());
+                        }
+                    }
+                    "max_heart_rate" => {
+                        if zones.max_heart_rate.is_none() {
+                            zones.max_heart_rate = value_i64_in_range(field.value(), 40, 260);
+                        }
+                    }
+                    "resting_heart_rate" => {
+                        if zones.resting_heart_rate.is_none() {
+                            zones.resting_heart_rate = value_i64_in_range(field.value(), 20, 120);
+                        }
+                    }
+                    "threshold_heart_rate" => {
+                        if zones.threshold_heart_rate.is_none() {
+                            zones.threshold_heart_rate = value_i64_in_range(field.value(), 40, 260);
+                        }
+                    }
+                    "functional_threshold_power" => {
+                        if zones.functional_threshold_power.is_none() {
+                            zones.functional_threshold_power = value_i64_in_range(field.value(), 50, 2000);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        } else if rec.kind() == MesgNum::UserProfile {
+            for field in rec.fields() {
+                if field.name() == "resting_heart_rate" && zones.resting_heart_rate.is_none() {
+                    zones.resting_heart_rate = value_i64_in_range(field.value(), 20, 120);
+                }
+            }
         } else if rec.kind() == MesgNum::Lap {
             let mut lap_start_ms: Option<i64> = None;
             let mut lap_end_ms: Option<i64> = None;
@@ -568,26 +780,10 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             }));
         }
 
-        let rec_kind_name = format!("{:?}", rec.kind()).to_lowercase();
-        if rec_kind_name.contains("zone") {
-            for field in rec.fields() {
-                let field_name = field.name().to_lowercase();
-                let is_heart_rate_zone_field =
-                    field_name.contains("zone")
-                        && (field_name.contains("heart") || field_name.starts_with("hr_"));
-                if !is_heart_rate_zone_field {
-                    continue;
-                }
-
-                if let Some(value) = value_i64(field.value()).filter(|v| *v >= 40 && *v <= 260) {
-                    heart_rate_zone_bounds_bpm.push(value);
-                }
-            }
-        }
     }
 
-    heart_rate_zone_bounds_bpm.sort_unstable();
-    heart_rate_zone_bounds_bpm.dedup();
+    let heart_rate_zone_bounds_bpm = zones.hr_zone_high_boundary.clone();
+    let zones_json = build_zones_json(&zones);
 
     if file_id_type_name.is_some() || file_id_type_code.is_some() {
         let type_name = file_id_type_name
@@ -654,6 +850,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             "vo2_max": vo2_max
         },
         "heart_rate_zone_bounds_bpm": heart_rate_zone_bounds_bpm,
+        "zones": zones_json,
         "session": {
             "beginning_body_battery": session_beginning_body_battery,
             "ending_body_battery": session_ending_body_battery,

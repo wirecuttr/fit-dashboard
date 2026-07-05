@@ -208,6 +208,7 @@
   "insights.emptyState": "Importeer en selecteer een activiteit voor analyses.",
   "insights.speedTrend": "Snelheidstrend",
   "insights.heartRateZoneTime": "Hartslagzone-tijd",
+  "insights.powerZoneTime": "Vermogenszone-tijd",
   "insights.hrHistogram": "HF-histogram",
   "insights.cadenceAndPower": "Cadans en vermogen",
   "insights.cadence": "Cadans",
