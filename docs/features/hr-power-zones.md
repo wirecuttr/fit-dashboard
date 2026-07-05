@@ -81,6 +81,25 @@ Relevant `ZonesTarget` fields:
 - `hr_calc_type`
 - `pwr_calc_type`
 
+## Threshold Semantics
+
+Do not conflate activity result fields with athlete profile or zone-setting
+fields.
+
+- `Session.max_heart_rate`: maximum heart rate reached during the activity.
+- `TimeInZone.max_heart_rate` / `ZonesTarget.max_heart_rate`: configured max
+  heart rate used for zone calculation.
+- `TimeInZone.threshold_heart_rate` / `ZonesTarget.threshold_heart_rate`:
+  configured threshold heart rate used for zone calculation. In Garmin UI terms,
+  this commonly corresponds to lactate-threshold heart rate when available.
+- `Session.threshold_power`: activity/session threshold power value.
+- `TimeInZone.functional_threshold_power` /
+  `ZonesTarget.functional_threshold_power`: configured FTP used for power-zone
+  calculation.
+
+Persist threshold heart rate under `zones.heart_rate`, not as an activity max HR
+or activity result metric.
+
 ## Design Direction
 
 Persist zone metadata in parsed activity metadata instead of keeping it only in
