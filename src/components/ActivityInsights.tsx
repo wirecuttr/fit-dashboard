@@ -540,10 +540,11 @@ export function ActivityInsights({
       });
     });
 
+  const insightChartHeight = 280;
   const rowHeight = 34;
   const rowGap = 14;
   const rowTop = heatMetrics.map((_, idx) => 16 + idx * (rowHeight + rowGap));
-  const heatChartHeight = Math.max(120, 48 + heatMetrics.length * (rowHeight + rowGap));
+  const heatChartHeight = insightChartHeight;
 
   const heatOption = {
     tooltip: {
@@ -613,50 +614,73 @@ export function ActivityInsights({
     },
   };
 
+  const visibleCharts = [
+    {
+      id: "speed-trend",
+      available: hasSpeedData,
+      title: tr("insights.speedTrend"),
+      option: timelineOption,
+      onEvents: zoomEvents,
+      height: insightChartHeight,
+    },
+    {
+      id: "heart-rate-zones",
+      available: hasHeartRateData,
+      title: tr("insights.heartRateZoneTime"),
+      option: zoneOption,
+      onEvents: undefined,
+      height: insightChartHeight,
+    },
+    {
+      id: "heart-rate-histogram",
+      available: hasHeartRateData,
+      title: tr("insights.hrHistogram"),
+      option: hrHistogramOption,
+      onEvents: undefined,
+      height: insightChartHeight,
+    },
+    {
+      id: "cadence-power",
+      available: hasCadenceData || hasPowerData,
+      title: hasCadenceData && hasPowerData ? tr("insights.cadenceAndPower") : (hasPowerData ? tr("insights.power") : tr("insights.cadence")),
+      option: cadenceOption,
+      onEvents: zoomEvents,
+      height: insightChartHeight,
+    },
+    {
+      id: "effort-heatmap",
+      available: hasHeatmapData,
+      title: tr("insights.effortHeatmap"),
+      option: heatOption,
+      onEvents: undefined,
+      height: heatChartHeight,
+    },
+    {
+      id: "elevation",
+      available: hasElevationData,
+      title: tr("insights.elevation"),
+      option: elevationOption,
+      onEvents: zoomEvents,
+      height: insightChartHeight,
+    },
+    {
+      id: "power-heart-rate",
+      available: hasPowerData && hasHeartRateData,
+      title: tr("insights.powerVsHeartRate"),
+      option: scatterOption,
+      onEvents: undefined,
+      height: insightChartHeight,
+    },
+  ].filter((chart) => chart.available);
+
   return (
-    <section className="insight-grid">
-      {hasSpeedData && (
-        <article className="panel">
-          <h3>{tr("insights.speedTrend")}</h3>
-          <ReactECharts option={timelineOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+    <>
+      {visibleCharts.map((chart) => (
+        <article className="panel" key={chart.id}>
+          <h3>{chart.title}</h3>
+          <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />
         </article>
-      )}
-      {hasHeartRateData && (
-        <article className="panel">
-          <h3>{tr("insights.heartRateZoneTime")}</h3>
-          <ReactECharts option={zoneOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-      {hasHeartRateData && (
-        <article className="panel">
-          <h3>{tr("insights.hrHistogram")}</h3>
-          <ReactECharts option={hrHistogramOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-      {(hasCadenceData || hasPowerData) && (
-        <article className="panel">
-          <h3>{hasCadenceData && hasPowerData ? tr("insights.cadenceAndPower") : (hasPowerData ? tr("insights.power") : tr("insights.cadence"))}</h3>
-          <ReactECharts option={cadenceOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-      {hasHeatmapData && (
-        <article className="panel">
-          <h3>{tr("insights.effortHeatmap")}</h3>
-          <ReactECharts option={heatOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: heatChartHeight, width: "100%" }} />
-        </article>
-      )}
-      {hasElevationData && (
-        <article className="panel">
-          <h3>{tr("insights.elevation")}</h3>
-          <ReactECharts option={elevationOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-      {hasPowerData && hasHeartRateData && (
-        <article className="panel">
-          <h3>{tr("insights.powerVsHeartRate")}</h3>
-          <ReactECharts option={scatterOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-    </section>
+      ))}
+    </>
   );
 }

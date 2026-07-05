@@ -1604,15 +1604,13 @@ export function Dashboard({ onLogout }: Props) {
                   ))}
                 </div>
               </div>
-              {(hasTelemetryCharts || hasDetailRoute) && (
-                <div className="detail-grid">
-                  {hasTelemetryCharts && (
-                    <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></div>
-                  )}
-                  {hasDetailRoute && <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />}
-                </div>
-              )}
-              <ActivityInsights records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
+              <section className="activity-visual-grid">
+                {hasTelemetryCharts && (
+                  <article className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></article>
+                )}
+                {hasDetailRoute && <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />}
+                <ActivityInsights records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={selectedMetadata?.heart_rate_zone_bounds_bpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
+              </section>
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
                   <h3>{t("detail.laps")}</h3>

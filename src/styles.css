@@ -1294,8 +1294,7 @@ button:focus-visible {
   transition: border-color 200ms ease;
 }
 
-.detail-grid .panel,
-.insight-grid .panel {
+.activity-visual-grid .panel {
   min-width: var(--content-panel-min-width);
 }
 
@@ -1604,23 +1603,15 @@ button:focus-visible {
   font-weight: 700;
 }
 
-/* ── Detail Grid (Charts + Map side by side) ───────────────────────── */
+/* ── Activity Visual Grid ──────────────────────────────────────────── */
 
-.detail-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.85rem;
-}
-
-/* ── Insight Grid ──────────────────────────────────────────────────── */
-
-.insight-grid {
+.activity-visual-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.85rem;
 }
 
-.insight-grid h3 {
+.activity-visual-grid h3 {
   margin: 0 0 0.5rem;
   font-size: 0.9rem;
 }
@@ -3038,8 +3029,7 @@ button:focus-visible {
   .donation-banner-text--compact {
     display: inline;
   }
-  .detail-grid { grid-template-columns: 1fr; }
-  .insight-grid { grid-template-columns: 1fr; }
+  .activity-visual-grid { grid-template-columns: 1fr; }
   .insight-pair-row { grid-template-columns: 1fr; }
   .summary-grid { grid-template-columns: 1fr; }
   .detail-stats-strip { gap: 0.75rem; }
