@@ -86,9 +86,12 @@ Relevant `ZonesTarget` fields:
 Persist zone metadata in parsed activity metadata instead of keeping it only in
 chart-local calculations.
 
-Use extracted FIT values when present. Only infer power boundaries when the FIT
-omits `power_zone_high_boundary` but provides enough context to make a useful
-default estimate.
+Use extracted FIT values when present. When the FIT omits
+`power_zone_high_boundary` but provides `pwr_calc_type = percent_ftp` and FTP,
+bake in inferred default percent-FTP power boundaries for import and display.
+This is expected to work for the Edge-style files in this dataset, and current
+usage involves regular reimporting, so the implementation can be revised later
+if validation exposes a bad assumption.
 
 Recommended metadata shape:
 
@@ -141,7 +144,8 @@ Use explicit source markers:
 - `fit`: boundary or time-in-zone values were extracted from FIT fields.
 - `inferred_default_percent_ftp`: power boundaries were inferred from FTP and
   Garmin-like default percentages because FIT did not include explicit
-  boundaries.
+  boundaries. This is an active supported import path, not only a display-only
+  fallback.
 - `calculated_records`: time-in-zone values were calculated from record samples
   using selected boundaries.
 - `fallback_default`: UI fallback because no usable FIT zone data exists.
@@ -157,8 +161,42 @@ When `pwr_calc_type = percent_ftp` and FTP is available but
 55%, 75%, 90%, 105%, 120%, 150%, 200%, 4000 W cap
 ```
 
-This should be treated as an approximation. Garmin zones are user-configurable,
-so extracted FIT boundaries always take precedence.
+This is the intended first implementation for Edge-style FIT files that provide
+FIT power time-in-zone and FTP but omit explicit power-zone boundaries. Garmin
+zones are user-configurable, so extracted FIT boundaries always take precedence,
+but inferred default percent-FTP boundaries should be persisted and used when
+that is the best available source.
+
+## Validation
+
+During implementation, validate inferred boundaries against Garmin-provided
+`time_in_power_zone` where record-level power data is available:
+
+1. Build power zones from explicit FIT boundaries when present, otherwise from
+   inferred default percent-FTP boundaries.
+2. Calculate time-in-power-zone from record samples.
+3. Compare calculated durations with FIT `time_in_power_zone`.
+4. Record or log enough detail to review mismatches during local testing.
+
+This validation is a sanity check for binning, timestamp handling, stopped-time
+handling, and the inferred Edge default. It is not a reason to avoid importing
+inferred boundaries. If the inferred boundaries do not match a future sample,
+that sample can be used to refine or remove the inference later.
+
+Suggested validation fields:
+
+```text
+file
+device
+sport/sub_sport
+functional_threshold_power
+boundary_source
+fit_time_in_power_zone_s
+calculated_time_in_power_zone_s
+absolute_error_s
+relative_error_pct
+notes
+```
 
 ## UI Behaviour
 
@@ -174,8 +212,8 @@ Power zone chart:
 - Add a power-zone chart only when power-zone data is meaningful.
 - Prefer FIT-provided `time_in_power_zone` when present.
 - Use FIT-provided power boundaries when available.
-- Use inferred default percent-FTP boundaries only when FTP and
-  `pwr_calc_type = percent_ftp` are available.
+- Use inferred default percent-FTP boundaries when explicit boundaries are
+  absent and FTP plus `pwr_calc_type = percent_ftp` are available.
 - If no time-in-zone exists but power records and boundaries exist, calculate
   time-in-zone from records.
 - Do not render a power-zone chart for files without power samples and without
@@ -193,7 +231,8 @@ display helpers.
 - No cross-activity zone profile history.
 - No backfill of existing database rows unless the user explicitly reimports.
 - No attempt to reverse-engineer custom power-zone boundaries from
-  `time_in_power_zone` alone.
+  `time_in_power_zone` alone. The inference path uses FTP plus the percent-FTP
+  calculation type.
 - No custom UI for selecting alternate zone models.
 
 ## Acceptance Criteria
@@ -202,8 +241,11 @@ display helpers.
   max HR, resting HR, and threshold HR when present.
 - FIT import extracts power time-in-zone, power calculation type, FTP, and
   explicit power-zone boundaries when present.
-- Power boundaries are inferred from FTP only when explicit FIT boundaries are
-  absent and the source is marked as inferred.
+- Power boundaries are inferred from FTP when explicit FIT boundaries are
+  absent, `pwr_calc_type = percent_ftp` is present, and the source is marked as
+  inferred.
+- Local validation compares inferred/calculated power-zone durations with FIT
+  `time_in_power_zone` for representative Edge, FR255, and FR935 files.
 - Existing HR zone charts continue to work for files without FIT zone metadata.
 - Power-zone chart is shown only when meaningful power-zone data exists.
 - JSON export includes zone metadata with source markers.
