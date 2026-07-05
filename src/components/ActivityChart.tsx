@@ -259,10 +259,17 @@ export function ActivityChart({
     },
   };
 
+  const stackedChartHeight = 220;
+  const chartGap = 12;
+  const chartCount = Number(availability.hasHeartRate) + Number(availability.hasPace);
+  const chartHeight = chartCount === 1 ? stackedChartHeight * 2 + chartGap : stackedChartHeight;
+
+  if (chartCount === 0) return null;
+
   return (
-    <div style={{ display: "grid", gap: 12, minWidth: 0, width: "100%", overflow: "hidden" }}>
-      {availability.hasHeartRate && <ReactECharts option={hrOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />}
-      {availability.hasPace && <ReactECharts option={paceOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />}
+    <div style={{ display: "grid", gap: chartGap, minWidth: 0, width: "100%", overflow: "hidden" }}>
+      {availability.hasHeartRate && <ReactECharts option={hrOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chartHeight, width: "100%", minWidth: 0, overflow: "hidden" }} />}
+      {availability.hasPace && <ReactECharts option={paceOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chartHeight, width: "100%", minWidth: 0, overflow: "hidden" }} />}
     </div>
   );
 }

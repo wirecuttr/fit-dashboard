@@ -734,10 +734,11 @@ export function ActivityInsights({
       });
     });
 
+  const insightChartHeight = 280;
   const rowHeight = 34;
   const rowGap = 14;
   const rowTop = heatMetrics.map((_, idx) => 16 + idx * (rowHeight + rowGap));
-  const heatChartHeight = Math.max(120, 48 + heatMetrics.length * (rowHeight + rowGap));
+  const heatChartHeight = insightChartHeight;
 
   const heatOption = {
     tooltip: {
@@ -916,8 +917,67 @@ export function ActivityInsights({
     },
   };
 
+  const visibleCharts = [
+    {
+      id: "speed-trend",
+      available: hasSpeedData,
+      title: tr("insights.speedTrend"),
+      option: timelineOption,
+      onEvents: zoomEvents,
+      height: insightChartHeight,
+    },
+    {
+      id: "heart-rate-zones",
+      available: hasHeartRateData,
+      title: tr("insights.heartRateZoneTime"),
+      option: zoneOption,
+      onEvents: undefined,
+      height: insightChartHeight,
+    },
+    {
+      id: "heart-rate-histogram",
+      available: hasHeartRateData,
+      title: tr("insights.hrHistogram"),
+      option: hrHistogramOption,
+      onEvents: undefined,
+      height: insightChartHeight,
+    },
+    {
+      id: "cadence-power",
+      available: hasCadenceData || hasPowerData,
+      title: hasCadenceData && hasPowerData ? tr("insights.cadenceAndPower") : (hasPowerData ? tr("insights.power") : tr("insights.cadence")),
+      option: cadenceOption,
+      onEvents: zoomEvents,
+      height: insightChartHeight,
+    },
+    {
+      id: "effort-heatmap",
+      available: hasHeatmapData,
+      title: tr("insights.effortHeatmap"),
+      option: heatOption,
+      onEvents: undefined,
+      height: heatChartHeight,
+    },
+    {
+      id: "elevation",
+      available: hasElevationData,
+      title: tr("insights.elevation"),
+      option: elevationOption,
+      onEvents: zoomEvents,
+      height: insightChartHeight,
+    },
+    {
+      id: "power-heart-rate",
+      available: hasPowerData && hasHeartRateData,
+      title: tr("insights.powerVsHeartRate"),
+      option: scatterOption,
+      onEvents: undefined,
+      height: insightChartHeight,
+    },
+  ].filter((chart) => chart.available);
+
   return (
-    <section className="insight-grid">
+    <>
       {heartRateDriftOption && cardiacResult?.available && (
         <article className="panel heart-rate-drift-detail-panel">
           <div className="heart-rate-drift-detail-header">
@@ -955,55 +1015,19 @@ export function ActivityInsights({
                 <p><strong>What this shows:</strong> Heart Rate Drift compares Efficiency Factor (EF), the activity output divided by average heart rate, between the first and second halves of the analyzed section. Constant-effort machine results compare heart rate only. Lower drift usually means steadier aerobic efficiency.</p>
                 <p><strong>Chart lines:</strong> Heart rate is plotted with the selected output metric when one is used. Cycling uses normalized power when it can be calculated. If normalized power is unavailable, speed can be used as a low-confidence fallback. Running, walking, and hiking are displayed as pace, while the calculation uses speed internally.</p>
                 <p><strong>Regions:</strong> Shaded regions are excluded from the calculation. Longer activities are split into approximately 30-minute bins, with each bin EF shown on its Bin label when an output metric is used.</p>
-                <p><strong>Use with care:</strong> This is most useful on steady aerobic efforts. Intervals, stops, hills, heat, dehydration, fatigue, caffeine, poor sleep, or bad sensor data can distort the result. Confidence reflects data quality and mode assumptions, not medical certainty.</p>
+                <p><strong>Use with care:</strong> This is most useful on steady aerobic efforts. Intervals, stops, hills, heat, dehydration, caffeine, poor sleep, or bad sensor data can distort the result. Confidence reflects data quality and mode assumptions, not medical certainty.</p>
               </div>
             )}
           </div>
-          <ReactECharts option={heartRateDriftOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+          <ReactECharts option={heartRateDriftOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: insightChartHeight, width: "100%" }} />
         </article>
       )}
-      {hasSpeedData && (
-        <article className="panel">
-          <h3>{tr("insights.speedTrend")}</h3>
-          <ReactECharts option={timelineOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+      {visibleCharts.map((chart) => (
+        <article className="panel" key={chart.id}>
+          <h3>{chart.title}</h3>
+          <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />
         </article>
-      )}
-      {hasHeartRateData && (
-        <article className="panel">
-          <h3>{tr("insights.heartRateZoneTime")}</h3>
-          <ReactECharts option={zoneOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-      {hasHeartRateData && (
-        <article className="panel">
-          <h3>{tr("insights.hrHistogram")}</h3>
-          <ReactECharts option={hrHistogramOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-      {(hasCadenceData || hasPowerData) && (
-        <article className="panel">
-          <h3>{hasCadenceData && hasPowerData ? tr("insights.cadenceAndPower") : (hasPowerData ? tr("insights.power") : tr("insights.cadence"))}</h3>
-          <ReactECharts option={cadenceOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-      {hasHeatmapData && (
-        <article className="panel">
-          <h3>{tr("insights.effortHeatmap")}</h3>
-          <ReactECharts option={heatOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: heatChartHeight, width: "100%" }} />
-        </article>
-      )}
-      {hasElevationData && (
-        <article className="panel">
-          <h3>{tr("insights.elevation")}</h3>
-          <ReactECharts option={elevationOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-      {hasPowerData && hasHeartRateData && (
-        <article className="panel">
-          <h3>{tr("insights.powerVsHeartRate")}</h3>
-          <ReactECharts option={scatterOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-        </article>
-      )}
-    </section>
+      ))}
+    </>
   );
 }
