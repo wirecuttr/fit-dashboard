@@ -87,6 +87,10 @@ Do not conflate activity result fields with athlete profile or zone-setting
 fields.
 
 - `Session.max_heart_rate`: maximum heart rate reached during the activity.
+  This is already imported into `metadata_json.session.max_heart_rate` and
+  shown as `Max HR` in the Individual activity header and overview table. Lap
+  max HR is handled separately as a lap result metric. Do not duplicate session
+  max HR under `zones`.
 - `TimeInZone.max_heart_rate` / `ZonesTarget.max_heart_rate`: configured max
   heart rate used for zone calculation.
 - `TimeInZone.threshold_heart_rate` / `ZonesTarget.threshold_heart_rate`:
@@ -99,6 +103,49 @@ fields.
 
 Persist threshold heart rate under `zones.heart_rate`, not as an activity max HR
 or activity result metric.
+
+## Related Stats Scope
+
+The FIT files contain several adjacent metrics. This feature adds zone/profile
+metadata needed to interpret zone charts and zone export. It must not duplicate
+activity result stats that the app already imports.
+
+In scope for this feature:
+
+- `TimeInZone.time_in_hr_zone`
+- `TimeInZone.time_in_power_zone`
+- `TimeInZone.hr_zone_high_boundary`
+- `TimeInZone.power_zone_high_boundary`
+- `TimeInZone.max_heart_rate` / `ZonesTarget.max_heart_rate` as configured zone
+  max HR, distinct from activity max HR.
+- `TimeInZone.resting_heart_rate` / `UserProfile.resting_heart_rate` when
+  useful for zone context.
+- `TimeInZone.threshold_heart_rate` / `ZonesTarget.threshold_heart_rate`
+- `TimeInZone.functional_threshold_power` /
+  `ZonesTarget.functional_threshold_power`
+- `TimeInZone.hr_calc_type` / `ZonesTarget.hr_calc_type`
+- `TimeInZone.pwr_calc_type` / `ZonesTarget.pwr_calc_type`
+- Source markers for extracted, inferred, calculated, or fallback zone data.
+- Inferred power boundaries from FTP when explicit FIT boundaries are absent and
+  `pwr_calc_type = percent_ftp`.
+
+Out of scope or already handled:
+
+- `Session.max_heart_rate`: activity result max HR. Already stored and displayed
+  by the app; this feature should not add a second copy in the zone model.
+- `Session.avg_heart_rate`, `Session.avg_power`, `Session.max_power`,
+  `Session.normalized_power`, `Session.training_stress_score`,
+  `Session.intensity_factor`, `Session.threshold_power`,
+  `Session.total_training_effect`, and
+  `Session.total_anaerobic_training_effect`: related activity result metrics,
+  not zone metadata for this branch.
+- `Lap.avg_heart_rate`, `Lap.max_heart_rate`, `Lap.normalized_power`, and other
+  lap result metrics: useful elsewhere, but not part of this zone feature.
+- `UserProfile.age`, `height`, `weight`, `gender`, `activity_class`, unit
+  settings, `wake_time`, and `sleep_time`: profile fields that are not needed
+  for zone rendering/export in this feature.
+- `WorkoutStep` target ranges such as `target_type = power_lap` and custom
+  target low/high values: workout targets, not athlete zone boundaries.
 
 ## Design Direction
 
