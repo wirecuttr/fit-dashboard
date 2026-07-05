@@ -271,7 +271,9 @@ Heart-rate zone chart:
 - Use FIT-provided HR boundaries when available.
 - Prefer FIT-provided `time_in_hr_zone` for Garmin files when present.
 - If only boundaries are available, calculate time-in-zone from records.
-- If no FIT boundaries exist, continue using default zones as fallback.
+- Do not use hard-coded default HR zones as an implicit fallback. If no real FIT
+  or future user-provided HR boundaries exist, render the HR line and HR
+  histogram without zone colouring and do not show an HR zone-time chart.
 
 Power zone chart:
 
@@ -301,8 +303,13 @@ instead of `maxHeartRate`.
 Future user-entered zones should be modelled as a separate source of zone
 boundaries, not as a replacement for imported FIT activity metadata. This branch
 keeps imported zones activity-scoped and source-marked so future charts can
-choose between FIT activity zones, a dated user zone profile, or default fallback
-zones.
+choose between FIT activity zones or a dated user zone profile.
+
+User-entered zones should be persisted as app state in the database, likely via a
+small `zone_profiles` table with a JSON zone definition for the first pass. Do
+not write user zone profiles into each activity row. Imported FIT zones remain
+activity metadata; user profiles are app/user configuration that can be applied
+by date, sport, and user preference later.
 
 Do not add a user zone profile table, settings UI, backfill path, or profile
 history in this branch.
@@ -328,6 +335,7 @@ history in this branch.
   inferred.
 - Local validation compares inferred/calculated power-zone durations with FIT
   `time_in_power_zone` for representative Edge, FR255, and FR935 files.
-- Existing HR zone charts continue to work for files without FIT zone metadata.
+- Existing HR charts continue to work for files without FIT zone metadata, but
+  without zone colouring or default zone-time charts.
 - Power-zone chart is shown only when meaningful power-zone data exists.
 - JSON export includes zone metadata with source markers.

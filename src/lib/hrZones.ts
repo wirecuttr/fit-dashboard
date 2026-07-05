@@ -7,17 +7,9 @@ export type HeartRateZone = {
 
 const HR_ZONE_COLORS = ["#3b82f6", "#22c55e", "#eab308", "#f97316", "#ef4444", "#a855f7", "#06b6d4"];
 
-export const DEFAULT_HEART_RATE_ZONES: HeartRateZone[] = [
-  { name: "Z1 <=75 bpm", minExclusive: -Infinity, maxInclusive: 75, color: "#3b82f6" },
-  { name: "Z2 76-95 bpm", minExclusive: 75, maxInclusive: 95, color: "#22c55e" },
-  { name: "Z3 96-120 bpm", minExclusive: 95, maxInclusive: 120, color: "#eab308" },
-  { name: "Z4 121-150 bpm", minExclusive: 120, maxInclusive: 150, color: "#f97316" },
-  { name: "Z5 >150 bpm", minExclusive: 150, maxInclusive: null, color: "#ef4444" },
-];
-
 export function buildHeartRateZones(zoneUpperBoundsBpm?: number[] | null): HeartRateZone[] {
   if (!Array.isArray(zoneUpperBoundsBpm) || zoneUpperBoundsBpm.length === 0) {
-    return DEFAULT_HEART_RATE_ZONES;
+    return [];
   }
 
   const bounds = Array.from(
@@ -29,7 +21,7 @@ export function buildHeartRateZones(zoneUpperBoundsBpm?: number[] | null): Heart
   ).sort((a, b) => a - b);
 
   if (bounds.length < 2) {
-    return DEFAULT_HEART_RATE_ZONES;
+    return [];
   }
 
   const zones: HeartRateZone[] = [];
@@ -57,7 +49,9 @@ export function buildHeartRateZones(zoneUpperBoundsBpm?: number[] | null): Heart
   return zones;
 }
 
-export function resolveHeartRateZoneIndex(hr: number, zones: HeartRateZone[]): number {
+export function resolveHeartRateZoneIndex(hr: number, zones: HeartRateZone[]): number | null {
+  if (zones.length === 0) return null;
+
   for (let i = 0; i < zones.length; i += 1) {
     const zone = zones[i];
     const inLower = hr > zone.minExclusive;

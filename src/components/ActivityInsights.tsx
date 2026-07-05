@@ -141,18 +141,21 @@ export function ActivityInsights({
   const hrValues = records
     .map((r) => r.heart_rate)
     .filter((n): n is number => typeof n === "number" && n > 0);
-  const fitHrZoneMinutes = zoneSecondsToMinutes(zones?.heart_rate?.time_in_zone_s, hrZones.length);
+  const hasRealHeartRateZones = hrZones.length > 0;
+  const fitHrZoneMinutes = hasRealHeartRateZones ? zoneSecondsToMinutes(zones?.heart_rate?.time_in_zone_s, hrZones.length) : [];
   const zoneMinutes = fitHrZoneMinutes.some((value) => value > 0) ? fitHrZoneMinutes : hrZones.map(() => 0);
-  if (!fitHrZoneMinutes.some((value) => value > 0) && hrValues.length > 0) {
+  if (hasRealHeartRateZones && !fitHrZoneMinutes.some((value) => value > 0) && hrValues.length > 0) {
     for (let i = 0; i < records.length - 1; i += 1) {
       const hr = records[i].heart_rate;
       if (typeof hr !== "number" || hr <= 0) continue;
       const dtMin = Math.max(0, (records[i + 1].timestamp_ms - records[i].timestamp_ms) / 60000);
       const zoneIndex = resolveHeartRateZoneIndex(hr, hrZones);
-      zoneMinutes[zoneIndex] += dtMin;
+      if (zoneIndex !== null) {
+        zoneMinutes[zoneIndex] += dtMin;
+      }
     }
   }
-  const hasHeartRateZoneData = hasHeartRateData || zoneMinutes.some((value) => value > 0);
+  const hasHeartRateZoneData = hasRealHeartRateZones && (hasHeartRateData || zoneMinutes.some((value) => value > 0));
 
   const fitPowerZoneMinutes = zoneSecondsToMinutes(zones?.power?.time_in_zone_s, powerZones.length);
   const powerZoneMinutes = fitPowerZoneMinutes.some((value) => value > 0) ? fitPowerZoneMinutes : powerZones.map(() => 0);
@@ -497,10 +500,11 @@ export function ActivityInsights({
         itemStyle: { borderRadius: [2, 2, 0, 0] },
         data: hrHistogram.counts.map((count, idx) => {
           const centerHr = hrHistogram.centers[idx] ?? 0;
-          const zone = hrZones[resolveHeartRateZoneIndex(centerHr, hrZones)];
+          const zoneIndex = resolveHeartRateZoneIndex(centerHr, hrZones);
+          const color = zoneIndex === null ? (isDark ? "#64748b" : "#94a3b8") : hrZones[zoneIndex].color;
           return {
             value: count,
-            itemStyle: { color: zone.color },
+            itemStyle: { color },
           };
         }),
       },
