@@ -733,6 +733,31 @@ export function ActivityInsights({
     return { labels, counts, centers, binWidth };
   })();
 
+  const hrHistogramZoneRows = buildZoneTimeRows(hrZones, zoneMinutes, "bpm");
+  const hrHistogramZoneLabels = hrHistogramZoneRows.flatMap((row, rowIdx) => {
+    const matchingBinIndexes = hrHistogram.centers
+      .map((center, idx) => ({ center, idx }))
+      .filter(({ center }) => {
+        const zoneIndex = resolveHeartRateZoneIndex(center, hrZones);
+        if (zoneIndex === null) return false;
+
+        if (row.label === "<Z1") return zoneIndex === 0;
+        if (rowIdx === hrHistogramZoneRows.length - 1) return zoneIndex >= rowIdx;
+        return zoneIndex === rowIdx;
+      })
+      .map(({ idx }) => idx);
+
+    if (!matchingBinIndexes.length) return [];
+
+    const first = matchingBinIndexes[0];
+    const last = matchingBinIndexes[matchingBinIndexes.length - 1];
+    return [{
+      x: (first + last) / 2,
+      text: `${row.label} ${formatDurationClock(row.minutes)}`,
+      color: row.color,
+    }];
+  });
+
   const hrHistogramOption = {
     tooltip: {
       trigger: "item",
@@ -743,19 +768,19 @@ export function ActivityInsights({
         return `<div><strong>${label} bpm</strong></div><div>Samples: <strong>${count}</strong></div>`;
       },
     },
-    grid: { left: 44, right: 16, top: 28, bottom: 56 },
+    grid: { left: 44, right: 16, top: 28, bottom: 82 },
     xAxis: {
       type: "category",
       name: `bpm (bin ~${hrHistogram.binWidth})`,
       data: hrHistogram.labels,
-      nameTextStyle: { color: axisColor, fontSize: 11, padding: [26, 0, 0, 0] },
+      nameTextStyle: { color: axisColor, fontSize: 11, padding: [50, 0, 0, 0] },
       axisLabel: { color: axisColor, fontSize: 10, interval: Math.max(0, Math.floor(hrHistogram.labels.length / 12)) },
       axisLine: { lineStyle: { color: gridLine } },
       splitLine: { show: false },
     },
     yAxis: {
       type: "value",
-      name: "count",
+      name: "samples",
       nameTextStyle: { color: axisColor, fontSize: 11 },
       axisLabel: { color: axisColor, fontSize: 11 },
       splitLine: { lineStyle: { color: gridLine } },
@@ -775,6 +800,37 @@ export function ActivityInsights({
             itemStyle: { color },
           };
         }),
+      },
+      {
+        type: "custom",
+        coordinateSystem: "cartesian2d",
+        silent: true,
+        clip: false,
+        data: hrHistogramZoneLabels.map((label) => [label.x, 0]),
+        renderItem: (params: any, api: any) => {
+          const label = hrHistogramZoneLabels[params.dataIndex];
+          if (!label) return null;
+          const coord = api.coord([api.value(0), 0]);
+          const coordSys = params.coordSys;
+          return {
+            type: "text",
+            x: coord[0],
+            y: coordSys.y + coordSys.height + 48,
+            style: {
+              text: label.text,
+              fill: axisColor,
+              fontSize: 10,
+              fontWeight: 700,
+              align: "center",
+              verticalAlign: "middle",
+              backgroundColor: isDark ? "rgba(15, 23, 42, 0.82)" : "rgba(248, 250, 252, 0.88)",
+              borderColor: label.color,
+              borderWidth: 1,
+              borderRadius: 3,
+              padding: [2, 4],
+            },
+          };
+        },
       },
     ],
   };
@@ -806,6 +862,12 @@ export function ActivityInsights({
       unit: "rpm",
       getter: (d: (typeof timeline)[number]) => d.cadence,
       colors: isDark ? ["#2f1a05", "#f59e0b", "#facc15"] : ["#fef3c7", "#fbbf24", "#d97706"],
+    }] : []),
+    ...(hasPowerData ? [{
+      label: "Power",
+      unit: "W",
+      getter: (d: (typeof timeline)[number]) => d.power,
+      colors: isDark ? ["#2b1730", "#a855f7", "#d8b4fe"] : ["#f3e8ff", "#c084fc", "#7e22ce"],
     }] : []),
     ...(hasTemperatureData ? [{
       label: "Temp",
@@ -857,7 +919,7 @@ export function ActivityInsights({
   const rowHeight = 34;
   const rowGap = 14;
   const rowTop = heatMetrics.map((_, idx) => 16 + idx * (rowHeight + rowGap));
-  const heatChartHeight = insightChartHeight;
+  const heatChartHeight = Math.max(insightChartHeight, 44 + heatMetrics.length * rowHeight + Math.max(0, heatMetrics.length - 1) * rowGap);
 
   const heatOption = {
     tooltip: {
