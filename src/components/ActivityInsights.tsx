@@ -84,45 +84,95 @@ function formatDurationClock(minutes: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function formatZoneRange(zone: ZoneDefinition, unit: string): string {
-  if (zone.maxInclusive === null) {
-    return `>${Math.round(zone.minExclusive)} ${unit}`;
+type ZoneTimeRow = {
+  label: string;
+  range: string;
+  minutes: number;
+  color: string;
+};
+
+function buildZoneTimeRows(zones: ZoneDefinition[], minutes: number[], unit: string): ZoneTimeRow[] {
+  const lowerBounds = zones
+    .slice(0, -1)
+    .map((zone) => zone.maxInclusive)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+
+  if (lowerBounds.length >= 2 && minutes.length >= lowerBounds.length) {
+    const rows: ZoneTimeRow[] = [
+      {
+        label: "<Z1",
+        range: `<${Math.round(lowerBounds[0])} ${unit}`,
+        minutes: minutes[0] ?? 0,
+        color: zones[0]?.color ?? "#94a3b8",
+      },
+    ];
+
+    for (let idx = 1; idx < lowerBounds.length - 1; idx += 1) {
+      rows.push({
+        label: `Z${idx}`,
+        range: `${Math.round(lowerBounds[idx - 1])}-${Math.round(lowerBounds[idx] - 1)} ${unit}`,
+        minutes: minutes[idx] ?? 0,
+        color: zones[idx]?.color ?? "#94a3b8",
+      });
+    }
+
+    const lastNamedZone = lowerBounds.length - 1;
+    rows.push({
+      label: `Z${lastNamedZone}`,
+      range: `>${Math.round(lowerBounds[lastNamedZone - 1] - 1)} ${unit}`,
+      minutes: minutes.slice(lastNamedZone).reduce((sum, value) => sum + value, 0),
+      color: zones[lastNamedZone]?.color ?? zones[zones.length - 1]?.color ?? "#94a3b8",
+    });
+
+    return rows;
   }
-  if (!Number.isFinite(zone.minExclusive)) {
-    return `<=${Math.round(zone.maxInclusive)} ${unit}`;
-  }
-  return `${Math.round(zone.minExclusive + 1)}-${Math.round(zone.maxInclusive)} ${unit}`;
+
+  return zones.map((zone, idx) => {
+    let range: string;
+    if (zone.maxInclusive === null) {
+      range = `>${Math.round(zone.minExclusive)} ${unit}`;
+    } else if (!Number.isFinite(zone.minExclusive)) {
+      range = `<=${Math.round(zone.maxInclusive)} ${unit}`;
+    } else {
+      range = `${Math.round(zone.minExclusive + 1)}-${Math.round(zone.maxInclusive)} ${unit}`;
+    }
+
+    return {
+      label: `Z${idx + 1}`,
+      range,
+      minutes: minutes[idx] ?? 0,
+      color: zone.color,
+    };
+  });
 }
 
 function ZoneTimeBars({ title, zones, minutes, unit }: ZoneTimeBarsProps) {
-  const maxMinutes = Math.max(...minutes, 0);
-  const totalMinutes = minutes.reduce((sum, value) => sum + value, 0);
+  const rows = buildZoneTimeRows(zones, minutes, unit);
+  const maxMinutes = Math.max(...rows.map((row) => row.minutes), 0);
+  const totalMinutes = rows.reduce((sum, row) => sum + row.minutes, 0);
 
   return (
     <div className="zone-time-bars" aria-label={title}>
-      {zones.map((zone, idx) => {
-        const zoneMinutes = minutes[idx] ?? 0;
-        const percentOfMax = maxMinutes > 0 ? (zoneMinutes / maxMinutes) * 100 : 0;
-        const percentOfTotal = totalMinutes > 0 ? (zoneMinutes / totalMinutes) * 100 : 0;
-        const duration = formatDurationClock(zoneMinutes);
-        const range = formatZoneRange(zone, unit);
-        const label = `Z${idx + 1}`;
+      {rows.map((row) => {
+        const percentOfMax = maxMinutes > 0 ? (row.minutes / maxMinutes) * 100 : 0;
+        const percentOfTotal = totalMinutes > 0 ? (row.minutes / totalMinutes) * 100 : 0;
+        const duration = formatDurationClock(row.minutes);
 
         return (
           <div
-            key={`${label}-${range}`}
-            className={`zone-time-row${zoneMinutes <= 0 ? " empty" : ""}`}
-            title={`${label} - ${range} - ${duration} - ${percentOfTotal.toFixed(0)}%`}
+            key={`${row.label}-${row.range}`}
+            className={`zone-time-row${row.minutes <= 0 ? " empty" : ""}`}
+            title={`${row.label} - ${row.range} - ${duration} - ${percentOfTotal.toFixed(0)}%`}
           >
-            <span className="zone-time-label">{label}</span>
-            <span className="zone-time-range">{range}</span>
+            <span className="zone-time-label">{row.label}</span>
+            <span className="zone-time-range">{row.range}</span>
             <span className="zone-time-duration">{duration}</span>
             <span className="zone-time-track" aria-hidden="true">
               <span
                 className="zone-time-fill"
                 style={{
                   width: `${percentOfMax}%`,
-                  backgroundColor: zone.color,
+                  backgroundColor: row.color,
                 }}
               />
             </span>
