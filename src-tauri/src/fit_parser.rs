@@ -99,10 +99,26 @@ fn replace_vec_if_useful<T>(target: &mut Vec<T>, values: Vec<T>) {
     }
 }
 
+fn has_positive_duration(values: &[f64]) -> bool {
+    values.iter().any(|value| *value > 0.0)
+}
+
+fn time_in_zone_reference_priority(reference: Option<&str>) -> u8 {
+    match reference.unwrap_or("") {
+        "session" => 3,
+        "lap" => 2,
+        "split" => 0,
+        _ => 1,
+    }
+}
+
 #[derive(Default)]
 struct ZoneAccumulator {
     time_in_hr_zone_s: Vec<f64>,
     time_in_power_zone_s: Vec<f64>,
+    hr_time_in_zone_priority: u8,
+    power_time_in_zone_priority: u8,
+    time_in_zone_metadata_priority: u8,
     hr_zone_high_boundary: Vec<i64>,
     power_zone_high_boundary: Vec<i64>,
     hr_calc_type: Option<String>,
@@ -636,32 +652,84 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                 }
             }
         } else if rec.kind() == MesgNum::TimeInZone {
+            let reference = rec
+                .fields()
+                .iter()
+                .find(|field| field.name() == "reference_mesg")
+                .and_then(|field| normalized_fit_label(field.value()));
+            let reference_priority = time_in_zone_reference_priority(reference.as_deref());
+            let can_replace_hr_zone_time = reference_priority > zones.hr_time_in_zone_priority;
+            let can_replace_power_zone_time = reference_priority > zones.power_time_in_zone_priority;
+            let can_replace_zone_metadata = reference_priority > 0
+                && reference_priority >= zones.time_in_zone_metadata_priority;
+
             for field in rec.fields() {
                 match field.name() {
-                    "time_in_hr_zone" => replace_vec_if_useful(
-                        &mut zones.time_in_hr_zone_s,
-                        clean_duration_values(value_f64_vec(field.value())),
-                    ),
-                    "time_in_power_zone" => replace_vec_if_useful(
-                        &mut zones.time_in_power_zone_s,
-                        clean_duration_values(value_f64_vec(field.value())),
-                    ),
-                    "hr_zone_high_boundary" => replace_vec_if_useful(
-                        &mut zones.hr_zone_high_boundary,
-                        clean_i64_bounds(value_i64_vec(field.value()), 40, 260),
-                    ),
-                    "power_zone_high_boundary" => replace_vec_if_useful(
-                        &mut zones.power_zone_high_boundary,
-                        clean_i64_bounds(value_i64_vec(field.value()), 1, 5000),
-                    ),
-                    "hr_calc_type" => set_string_if_present(&mut zones.hr_calc_type, field.value()),
-                    "pwr_calc_type" => set_string_if_present(&mut zones.pwr_calc_type, field.value()),
-                    "max_heart_rate" => zones.max_heart_rate = value_i64_in_range(field.value(), 40, 260),
-                    "resting_heart_rate" => zones.resting_heart_rate = value_i64_in_range(field.value(), 20, 120),
-                    "threshold_heart_rate" => zones.threshold_heart_rate = value_i64_in_range(field.value(), 40, 260),
-                    "functional_threshold_power" => zones.functional_threshold_power = value_i64_in_range(field.value(), 50, 2000),
+                    "time_in_hr_zone" => {
+                        let values = clean_duration_values(value_f64_vec(field.value()));
+                        if can_replace_hr_zone_time && has_positive_duration(&values) {
+                            zones.time_in_hr_zone_s = values;
+                            zones.hr_time_in_zone_priority = reference_priority;
+                        }
+                    },
+                    "time_in_power_zone" => {
+                        let values = clean_duration_values(value_f64_vec(field.value()));
+                        if can_replace_power_zone_time && has_positive_duration(&values) {
+                            zones.time_in_power_zone_s = values;
+                            zones.power_time_in_zone_priority = reference_priority;
+                        }
+                    },
+                    "hr_zone_high_boundary" => {
+                        if can_replace_zone_metadata {
+                            replace_vec_if_useful(
+                                &mut zones.hr_zone_high_boundary,
+                                clean_i64_bounds(value_i64_vec(field.value()), 40, 260),
+                            );
+                        }
+                    },
+                    "power_zone_high_boundary" => {
+                        if can_replace_zone_metadata {
+                            replace_vec_if_useful(
+                                &mut zones.power_zone_high_boundary,
+                                clean_i64_bounds(value_i64_vec(field.value()), 1, 5000),
+                            );
+                        }
+                    },
+                    "hr_calc_type" => {
+                        if can_replace_zone_metadata {
+                            set_string_if_present(&mut zones.hr_calc_type, field.value());
+                        }
+                    },
+                    "pwr_calc_type" => {
+                        if can_replace_zone_metadata {
+                            set_string_if_present(&mut zones.pwr_calc_type, field.value());
+                        }
+                    },
+                    "max_heart_rate" => {
+                        if can_replace_zone_metadata {
+                            zones.max_heart_rate = value_i64_in_range(field.value(), 40, 260);
+                        }
+                    },
+                    "resting_heart_rate" => {
+                        if can_replace_zone_metadata {
+                            zones.resting_heart_rate = value_i64_in_range(field.value(), 20, 120);
+                        }
+                    },
+                    "threshold_heart_rate" => {
+                        if can_replace_zone_metadata {
+                            zones.threshold_heart_rate = value_i64_in_range(field.value(), 40, 260);
+                        }
+                    },
+                    "functional_threshold_power" => {
+                        if can_replace_zone_metadata {
+                            zones.functional_threshold_power = value_i64_in_range(field.value(), 50, 2000);
+                        }
+                    },
                     _ => {}
                 }
+            }
+            if can_replace_zone_metadata {
+                zones.time_in_zone_metadata_priority = reference_priority;
             }
         } else if rec.kind() == MesgNum::ZonesTarget {
             for field in rec.fields() {
