@@ -1,7 +1,7 @@
 import ReactECharts from "echarts-for-react";
 import type { RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
-import { buildHeartRateZones, resolveHeartRateZoneIndex } from "../lib/hrZones";
+import { buildHeartRateZones, resolveHeartRateZoneIndex, type HeartRateZone } from "../lib/hrZones";
 import { applyRollingAverageSeries, getDynamicSmoothingWindow } from "../lib/chartSmoothing";
 import {
   convertElevationMeters,
@@ -22,6 +22,73 @@ type Props = {
   lapTimestampsUtc?: string[];
   smoothGraphs?: boolean;
 };
+
+type ZoneTimeBarsProps = {
+  title: string;
+  zones: HeartRateZone[];
+  seconds: number[];
+  unit: string;
+};
+
+function formatDurationClock(seconds: number): string {
+  const totalSec = Math.round(Math.max(0, seconds));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  }
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatZoneRange(zone: HeartRateZone, unit: string): string {
+  if (zone.maxInclusive === null) {
+    return `>${Math.round(zone.minExclusive)} ${unit}`;
+  }
+  if (!Number.isFinite(zone.minExclusive)) {
+    return `<=${Math.round(zone.maxInclusive)} ${unit}`;
+  }
+  return `${Math.round(zone.minExclusive + 1)}-${Math.round(zone.maxInclusive)} ${unit}`;
+}
+
+function ZoneTimeBars({ title, zones, seconds, unit }: ZoneTimeBarsProps) {
+  const maxSeconds = Math.max(...seconds, 0);
+  const totalSeconds = seconds.reduce((sum, value) => sum + value, 0);
+
+  return (
+    <div className="zone-time-bars" aria-label={title}>
+      {zones.map((zone, idx) => {
+        const zoneSeconds = seconds[idx] ?? 0;
+        const percentOfMax = maxSeconds > 0 ? (zoneSeconds / maxSeconds) * 100 : 0;
+        const percentOfTotal = totalSeconds > 0 ? (zoneSeconds / totalSeconds) * 100 : 0;
+        const duration = formatDurationClock(zoneSeconds);
+        const range = formatZoneRange(zone, unit);
+        const label = `Z${idx + 1}`;
+
+        return (
+          <div
+            key={`${label}-${range}`}
+            className={`zone-time-row${zoneSeconds <= 0 ? " empty" : ""}`}
+            title={`${label} - ${range} - ${duration} - ${percentOfTotal.toFixed(0)}%`}
+          >
+            <span className="zone-time-label">{label}</span>
+            <span className="zone-time-range">{range}</span>
+            <span className="zone-time-duration">{duration}</span>
+            <span className="zone-time-track" aria-hidden="true">
+              <span
+                className="zone-time-fill"
+                style={{
+                  width: `${percentOfMax}%`,
+                  backgroundColor: zone.color,
+                }}
+              />
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function safeAvg(values: Array<number | null | undefined>): number | null {
   const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
@@ -58,7 +125,7 @@ export function ActivityInsights({
   lapTimestampsUtc = [],
   smoothGraphs = true,
 }: Props) {
-    const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
+  const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
   const isDark = theme === "dark";
   const { t: tr } = useTranslation();
   const axisColor = isDark ? "#8899b8" : "#64748b";
@@ -147,6 +214,7 @@ export function ActivityInsights({
       zoneMinutes[zoneIndex] += dtMin;
     }
   }
+  const zoneSeconds = zoneMinutes.map((minutes) => minutes * 60);
 
   const timelineOption = {
     tooltip: {
@@ -252,33 +320,6 @@ export function ActivityInsights({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: lapMarkers,
         } : undefined,
-      },
-    ],
-  };
-
-  const zoneOption = {
-    tooltip: {
-      trigger: "item",
-      ...tooltipStyle,
-      formatter: (p: any) => `${p.marker} ${p.name}: <strong>${Number(p.value).toFixed(2)} min</strong>`
-    },
-    legend: { bottom: 0, textStyle: { color: axisColor, fontSize: 12 } },
-    series: [
-      {
-        type: "pie",
-        radius: ["38%", "72%"],
-        padAngle: 2,
-        itemStyle: {
-          borderRadius: 8,
-          borderColor: isDark ? "#0b1220" : "#ffffff",
-          borderWidth: 3,
-        },
-        label: { color: axisColor, fontSize: 12, formatter: (p: any) => `${p.name}\n${Number(p.value).toFixed(1)} min` },
-        data: hrZones.map((zone, idx) => ({
-          name: zone.name,
-          value: zoneMinutes[idx],
-          itemStyle: { color: zone.color },
-        })),
       },
     ],
   };
@@ -603,10 +644,15 @@ export function ActivityInsights({
         <h3>{tr("insights.speedTrend")}</h3>
         <ReactECharts option={timelineOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
       </article>
-      {hasPowerData && hasHeartRateData && (
+      {hasHeartRateData && (
         <article className="panel">
           <h3>{tr("insights.heartRateZoneTime")}</h3>
-          <ReactECharts option={zoneOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
+          <ZoneTimeBars
+            title={tr("insights.heartRateZoneTime")}
+            zones={hrZones}
+            seconds={zoneSeconds}
+            unit="bpm"
+          />
         </article>
       )}
       {hasHeartRateData && (

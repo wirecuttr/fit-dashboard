@@ -17,8 +17,9 @@ common user task is to compare time spent in each ordered zone.
 
 ## Design Direction
 
-Replace heart-rate and power time-in-zone pie charts with ordered horizontal bar
-charts, similar to Garmin's zone summaries.
+Replace heart-rate time-in-zone pie charts with ordered horizontal bar charts,
+similar to Garmin's zone summaries. Power zone bars should use the same component
+model after power-zone data is available in the app model.
 
 Each row should show:
 
@@ -85,7 +86,10 @@ label and range.
 
 ## Component Direction
 
-Use one shared zone-time component for heart-rate and power zones. Inputs should
+Use one shared zone-time component model for heart-rate and power zones. In this
+upstream-based branch, only heart-rate zone data is available, so the first code
+slice implements heart-rate bars. Power bars should follow the same API once the
+power-zone persistence work lands. Inputs should
 be ordered zone definitions plus time values:
 
 ```tsx
@@ -154,8 +158,10 @@ Cycling and similar activities:
 4. Cadence, when present
 5. Zone time bars, when zone data exists
 
-Elevation should remain available as an overlay on the primary time-series
-metrics:
+Elevation overlay support is a future-compatible design constraint for this
+branch, not a required UI control in this slice. The implementation should not
+remove altitude data or make later overlays harder. Elevation should remain
+available as an overlay on the primary time-series metrics:
 
 - Heart Rate with elevation overlay.
 - Pace with elevation overlay.
@@ -192,7 +198,8 @@ it later through optional/custom graph controls.
 ## Acceptance Criteria
 
 - Heart-rate zone time renders as horizontal bars when HR zone data exists.
-- Power zone time renders as horizontal bars when power zone data exists.
+- Power zone bars can be added through the same component model when power
+  zone data exists in the app model.
 - Zone ranges are visible exactly once per row.
 - Durations use clock-style formatting, not decimal minutes.
 - Zero-duration zones remain visible but subdued.
@@ -200,5 +207,6 @@ it later through optional/custom graph controls.
 - The panel is less crowded than the current pie/donut display.
 - The fixed Heart Rate and Pace chart is split into separate metric charts.
 - Pace versus speed defaults are selected by activity type.
-- The design preserves a path for elevation overlays on HR, pace, speed,
-  cadence, and power charts.
+- The implementation preserves a future path for elevation overlays on HR,
+  pace, speed, cadence, and power charts, without adding overlay controls in
+  this slice.
