@@ -60,6 +60,79 @@ function isSeriesRow(row: [number | null, number | null, number, number, number 
   return typeof row[0] === "number" && Number.isFinite(row[0]);
 }
 
+type ZoneDefinition = {
+  minExclusive: number;
+  maxInclusive: number | null;
+  color: string;
+};
+
+type ZoneTimeBarsProps = {
+  title: string;
+  zones: ZoneDefinition[];
+  minutes: number[];
+  unit: string;
+};
+
+function formatDurationClock(minutes: number): string {
+  const totalSec = Math.round(Math.max(0, minutes) * 60);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  }
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatZoneRange(zone: ZoneDefinition, unit: string): string {
+  if (zone.maxInclusive === null) {
+    return `>${Math.round(zone.minExclusive)} ${unit}`;
+  }
+  if (!Number.isFinite(zone.minExclusive)) {
+    return `<=${Math.round(zone.maxInclusive)} ${unit}`;
+  }
+  return `${Math.round(zone.minExclusive + 1)}-${Math.round(zone.maxInclusive)} ${unit}`;
+}
+
+function ZoneTimeBars({ title, zones, minutes, unit }: ZoneTimeBarsProps) {
+  const maxMinutes = Math.max(...minutes, 0);
+  const totalMinutes = minutes.reduce((sum, value) => sum + value, 0);
+
+  return (
+    <div className="zone-time-bars" aria-label={title}>
+      {zones.map((zone, idx) => {
+        const zoneMinutes = minutes[idx] ?? 0;
+        const percentOfMax = maxMinutes > 0 ? (zoneMinutes / maxMinutes) * 100 : 0;
+        const percentOfTotal = totalMinutes > 0 ? (zoneMinutes / totalMinutes) * 100 : 0;
+        const duration = formatDurationClock(zoneMinutes);
+        const range = formatZoneRange(zone, unit);
+        const label = `Z${idx + 1}`;
+
+        return (
+          <div
+            key={`${label}-${range}`}
+            className={`zone-time-row${zoneMinutes <= 0 ? " empty" : ""}`}
+            title={`${label} - ${range} - ${duration} - ${percentOfTotal.toFixed(0)}%`}
+          >
+            <span className="zone-time-label">{label}</span>
+            <span className="zone-time-range">{range}</span>
+            <span className="zone-time-duration">{duration}</span>
+            <span className="zone-time-track" aria-hidden="true">
+              <span
+                className="zone-time-fill"
+                style={{
+                  width: `${percentOfMax}%`,
+                  backgroundColor: zone.color,
+                }}
+              />
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function safeAvg(values: Array<number | null | undefined>): number | null {
   const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   if (!nums.length) return null;
@@ -477,60 +550,6 @@ export function ActivityInsights({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: lapMarkers,
         } : undefined,
-      },
-    ],
-  };
-
-  const zoneOption = {
-    tooltip: {
-      trigger: "item",
-      ...tooltipStyle,
-      formatter: (p: any) => `${p.marker} ${p.name}: <strong>${Number(p.value).toFixed(2)} min</strong>`
-    },
-    legend: { bottom: 0, textStyle: { color: axisColor, fontSize: 12 } },
-    series: [
-      {
-        type: "pie",
-        radius: ["38%", "72%"],
-        padAngle: 2,
-        itemStyle: {
-          borderRadius: 8,
-          borderColor: isDark ? "#0b1220" : "#ffffff",
-          borderWidth: 3,
-        },
-        label: { color: axisColor, fontSize: 12, formatter: (p: any) => `${p.name}\n${Number(p.value).toFixed(1)} min` },
-        data: hrZones.map((zone, idx) => ({
-          name: zone.name,
-          value: zoneMinutes[idx],
-          itemStyle: { color: zone.color },
-        })),
-      },
-    ],
-  };
-
-  const powerZoneOption = {
-    tooltip: {
-      trigger: "item",
-      ...tooltipStyle,
-      formatter: (p: any) => `${p.marker} ${p.name}: <strong>${Number(p.value).toFixed(2)} min</strong>`
-    },
-    legend: { bottom: 0, textStyle: { color: axisColor, fontSize: 12 } },
-    series: [
-      {
-        type: "pie",
-        radius: ["38%", "72%"],
-        padAngle: 2,
-        itemStyle: {
-          borderRadius: 8,
-          borderColor: isDark ? "#0b1220" : "#ffffff",
-          borderWidth: 3,
-        },
-        label: { color: axisColor, fontSize: 12, formatter: (p: any) => `${p.name}\n${Number(p.value).toFixed(1)} min` },
-        data: powerZones.map((zone, idx) => ({
-          name: zone.name,
-          value: powerZoneMinutes[idx],
-          itemStyle: { color: zone.color },
-        })),
       },
     ],
   };
@@ -977,22 +996,6 @@ export function ActivityInsights({
       height: insightChartHeight,
     },
     {
-      id: "heart-rate-zones",
-      available: hasHeartRateZoneData,
-      title: tr("insights.heartRateZoneTime"),
-      option: zoneOption,
-      onEvents: undefined,
-      height: insightChartHeight,
-    },
-    {
-      id: "power-zones",
-      available: hasPowerZoneData,
-      title: tr("insights.powerZoneTime"),
-      option: powerZoneOption,
-      onEvents: undefined,
-      height: insightChartHeight,
-    },
-    {
       id: "heart-rate-histogram",
       available: hasHeartRateData,
       title: tr("insights.hrHistogram"),
@@ -1078,6 +1081,18 @@ export function ActivityInsights({
             )}
           </div>
           <ReactECharts option={heartRateDriftOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: insightChartHeight, width: "100%" }} />
+        </article>
+      )}
+      {hasHeartRateZoneData && (
+        <article className="panel">
+          <h3>{tr("insights.heartRateZoneTime")}</h3>
+          <ZoneTimeBars title={tr("insights.heartRateZoneTime")} zones={hrZones} minutes={zoneMinutes} unit="bpm" />
+        </article>
+      )}
+      {hasPowerZoneData && (
+        <article className="panel">
+          <h3>{tr("insights.powerZoneTime")}</h3>
+          <ZoneTimeBars title={tr("insights.powerZoneTime")} zones={powerZones} minutes={powerZoneMinutes} unit="W" />
         </article>
       )}
       {visibleCharts.map((chart) => (

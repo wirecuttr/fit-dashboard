@@ -1694,6 +1694,64 @@ button:focus-visible {
   font-size: 0.9rem;
 }
 
+.zone-time-bars {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.35rem 0 0.2rem;
+}
+
+.zone-time-row {
+  display: grid;
+  grid-template-columns: minmax(2rem, auto) minmax(5.5rem, auto) minmax(3.5rem, auto) minmax(7rem, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.zone-time-row.empty {
+  color: var(--text-muted);
+}
+
+.zone-time-label {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.zone-time-range,
+.zone-time-duration {
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.zone-time-duration {
+  text-align: right;
+}
+
+.zone-time-track {
+  height: 0.62rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+}
+
+.zone-time-fill {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+}
+
+@media (max-width: 640px) {
+  .zone-time-row {
+    grid-template-columns: minmax(2rem, auto) minmax(4.75rem, 1fr) minmax(3.5rem, auto);
+  }
+
+  .zone-time-track {
+    grid-column: 1 / -1;
+  }
+}
 
 .heart-rate-drift-detail-panel {
   display: flex;
