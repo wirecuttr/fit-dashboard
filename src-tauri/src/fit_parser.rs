@@ -277,6 +277,61 @@ fn insert_fit_json_field(
     }
 }
 
+fn decoded_left_right_balance(value: &Value) -> Option<serde_json::Value> {
+    let raw = value_i64(value)?;
+    if raw < 0 {
+        return None;
+    }
+
+    let raw_u = raw as u64;
+    let right_known = (raw_u & 0x8000) != 0;
+    let percent = ((raw_u & 0x7fff) as f64) / 100.0;
+    if !percent.is_finite() || !(0.0..=100.0).contains(&percent) {
+        return None;
+    }
+
+    let (left_percent, right_percent, known_side) = if right_known {
+        (100.0 - percent, percent, "right")
+    } else {
+        (percent, 100.0 - percent, "left")
+    };
+
+    Some(serde_json::json!({
+        "raw": raw,
+        "known_side": known_side,
+        "left_percent": left_percent,
+        "right_percent": right_percent
+    }))
+}
+
+fn decoded_fit_message(rec: &fitparser::FitDataRecord) -> serde_json::Value {
+    let mut message = serde_json::Map::new();
+    for field in rec.fields() {
+        insert_fit_json_field(&mut message, field.name(), field.value());
+        if field.name() == "left_right_balance" {
+            if let Some(decoded) = decoded_left_right_balance(field.value()) {
+                message.insert("left_right_balance_decoded".to_string(), decoded);
+            }
+        }
+    }
+    serde_json::Value::Object(message)
+}
+
+fn push_decoded_fit_message(target: &mut Vec<serde_json::Value>, rec: &fitparser::FitDataRecord) {
+    let decoded = decoded_fit_message(rec);
+    if decoded.as_object().map(|map| !map.is_empty()).unwrap_or(false) {
+        target.push(decoded);
+    }
+}
+
+fn fit_message_collection(values: Vec<serde_json::Value>) -> Option<serde_json::Value> {
+    if values.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Array(values))
+    }
+}
+
 fn clean_fit_label(value: &str) -> Option<String> {
     let trimmed = value.trim();
     let lower = trimmed.to_lowercase();
@@ -931,6 +986,28 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     let mut session_total_distance_m: Option<f64> = None;
     let mut session_total_calories: Option<i64> = None;
     let mut session_normalized_power: Option<i64> = None;
+    let mut session_avg_power: Option<i64> = None;
+    let mut session_max_power: Option<i64> = None;
+    let mut session_total_ascent_m: Option<f64> = None;
+    let mut session_total_descent_m: Option<f64> = None;
+    let mut session_training_stress_score: Option<f64> = None;
+    let mut session_intensity_factor: Option<f64> = None;
+    let mut session_threshold_power: Option<i64> = None;
+    let mut session_left_right_balance: Option<serde_json::Value> = None;
+    let mut session_total_work_j: Option<i64> = None;
+    let mut session_avg_temperature_c: Option<i64> = None;
+    let mut session_min_temperature_c: Option<i64> = None;
+    let mut session_max_temperature_c: Option<i64> = None;
+    let mut session_total_training_effect: Option<f64> = None;
+    let mut session_total_anaerobic_training_effect: Option<f64> = None;
+    let mut session_training_load_peak: Option<f64> = None;
+    let mut session_workout_feel: Option<i64> = None;
+    let mut session_workout_rpe: Option<i64> = None;
+    let mut session_time_standing_s: Option<f64> = None;
+    let mut session_stand_count: Option<i64> = None;
+    let mut session_total_grit: Option<f64> = None;
+    let mut session_avg_flow: Option<f64> = None;
+    let mut session_jump_count: Option<i64> = None;
     let mut activity_total_timer_time_s: Option<f64> = None;
     let mut lap_total_timer_time_sum_s: Option<f64> = None;
     let mut lap_ranges: Vec<serde_json::Value> = Vec::new();
@@ -939,6 +1016,13 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     let mut workout_metadata = serde_json::Map::new();
     let mut training_file_metadata = serde_json::Map::new();
     let mut workout_steps: Vec<serde_json::Value> = Vec::new();
+    let mut fit_session_messages: Vec<serde_json::Value> = Vec::new();
+    let mut fit_lap_messages: Vec<serde_json::Value> = Vec::new();
+    let mut fit_time_in_zone_messages: Vec<serde_json::Value> = Vec::new();
+    let mut fit_split_messages: Vec<serde_json::Value> = Vec::new();
+    let mut fit_split_summary_messages: Vec<serde_json::Value> = Vec::new();
+    let mut fit_climb_pro_messages: Vec<serde_json::Value> = Vec::new();
+    let mut fit_event_messages: Vec<serde_json::Value> = Vec::new();
 
     let mut min_ts: Option<i64> = None;
     let mut max_ts: Option<i64> = None;
@@ -1004,6 +1088,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             }
         } else if rec.kind() == MesgNum::Session {
             session_count += 1;
+            push_decoded_fit_message(&mut fit_session_messages, &rec);
             for field in rec.fields() {
                 match field.name() {
                     "sport" => {
@@ -1049,6 +1134,28 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     "total_distance" => session_total_distance_m = value_f64(field.value()),
                     "total_calories" => session_total_calories = value_i64(field.value()),
                     "normalized_power" => session_normalized_power = value_i64(field.value()),
+                    "avg_power" => session_avg_power = value_i64(field.value()),
+                    "max_power" => session_max_power = value_i64(field.value()),
+                    "total_ascent" => session_total_ascent_m = value_f64(field.value()),
+                    "total_descent" => session_total_descent_m = value_f64(field.value()),
+                    "training_stress_score" => session_training_stress_score = value_f64(field.value()),
+                    "intensity_factor" => session_intensity_factor = value_f64(field.value()),
+                    "threshold_power" => session_threshold_power = value_i64(field.value()),
+                    "left_right_balance" => session_left_right_balance = decoded_left_right_balance(field.value()),
+                    "total_work" => session_total_work_j = value_i64(field.value()),
+                    "avg_temperature" => session_avg_temperature_c = value_i64(field.value()),
+                    "min_temperature" => session_min_temperature_c = value_i64(field.value()),
+                    "max_temperature" => session_max_temperature_c = value_i64(field.value()),
+                    "total_training_effect" => session_total_training_effect = value_f64(field.value()),
+                    "total_anaerobic_training_effect" => session_total_anaerobic_training_effect = value_f64(field.value()),
+                    "training_load_peak" => session_training_load_peak = value_f64(field.value()),
+                    "workout_feel" => session_workout_feel = value_i64(field.value()),
+                    "workout_rpe" => session_workout_rpe = value_i64(field.value()),
+                    "time_standing" => session_time_standing_s = value_f64(field.value()),
+                    "stand_count" => session_stand_count = value_i64(field.value()),
+                    "total_grit" => session_total_grit = value_f64(field.value()),
+                    "avg_flow" => session_avg_flow = value_f64(field.value()),
+                    "jump_count" => session_jump_count = value_i64(field.value()),
                     _ => {}
                 }
             }
@@ -1305,7 +1412,14 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     });
                 }
             }
+            if matches!(
+                event.as_deref(),
+                Some("rider_position_change" | "front_gear_change" | "rear_gear_change" | "gear_change")
+            ) {
+                push_decoded_fit_message(&mut fit_event_messages, &rec);
+            }
         } else if rec.kind() == MesgNum::TimeInZone {
+            push_decoded_fit_message(&mut fit_time_in_zone_messages, &rec);
             let reference = rec
                 .fields()
                 .iter()
@@ -1421,6 +1535,12 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     _ => {}
                 }
             }
+        } else if rec.kind() == MesgNum::Split {
+            push_decoded_fit_message(&mut fit_split_messages, &rec);
+        } else if rec.kind() == MesgNum::SplitSummary {
+            push_decoded_fit_message(&mut fit_split_summary_messages, &rec);
+        } else if rec.kind() == MesgNum::ClimbPro {
+            push_decoded_fit_message(&mut fit_climb_pro_messages, &rec);
         } else if rec.kind() == MesgNum::UserProfile {
             for field in rec.fields() {
                 if field.name() == "resting_heart_rate" && zones.resting_heart_rate.is_none() {
@@ -1428,6 +1548,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                 }
             }
         } else if rec.kind() == MesgNum::Lap {
+            push_decoded_fit_message(&mut fit_lap_messages, &rec);
             let mut lap_start_ms: Option<i64> = None;
             let mut lap_end_ms: Option<i64> = None;
             let mut lap_total_elapsed_time_s: Option<f64> = None;
@@ -1444,6 +1565,26 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             let mut lap_total_calories: Option<i64> = None;
             let mut lap_best_speed_m_s: Option<f64> = None;
             let mut lap_normalized_power: Option<i64> = None;
+            let mut lap_avg_power: Option<i64> = None;
+            let mut lap_max_power: Option<i64> = None;
+            let mut lap_training_stress_score: Option<f64> = None;
+            let mut lap_intensity_factor: Option<f64> = None;
+            let mut lap_threshold_power: Option<i64> = None;
+            let mut lap_left_right_balance: Option<serde_json::Value> = None;
+            let mut lap_total_work_j: Option<i64> = None;
+            let mut lap_avg_temperature_c: Option<i64> = None;
+            let mut lap_min_temperature_c: Option<i64> = None;
+            let mut lap_max_temperature_c: Option<i64> = None;
+            let mut lap_total_training_effect: Option<f64> = None;
+            let mut lap_total_anaerobic_training_effect: Option<f64> = None;
+            let mut lap_training_load_peak: Option<f64> = None;
+            let mut lap_workout_feel: Option<i64> = None;
+            let mut lap_workout_rpe: Option<i64> = None;
+            let mut lap_time_standing_s: Option<f64> = None;
+            let mut lap_stand_count: Option<i64> = None;
+            let mut lap_total_grit: Option<f64> = None;
+            let mut lap_avg_flow: Option<f64> = None;
+            let mut lap_jump_count: Option<i64> = None;
             let mut lap_wkt_step_index: Option<i64> = None;
             let mut lap_trigger: Option<String> = None;
             let mut lap_intensity: Option<String> = None;
@@ -1480,6 +1621,26 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     "max_cadence" => lap_max_cadence = value_i64(field.value()),
                     "total_calories" => lap_total_calories = value_i64(field.value()),
                     "normalized_power" => lap_normalized_power = value_i64(field.value()),
+                    "avg_power" => lap_avg_power = value_i64(field.value()),
+                    "max_power" => lap_max_power = value_i64(field.value()),
+                    "training_stress_score" => lap_training_stress_score = value_f64(field.value()),
+                    "intensity_factor" => lap_intensity_factor = value_f64(field.value()),
+                    "threshold_power" => lap_threshold_power = value_i64(field.value()),
+                    "left_right_balance" => lap_left_right_balance = decoded_left_right_balance(field.value()),
+                    "total_work" => lap_total_work_j = value_i64(field.value()),
+                    "avg_temperature" => lap_avg_temperature_c = value_i64(field.value()),
+                    "min_temperature" => lap_min_temperature_c = value_i64(field.value()),
+                    "max_temperature" => lap_max_temperature_c = value_i64(field.value()),
+                    "total_training_effect" => lap_total_training_effect = value_f64(field.value()),
+                    "total_anaerobic_training_effect" => lap_total_anaerobic_training_effect = value_f64(field.value()),
+                    "training_load_peak" => lap_training_load_peak = value_f64(field.value()),
+                    "workout_feel" => lap_workout_feel = value_i64(field.value()),
+                    "workout_rpe" => lap_workout_rpe = value_i64(field.value()),
+                    "time_standing" => lap_time_standing_s = value_f64(field.value()),
+                    "stand_count" => lap_stand_count = value_i64(field.value()),
+                    "total_grit" => lap_total_grit = value_f64(field.value()),
+                    "avg_flow" => lap_avg_flow = value_f64(field.value()),
+                    "jump_count" => lap_jump_count = value_i64(field.value()),
                     "wkt_step_index" => lap_wkt_step_index = value_i64(field.value()),
                     "lap_trigger" => {
                         let value = value_string(field.value());
@@ -1522,6 +1683,26 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                 "total_calories": lap_total_calories,
                 "best_speed_m_s": lap_best_speed_m_s,
                 "normalized_power": lap_normalized_power,
+                "avg_power": lap_avg_power,
+                "max_power": lap_max_power,
+                "training_stress_score": lap_training_stress_score,
+                "intensity_factor": lap_intensity_factor,
+                "threshold_power": lap_threshold_power,
+                "left_right_balance": lap_left_right_balance,
+                "total_work_j": lap_total_work_j,
+                "avg_temperature_c": lap_avg_temperature_c,
+                "min_temperature_c": lap_min_temperature_c,
+                "max_temperature_c": lap_max_temperature_c,
+                "total_training_effect": lap_total_training_effect,
+                "total_anaerobic_training_effect": lap_total_anaerobic_training_effect,
+                "training_load_peak": lap_training_load_peak,
+                "workout_feel": lap_workout_feel,
+                "workout_rpe": lap_workout_rpe,
+                "time_standing_s": lap_time_standing_s,
+                "stand_count": lap_stand_count,
+                "total_grit": lap_total_grit,
+                "avg_flow": lap_avg_flow,
+                "jump_count": lap_jump_count,
                 "wkt_step_index": lap_wkt_step_index,
                 "lap_trigger": lap_trigger,
                 "intensity": lap_intensity
@@ -1624,6 +1805,73 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         serde_json::Value::Object(training_file_metadata)
     };
 
+    let mut fit_messages = serde_json::Map::new();
+    if let Some(value) = fit_message_collection(fit_session_messages) {
+        fit_messages.insert("sessions".to_string(), value);
+    }
+    if let Some(value) = fit_message_collection(fit_lap_messages) {
+        fit_messages.insert("laps".to_string(), value);
+    }
+    if let Some(value) = fit_message_collection(fit_time_in_zone_messages) {
+        fit_messages.insert("time_in_zone".to_string(), value);
+    }
+    if let Some(value) = fit_message_collection(fit_split_messages) {
+        fit_messages.insert("splits".to_string(), value);
+    }
+    if let Some(value) = fit_message_collection(fit_split_summary_messages) {
+        fit_messages.insert("split_summaries".to_string(), value);
+    }
+    if let Some(value) = fit_message_collection(fit_climb_pro_messages) {
+        fit_messages.insert("climb_pro".to_string(), value);
+    }
+    if let Some(value) = fit_message_collection(fit_event_messages) {
+        fit_messages.insert("events".to_string(), value);
+    }
+
+    let session_json = serde_json::json!({
+        "count": session_count,
+        "raw_sport_code": session_sport_raw_code,
+        "start_ts_utc": session_start_ts
+            .and_then(chrono::DateTime::from_timestamp_millis)
+            .map(|dt| dt.to_rfc3339()),
+        "end_ts_utc": session_end_ts
+            .and_then(chrono::DateTime::from_timestamp_millis)
+            .map(|dt| dt.to_rfc3339()),
+        "beginning_body_battery": session_beginning_body_battery,
+        "ending_body_battery": session_ending_body_battery,
+        "max_heart_rate": session_max_heart_rate,
+        "avg_heart_rate": session_avg_heart_rate,
+        "max_cadence": session_max_cadence,
+        "avg_cadence": session_avg_cadence,
+        "total_elapsed_time_s": session_total_elapsed_time_sum_s,
+        "total_timer_time_s": session_total_timer_time_sum_s,
+        "total_distance_m": session_total_distance_m,
+        "total_calories": session_total_calories,
+        "normalized_power": session_normalized_power,
+        "avg_power": session_avg_power,
+        "max_power": session_max_power,
+        "total_ascent_m": session_total_ascent_m,
+        "total_descent_m": session_total_descent_m,
+        "training_stress_score": session_training_stress_score,
+        "intensity_factor": session_intensity_factor,
+        "threshold_power": session_threshold_power,
+        "left_right_balance": session_left_right_balance,
+        "total_work_j": session_total_work_j,
+        "avg_temperature_c": session_avg_temperature_c,
+        "min_temperature_c": session_min_temperature_c,
+        "max_temperature_c": session_max_temperature_c,
+        "total_training_effect": session_total_training_effect,
+        "total_anaerobic_training_effect": session_total_anaerobic_training_effect,
+        "training_load_peak": session_training_load_peak,
+        "workout_feel": session_workout_feel,
+        "workout_rpe": session_workout_rpe,
+        "time_standing_s": session_time_standing_s,
+        "stand_count": session_stand_count,
+        "total_grit": session_total_grit,
+        "avg_flow": session_avg_flow,
+        "jump_count": session_jump_count
+    });
+
     let metadata_json = serde_json::json!({
         "record_count": points.len(),
         "device": device,
@@ -1672,30 +1920,11 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         "timer": timer_metadata,
         "heart_rate_zone_bounds_bpm": heart_rate_zone_bounds_bpm,
         "zones": zones_json,
+        "fit_messages": serde_json::Value::Object(fit_messages),
         "workout": workout_json,
         "workout_steps": workout_steps,
         "training_file": training_file_json,
-        "session": {
-            "count": session_count,
-            "raw_sport_code": session_sport_raw_code,
-            "start_ts_utc": session_start_ts
-                .and_then(chrono::DateTime::from_timestamp_millis)
-                .map(|dt| dt.to_rfc3339()),
-            "end_ts_utc": session_end_ts
-                .and_then(chrono::DateTime::from_timestamp_millis)
-                .map(|dt| dt.to_rfc3339()),
-            "beginning_body_battery": session_beginning_body_battery,
-            "ending_body_battery": session_ending_body_battery,
-            "max_heart_rate": session_max_heart_rate,
-            "avg_heart_rate": session_avg_heart_rate,
-            "max_cadence": session_max_cadence,
-            "avg_cadence": session_avg_cadence,
-            "total_elapsed_time_s": session_total_elapsed_time_sum_s,
-            "total_timer_time_s": session_total_timer_time_sum_s,
-            "total_distance_m": session_total_distance_m,
-            "total_calories": session_total_calories,
-            "normalized_power": session_normalized_power
-        },
+        "session": session_json,
         "laps": lap_ranges
     })
     .to_string();

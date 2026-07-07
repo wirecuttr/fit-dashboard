@@ -36,6 +36,17 @@ const PATH_COLOR_VALUES: PathColorMode[] = [
 
 type BaseMapInfo = { label: string; tileUrl: string; attribution: string };
 
+type TooltipLabels = {
+  speed: string;
+  heart: string;
+  elevation: string;
+  cadence: string;
+  power: string;
+  temp: string;
+  duration: string;
+  noData: string;
+};
+
 const BASEMAPS: Record<"light" | "dark" | "openstreet" | "topo" | "satellite", BaseMapInfo> = {
   light: {
     label: "Light",
@@ -247,7 +258,7 @@ function formatElapsed(totalSeconds: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function buildTooltipHtml(props: Record<string, any>, distanceUnit: "km" | "mi"): string {
+function buildTooltipHtml(props: Record<string, any>, distanceUnit: "km" | "mi", labels: TooltipLabels): string {
   const asFiniteNumber = (value: unknown): number | null => {
     if (value === null || value === undefined || value === "") return null;
     const n = Number(value);
@@ -294,20 +305,20 @@ function buildTooltipHtml(props: Record<string, any>, distanceUnit: "km" | "mi")
   if (speed !== null && speed > 0) {
     const speedValue = convertSpeedKmh(speed, distanceUnit);
     const speedUnit = speedLabel(distanceUnit);
-    rows.push(row("speed", "Speed", `${fmt2(speedValue)} ${speedUnit}`));
+    rows.push(row("speed", labels.speed, `${fmt2(speedValue)} ${speedUnit}`));
   }
   if (heartRate !== null && heartRate > 0)
-    rows.push(row("heart", "Heart", `${fmt2(heartRate)} bpm`));
+    rows.push(row("heart", labels.heart, `${fmt2(heartRate)} bpm`));
   if (altitude !== null)
-    rows.push(row("elevation", "Elevation", `${fmt2(convertElevationMeters(altitude, distanceUnit))} ${elevationLabel(distanceUnit)}`));
+    rows.push(row("elevation", labels.elevation, `${fmt2(convertElevationMeters(altitude, distanceUnit))} ${elevationLabel(distanceUnit)}`));
   if (cadence !== null && cadence > 0)
-    rows.push(row("cadence", "Cadence", `${fmt2(cadence)} rpm`));
+    rows.push(row("cadence", labels.cadence, `${fmt2(cadence)} rpm`));
   if (power !== null && power > 0)
-    rows.push(row("power", "Power", `${fmt2(power)} W`));
-  rows.push(row("temp", "Temp", temp !== null ? `${fmt2(temp)} &deg;C` : "&mdash;"));
+    rows.push(row("power", labels.power, `${fmt2(power)} W`));
+  rows.push(row("temp", labels.temp, temp !== null ? `${fmt2(temp)} &deg;C` : "&mdash;"));
   if (elapsed !== null)
-    rows.push(row("duration", "Duration", formatElapsed(elapsed)));
-  if (rows.length === 0) return `<div class="map-tooltip"><em style="color:var(--text-muted)">No data at this point</em></div>`;
+    rows.push(row("duration", labels.duration, formatElapsed(elapsed)));
+  if (rows.length === 0) return `<div class="map-tooltip"><em style="color:var(--text-muted)">${labels.noData}</em></div>`;
   return `<div class="map-tooltip">${rows.join("")}</div>`;
 }
 
@@ -388,6 +399,18 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const selectedStyle = mapStyle === "default" ? theme : mapStyle;
   const { t } = useTranslation();
   const availability = useMemo(() => getRecordDataAvailability(records), [records]);
+  const tooltipLabels = useMemo<TooltipLabels>(() => ({
+    speed: t("activityMap.speed"),
+    heart: t("activityMap.heart"),
+    elevation: t("insights.elevation"),
+    cadence: t("activityMap.cadence"),
+    power: t("activityMap.power"),
+    temp: t("activityMap.temp"),
+    duration: t("detail.duration"),
+    noData: t("activityMap.noDataAtPoint"),
+  }), [t]);
+  const tooltipLabelsRef = useRef(tooltipLabels);
+  tooltipLabelsRef.current = tooltipLabels;
 
   const pathColorLabels: Record<PathColorMode, string> = useMemo(() => ({
     solid: t("activityMap.colorSolid"),
@@ -852,7 +875,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       if (!e.features?.[0]) return;
       map.getCanvas().style.cursor = "crosshair";
       const props = e.features[0].properties as Record<string, any>;
-      popup.setLngLat(e.lngLat).setHTML(buildTooltipHtml(props, distanceUnitRef.current)).addTo(map);
+      popup.setLngLat(e.lngLat).setHTML(buildTooltipHtml(props, distanceUnitRef.current, tooltipLabelsRef.current)).addTo(map);
     });
 
     map.on("mouseleave", HIT_LAYER_ID, () => {

@@ -105,6 +105,14 @@
   "detail.maxAltitude": "Макс. высота",
   "detail.avgPower": "Средняя мощность",
   "detail.normalizedPower": "Нормализованная мощность",
+  "detail.maxPace": "Макс. темп",
+  "detail.minElevation": "Мин. высота",
+  "detail.maxPower": "Макс. мощность",
+  "detail.normalizedPowerShort": "Норм.",
+  "detail.ftp": "FTP",
+  "detail.tss": "TSS",
+  "detail.intensityFactorShort": "IF",
+  "detail.leftRightBalance": "Баланс Л/П",
   "detail.avgCadence": "Средний каденс",
   "detail.maxCadence": "Макс. каденс",
   "detail.bodyBatteryChange": "Изменение энергии (Body Battery)",
@@ -187,5 +195,8 @@
   "import.bulkDeleteCompleted": "Массовое удаление завершено.",
   "import.bulkDeleteRefreshFailed": "Массовое удаление завершено, но не удалось обновить данные: {error}",
   "import.preparingSyncQueue": "Подготовка очереди синхронизации...",
-  "insights.powerZoneTime": "Время в зонах мощности"
+  "insights.powerZoneTime": "Время в зонах мощности",
+  "insights.heartRateShort": "ЧСС",
+  "insights.temperatureShort": "Темп.",
+  "activityMap.noDataAtPoint": "Нет данных в этой точке"
 }

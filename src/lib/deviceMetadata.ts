@@ -96,6 +96,13 @@ export type WorkoutStepMetadata = {
   notes?: string | number | null;
 };
 
+export type LeftRightBalanceMetadata = {
+  raw?: number | null;
+  known_side?: string | null;
+  left_percent?: number | null;
+  right_percent?: number | null;
+};
+
 export type ActivityMetadata = {
   heart_rate_zone_bounds_bpm?: number[];
   zones?: ActivityZones | null;
@@ -127,7 +134,30 @@ export type ActivityMetadata = {
     total_distance_m?: number | null;
     total_calories?: number | null;
     normalized_power?: number | null;
+    avg_power?: number | null;
+    max_power?: number | null;
+    total_ascent_m?: number | null;
+    total_descent_m?: number | null;
+    training_stress_score?: number | null;
+    intensity_factor?: number | null;
+    threshold_power?: number | null;
+    left_right_balance?: LeftRightBalanceMetadata | null;
+    total_work_j?: number | null;
+    avg_temperature_c?: number | null;
+    min_temperature_c?: number | null;
+    max_temperature_c?: number | null;
+    total_training_effect?: number | null;
+    total_anaerobic_training_effect?: number | null;
+    training_load_peak?: number | null;
+    workout_feel?: number | string | null;
+    workout_rpe?: number | null;
+    time_standing_s?: number | null;
+    stand_count?: number | null;
+    total_grit?: number | null;
+    avg_flow?: number | null;
+    jump_count?: number | null;
   };
+  fit_messages?: Record<string, unknown> | null;
   laps?: Array<{
     start_ts_utc?: string | null;
     end_ts_utc?: string | null;
@@ -145,6 +175,26 @@ export type ActivityMetadata = {
     total_calories?: number | null;
     best_speed_m_s?: number | null;
     normalized_power?: number | null;
+    avg_power?: number | null;
+    max_power?: number | null;
+    training_stress_score?: number | null;
+    intensity_factor?: number | null;
+    threshold_power?: number | null;
+    left_right_balance?: LeftRightBalanceMetadata | null;
+    total_work_j?: number | null;
+    avg_temperature_c?: number | null;
+    min_temperature_c?: number | null;
+    max_temperature_c?: number | null;
+    total_training_effect?: number | null;
+    total_anaerobic_training_effect?: number | null;
+    training_load_peak?: number | null;
+    workout_feel?: number | string | null;
+    workout_rpe?: number | null;
+    time_standing_s?: number | null;
+    stand_count?: number | null;
+    total_grit?: number | null;
+    avg_flow?: number | null;
+    jump_count?: number | null;
     wkt_step_index?: number | null;
     lap_trigger?: string | null;
     intensity?: string | number | null;

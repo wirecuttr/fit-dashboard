@@ -1,7 +1,6 @@
 import { DragEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useActivityStore } from "../stores/activityStore";
-import { ActivityChart } from "./ActivityChart";
 import { ActivityMap } from "./ActivityMap";
 import { CompareCharts } from "./CompareCharts";
 import { ActivityInsights } from "./ActivityInsights";
@@ -80,6 +79,28 @@ function formatPace(secondsPerUnit: number, unit: string): string {
   return `${min}:${String(sec).padStart(2, "0")} /${unit}`;
 }
 
+function formatStatNumber(value: number, digits = 0): string {
+  return value.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+}
+
+function formatPercentValue(value: number): string {
+  const rounded = Math.round(value);
+  return Math.abs(value - rounded) < 0.05 ? `${rounded}%` : `${value.toFixed(1)}%`;
+}
+
+function formatLeftRightBalance(balance?: { left_percent?: number | null; right_percent?: number | null } | null): string | null {
+  const left = balance?.left_percent;
+  const right = balance?.right_percent;
+  if (typeof left !== "number" || typeof right !== "number") return null;
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
+  return `${formatPercentValue(left)} / ${formatPercentValue(right)}`;
+}
+
+function sumPositiveNumbers(values: Array<number | null | undefined>): number | null {
+  const total = values.reduce((sum, value) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? sum + value : sum), 0);
+  return total > 0 ? total : null;
+}
+
 function shortenFileName(name: string, maxLength = 45): string {
   if (name.length <= maxLength) return name;
   return `${name.slice(0, maxLength)}...`;
@@ -88,6 +109,34 @@ function shortenFileName(name: string, maxLength = 45): string {
 function isCyclingSport(sport: string | null | undefined): boolean {
   const normalized = String(sport ?? "").trim().toLowerCase().replace(/[ -]/g, "_");
   return normalized.includes("cycling") || normalized.includes("biking") || normalized.includes("bike");
+}
+
+function normalizeActivityText(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function metadataString(metadataJson: string | null | undefined, key: string): string {
+  if (!metadataJson) return "";
+  try {
+    const parsed = JSON.parse(metadataJson) as Record<string, unknown>;
+    const value = parsed[key];
+    return typeof value === "string" ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+function activityUsesPaceDisplay(activity: Pick<Activity, "sport" | "metadata_json" | "sub_sport"> | null | undefined): boolean {
+  if (!activity) return false;
+  const sport = normalizeActivityText(activity.sport);
+  const subSport = normalizeActivityText(activity.sub_sport || metadataString(activity.metadata_json, "sub_sport"));
+  if (["running", "walking", "hiking"].includes(sport)) return true;
+  return ["treadmill", "trail", "track", "indoor_running", "indoor_walking", "casual_walking", "speed_walking"].includes(subSport);
+}
+
+function paceFromKmh(speedKmh: number, distanceUnitMeters: number, distanceSuffix: string): string {
+  const speedMps = speedKmh / 3.6;
+  return speedMps > 0 ? formatPace(distanceUnitMeters / speedMps, distanceSuffix) : "-";
 }
 
 function metadataLabel(value: unknown): string {
@@ -149,7 +198,7 @@ function normalizeSemver(value: string): string | null {
 function computeRecordStats(records: RecordPoint[]) {
   let maxSpeed = 0, totalSpeed = 0, speedCount = 0;
   let maxHr = 0, totalHr = 0, hrCount = 0;
-  let maxAlt = -Infinity;
+  let minAlt = Infinity, maxAlt = -Infinity;
   let maxPower = 0, totalPower = 0, powerCount = 0;
 
   for (const r of records) {
@@ -162,7 +211,10 @@ function computeRecordStats(records: RecordPoint[]) {
       totalHr += r.heart_rate; hrCount++;
       if (r.heart_rate > maxHr) maxHr = r.heart_rate;
     }
-    if (typeof r.altitude_m === "number" && r.altitude_m > maxAlt) maxAlt = r.altitude_m;
+    if (typeof r.altitude_m === "number") {
+      if (r.altitude_m < minAlt) minAlt = r.altitude_m;
+      if (r.altitude_m > maxAlt) maxAlt = r.altitude_m;
+    }
     if (typeof r.power === "number") {
       totalPower += r.power; powerCount++;
       if (r.power > maxPower) maxPower = r.power;
@@ -174,7 +226,8 @@ function computeRecordStats(records: RecordPoint[]) {
     maxSpeed,
     avgHr: hrCount > 0 ? totalHr / hrCount : 0,
     maxHr,
-    maxAlt: maxAlt === -Infinity ? 0 : maxAlt,
+    minAlt: minAlt === Infinity ? null : minAlt,
+    maxAlt: maxAlt === -Infinity ? null : maxAlt,
     avgPower: powerCount > 0 ? totalPower / powerCount : 0,
     maxPower,
   };
@@ -557,7 +610,6 @@ export function Dashboard({ onLogout }: Props) {
   const filteredDevices = Array.from(new Set(filtered.map((a) => a.device).filter(Boolean)));
   const selectedRecords = tab === "overview" ? overviewRecords : records;
   const selectedAvailability = useMemo(() => getRecordDataAvailability(selectedRecords), [selectedRecords]);
-  const hasTelemetryCharts = selectedAvailability.hasHeartRate || selectedAvailability.hasPace;
   const hasDetailRoute = selectedAvailability.hasGpsRoute;
   const hasTelemetryDistanceAxis = useMemo(() => hasUsableDistanceAxis(records), [records]);
   const distanceDivisorValue = distanceDivisor(distanceUnit);
@@ -1142,23 +1194,73 @@ export function Dashboard({ onLogout }: Props) {
     push("duration", t("detail.duration"), formatDuration(selectedActivity.duration_s), "clock");
     push("distance", t("detail.distance"), `${(selectedActivity.distance_m / distanceDivisorValue).toFixed(2)} ${distanceSuffix}`, "distance");
 
-    if (recordStats.avgSpeed > 0) push("avg_speed", t("detail.avgSpeed"), `${convertSpeedKmh(recordStats.avgSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
-    if (recordStats.maxSpeed > 0) push("max_speed", t("detail.maxSpeed"), `${convertSpeedKmh(recordStats.maxSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
+    const showPaceStats = activityUsesPaceDisplay(selectedActivity);
+    if (recordStats.avgSpeed > 0) {
+      push(
+        "avg_speed",
+        showPaceStats ? t("detail.avgPace") : t("detail.avgSpeed"),
+        showPaceStats
+          ? paceFromKmh(recordStats.avgSpeed, distanceDivisorValue, distanceSuffix)
+          : `${convertSpeedKmh(recordStats.avgSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`,
+        "speed"
+      );
+    }
+    if (recordStats.maxSpeed > 0) {
+      push(
+        "max_speed",
+        showPaceStats ? t("detail.maxPace") : t("detail.maxSpeed"),
+        showPaceStats
+          ? paceFromKmh(recordStats.maxSpeed, distanceDivisorValue, distanceSuffix)
+          : `${convertSpeedKmh(recordStats.maxSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`,
+        "speed"
+      );
+    }
 
     const session = selectedMetadata?.session ?? {};
     const metric = selectedMetadata?.activity_metrics ?? {};
-    const avgPaceSec = selectedActivity.distance_m > 0
-      ? selectedActivity.duration_s / (selectedActivity.distance_m / distanceDivisorValue)
-      : 0;
-    const avgPaceText = formatPace(avgPaceSec, distanceSuffix);
     const avgHr = recordStats.avgHr > 0 ? Math.round(recordStats.avgHr) : (typeof session.avg_heart_rate === "number" ? session.avg_heart_rate : null);
     const maxHr = recordStats.maxHr > 0 ? recordStats.maxHr : (typeof session.max_heart_rate === "number" ? session.max_heart_rate : null);
-    if (avgHr && avgHr > 0) push("avg_hr", t("detail.avgHr"), `${Math.round(avgHr)} bpm`, "heart", avgPaceText !== "-" ? `${t("detail.pace")} ${avgPaceText}` : undefined);
+    if (avgHr && avgHr > 0) push("avg_hr", t("detail.avgHr"), `${Math.round(avgHr)} bpm`, "heart");
     if (maxHr && maxHr > 0) push("max_hr", t("detail.maxHr"), `${Math.round(maxHr)} bpm`, "heart");
 
-    if (recordStats.maxAlt > 0) push("max_alt", t("detail.maxAltitude"), `${convertElevationMeters(recordStats.maxAlt, distanceUnit).toFixed(0)} ${elevationLabel(distanceUnit)}`, "mountain");
-    if (recordStats.avgPower > 0) push("avg_power", t("detail.avgPower"), `${Math.round(recordStats.avgPower)} W`, "power");
-    if (sessionNormalizedPower !== null) push("normalized_power", t("detail.normalizedPower"), `${Math.round(sessionNormalizedPower)} W`, "power");
+    const elevationUnit = elevationLabel(distanceUnit);
+    if (typeof recordStats.maxAlt === "number") {
+      push("max_alt", t("insights.elevation"), `${convertElevationMeters(recordStats.maxAlt, distanceUnit).toFixed(0)} ${elevationUnit}`, "mountain");
+      if (typeof recordStats.minAlt === "number" && recordStats.minAlt !== recordStats.maxAlt) {
+        push("min_alt", t("detail.minElevation"), `${convertElevationMeters(recordStats.minAlt, distanceUnit).toFixed(0)} ${elevationUnit}`, "mountain");
+      }
+    }
+    const lapAscentM = sumPositiveNumbers((selectedMetadata?.laps ?? []).map((lap) => lap.total_ascent_m));
+    const lapDescentM = sumPositiveNumbers((selectedMetadata?.laps ?? []).map((lap) => lap.total_descent_m));
+    const totalAscentM = typeof session.total_ascent_m === "number" && session.total_ascent_m > 0 ? session.total_ascent_m : lapAscentM;
+    const totalDescentM = typeof session.total_descent_m === "number" && session.total_descent_m > 0 ? session.total_descent_m : lapDescentM;
+    if (typeof totalAscentM === "number" && totalAscentM > 0) {
+      push("total_ascent", t("detail.totalAscent"), `${convertElevationMeters(totalAscentM, distanceUnit).toFixed(0)} ${elevationUnit}`, "mountain");
+    }
+    if (typeof totalDescentM === "number" && totalDescentM > 0) {
+      push("total_descent", t("detail.totalDescent"), `${convertElevationMeters(totalDescentM, distanceUnit).toFixed(0)} ${elevationUnit}`, "mountain");
+    }
+
+    const avgPower = typeof session.avg_power === "number" && session.avg_power > 0 ? session.avg_power : (recordStats.avgPower > 0 ? recordStats.avgPower : null);
+    const maxPower = typeof session.max_power === "number" && session.max_power > 0 ? session.max_power : (recordStats.maxPower > 0 ? recordStats.maxPower : null);
+    if (typeof avgPower === "number") push("avg_power", t("detail.avgPower"), `${formatStatNumber(Math.round(avgPower))} W`, "power");
+    if (typeof maxPower === "number") push("max_power", t("detail.maxPower"), `${formatStatNumber(Math.round(maxPower))} W`, "power");
+    if (sessionNormalizedPower !== null) push("normalized_power", t("detail.normalizedPowerShort"), `${formatStatNumber(Math.round(sessionNormalizedPower))} W`, "power");
+
+    const ftp = typeof session.threshold_power === "number" && session.threshold_power > 0
+      ? session.threshold_power
+      : (typeof selectedMetadata?.zones?.power?.functional_threshold_power === "number" && selectedMetadata.zones.power.functional_threshold_power > 0
+          ? selectedMetadata.zones.power.functional_threshold_power
+          : null);
+    if (typeof ftp === "number") push("ftp", t("detail.ftp"), `${formatStatNumber(Math.round(ftp))} W`, "power");
+    if (typeof session.training_stress_score === "number" && session.training_stress_score > 0) {
+      push("tss", t("detail.tss"), formatStatNumber(session.training_stress_score, 1), "power");
+    }
+    if (typeof session.intensity_factor === "number" && session.intensity_factor > 0) {
+      push("intensity_factor", t("detail.intensityFactorShort"), session.intensity_factor.toFixed(2), "power");
+    }
+    const leftRightBalance = formatLeftRightBalance(session.left_right_balance);
+    if (leftRightBalance) push("left_right_balance", t("detail.leftRightBalance"), leftRightBalance, "power");
 
     if (typeof session.avg_cadence === "number" && session.avg_cadence > 0) push("avg_cadence", t("detail.avgCadence"), `${Math.round(session.avg_cadence)} rpm`, "cadence");
     if (typeof session.max_cadence === "number" && session.max_cadence > 0) push("max_cadence", t("detail.maxCadence"), `${Math.round(session.max_cadence)} rpm`, "cadence");
@@ -1167,25 +1269,16 @@ export function Dashboard({ onLogout }: Props) {
       const deltaLabel = delta > 0 ? `+${delta}` : `${delta}`;
       push(
         "bb_change",
-        "Body Battery Change",
+        t("detail.bodyBatteryChange"),
         deltaLabel,
         "battery",
         `${session.beginning_body_battery} -> ${session.ending_body_battery}`
       );
     }
-    if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", "VO2 Max", `${metric.vo2_max.toFixed(1)}`, "vo2");
+    if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", t("detail.vo2Max"), `${metric.vo2_max.toFixed(1)}`, "vo2");
     if (typeof session.total_calories === "number" && session.total_calories > 0) push("total_calories", t("detail.calories"), `${Math.round(session.total_calories)} kcal`, "flame");
-    if (lapTimestampsUtc.length > 0) {
-      push(
-        "laps",
-        hasPlannedWorkoutIntervals ? t("detail.intervals") : t("detail.laps"),
-        String(lapTimestampsUtc.length),
-        "avg"
-      );
-    }
-
     return out;
-  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, sessionNormalizedPower, lapTimestampsUtc.length, hasPlannedWorkoutIntervals, t]);
+  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, sessionNormalizedPower, t]);
 
   const lapRows = useMemo(() => {
     const laps = selectedMetadata?.laps ?? [];
@@ -1804,9 +1897,6 @@ export function Dashboard({ onLogout }: Props) {
                 </div>
               </div>
               <section className="activity-visual-grid">
-                {hasTelemetryCharts && (
-                  <article className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} heartRateZoneBoundsBpm={heartRateZoneBoundsBpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} /></article>
-                )}
                 {hasDetailRoute && <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />}
                 <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} zones={selectedMetadata?.zones ?? null} heartRateZoneBoundsBpm={heartRateZoneBoundsBpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
               </section>

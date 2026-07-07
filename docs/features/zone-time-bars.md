@@ -31,20 +31,23 @@ Each row should show:
 Example heart-rate layout:
 
 ```text
-Z1   <=110 bpm      0:37      |
-Z2   111-128 bpm    3:52      | ###
-Z3   129-146 bpm    1:13:09   | #######################
-Z4   147-165 bpm    27:38     | ########
-Z5   >165 bpm       0:00      |
+<Z1  <92 bpm        0:37      |
+Z1   92-109 bpm     3:52      | ###
+Z2   110-127 bpm    1:13:09   | #######################
+Z3   128-145 bpm    27:38     | ########
+Z4   146-164 bpm    0:00      |
+Z5   >164 bpm       0:00      |
 ```
 
 Example power layout:
 
 ```text
-Z1   <=118 W        1:53:48   | #######################
-Z2   119-161 W      1:32      | ##
-Z3   162-194 W      0:00      |
-Z4   195-226 W      0:00      |
+<Z1  <118 W         1:53:48   | #######################
+Z1   118-160 W      1:32      | ##
+Z2   161-193 W      0:00      |
+Z3   194-225 W      0:00      |
+Z4   226-257 W      0:00      |
+Z5   >257 W         0:00      |
 ```
 
 ## Value Ranges
@@ -52,11 +55,11 @@ Z4   195-226 W      0:00      |
 The value range should be shown once per row. Do not repeat the range in labels
 inside the bar or in a separate legend.
 
-Range formatting:
+Range formatting uses FIT upper-bound arrays as bucket cut points. The app keeps the below-zone bucket visible instead of dropping it:
 
-- First zone: `<=upper unit`
-- Middle zones: `previous_upper + 1-upper unit`
-- Last open-ended zone: `>previous_upper unit`
+- Below zone 1: `<Z1`, rendered as `<first_upper unit`.
+- Named middle zones: `Z1`, `Z2`, etc., rendered from the previous boundary to one less than the next boundary.
+- Last named zone: open-ended, rendered as `>previous_upper - 1 unit`.
 
 Use `bpm` for heart rate and `W` for power.
 
@@ -86,24 +89,20 @@ label and range.
 
 ## Component Direction
 
-Use one shared zone-time component model for heart-rate and power zones. In this
-upstream-based branch, only heart-rate zone data is available, so the first code
-slice implements heart-rate bars. Power bars should follow the same API once the
-power-zone persistence work lands. Inputs should
-be ordered zone definitions plus time values:
+Use one shared zone-time component model for heart-rate and power zones. Inputs are ordered zone definitions plus duration values in minutes:
 
 ```tsx
 <ZoneTimeBars
   title="Heart Rate Zone Time"
   zones={hrZones}
-  seconds={hrZoneSeconds}
+  minutes={hrZoneMinutes}
   unit="bpm"
 />
 
 <ZoneTimeBars
   title="Power Zone Time"
   zones={powerZones}
-  seconds={powerZoneSeconds}
+  minutes={powerZoneMinutes}
   unit="W"
 />
 ```
@@ -140,7 +139,7 @@ This means the first slice should move away from fixed paired charts such as
 primary metric by default. Future overlays can intentionally add a second series,
 but the default layout should not force unrelated metrics together.
 
-Recommended default ordering:
+Implemented default ordering:
 
 Running, walking, and hiking:
 
@@ -158,6 +157,9 @@ Cycling and similar activities:
 4. Cadence, when present
 5. Zone time bars, when zone data exists
 
+Supplemental charts render after the primary metric and zone summary sequence.
+This keeps the chart grid as a single ordered flow instead of fixed paired cards.
+
 Elevation overlay support is a future-compatible design constraint for this
 branch, not a required UI control in this slice. The implementation should not
 remove altitude data or make later overlays harder. Elevation should remain
@@ -174,23 +176,24 @@ metric combination, but the graph design should not prevent it. Elevation is the
 required shared overlay because it explains changes in HR, pace, speed, cadence,
 and power without needing its own full-width chart in every activity.
 
+Elevation remains a standalone supplemental chart in this slice. Its y-axis uses
+a padded data range with rounded bounds instead of always starting at zero, while
+still clamping the lower bound to zero when the padded range would go negative.
+
 ## HR Histogram
 
-The existing HR histogram is only modestly useful once real HR zone-time bars are
-available. It shows the distribution of HR samples across bpm buckets, but it
-does not show when the effort happened, workout structure, or zone compliance as
-clearly as the HR line chart and zone bars.
+The HR histogram remains available as a supplemental chart. It shows the
+distribution of HR samples across bpm buckets, with the y-axis labelled as
+samples. Zone labels and zone durations are shown below the matching bucket
+ranges when HR zone data exists.
 
-For this branch, treat the HR histogram as an advanced/optional chart and hide it
-by default. Do not delete the implementation permanently; keep a path to restore
-it later through optional/custom graph controls.
+A future graph customisation feature may make the histogram optional, but hiding
+it is not part of this implementation slice.
 
 ## Non-Goals
 
 - Do not add user-editable zone settings in this branch.
-- Do not change zone extraction or persistence.
 - Do not add a new database table.
-- Do not change the activity detail statistic tiles.
 - Do not implement full user-customizable graph overlays in this branch unless
   explicitly added to scope.
 - Do not keep fixed paired time-series charts as the default graph model.
@@ -198,15 +201,17 @@ it later through optional/custom graph controls.
 ## Acceptance Criteria
 
 - Heart-rate zone time renders as horizontal bars when HR zone data exists.
-- Power zone bars can be added through the same component model when power
-  zone data exists in the app model.
+- Power zone time renders through the same component model when power zone data
+  exists in the app model.
 - Zone ranges are visible exactly once per row.
 - Durations use clock-style formatting, not decimal minutes.
 - Zero-duration zones remain visible but subdued.
 - No separate legend is required for zone labels or ranges.
 - The panel is less crowded than the current pie/donut display.
 - The fixed Heart Rate and Pace chart is split into separate metric charts.
+- The fixed Cadence and Power chart is split into separate metric charts.
 - Pace versus speed defaults are selected by activity type.
+- Elevation uses a padded data-range y-axis instead of always starting at zero.
 - The implementation preserves a future path for elevation overlays on HR,
   pace, speed, cadence, and power charts, without adding overlay controls in
   this slice.

@@ -393,11 +393,15 @@ export function ActivityInsights({
     };
   });
 
+  const heartRateLineData = timeline.map((d) => [d.x, d.heartRate, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
+  const paceLineData = timeline.map((d) => [d.x, d.paceMinPerUnit, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
   const speedLineData = timeline.map((d) => [d.x, d.speedInUnit, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
   const elevationLineData = timeline.map((d) => [d.x, d.altitudeInUnit, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
   const cadenceLineData = timeline.map((d) => [d.x, d.cadence, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
   const powerLineData = timeline.map((d) => [d.x, d.power, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
 
+  const heartRateLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(heartRateLineData, 1, smoothWindow) : heartRateLineData;
+  const paceLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(paceLineData, 1, smoothWindow) : paceLineData;
   const speedLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(speedLineData, 1, smoothWindow) : speedLineData;
   const elevationLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(elevationLineData, 1, smoothWindow) : elevationLineData;
   const cadenceLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(cadenceLineData, 1, smoothWindow) : cadenceLineData;
@@ -409,7 +413,7 @@ export function ActivityInsights({
   const hasSpeedData = availability.hasSpeed;
   const hasCadenceData = availability.hasCadence;
   const hasTemperatureData = availability.hasTemperature;
-  const hasHeatmapData = hasHeartRateData || hasSpeedData || hasCadenceData || hasTemperatureData;
+  const hasHeatmapData = hasHeartRateData || hasSpeedData || hasCadenceData || hasPowerData || hasTemperatureData;
   const cardiacRecords = analysisRecords.length ? analysisRecords : records;
   const cardiacDecoupling = activity ? calculateCardiacDecoupling(activity, cardiacRecords) : null;
   const cardiacResult = cardiacDecoupling ? selectCardiacResult(cardiacDecoupling.results, cardiacDecoupling.defaultMode) : undefined;
@@ -504,6 +508,143 @@ export function ActivityInsights({
     splitLine: { show: false },
   };
 
+  const hrVisualMap = hrZones.length > 0 ? {
+    show: false,
+    seriesIndex: 0,
+    dimension: 1,
+    pieces: hrZones.map((zone) => {
+      if (zone.maxInclusive === null) {
+        return { gt: zone.minExclusive, color: zone.color };
+      }
+      if (!Number.isFinite(zone.minExclusive)) {
+        return { lte: zone.maxInclusive, color: zone.color };
+      }
+      return { gt: zone.minExclusive, lte: zone.maxInclusive, color: zone.color };
+    }),
+  } : undefined;
+
+  const powerVisualMap = powerZones.length > 0 ? {
+    show: false,
+    seriesIndex: 0,
+    dimension: 1,
+    pieces: powerZones.map((zone) => {
+      if (zone.maxInclusive === null) {
+        return { gt: zone.minExclusive, color: zone.color };
+      }
+      if (!Number.isFinite(zone.minExclusive)) {
+        return { lte: zone.maxInclusive, color: zone.color };
+      }
+      return { gt: zone.minExclusive, lte: zone.maxInclusive, color: zone.color };
+    }),
+  } : undefined;
+
+  const heartRateOption = {
+    tooltip: {
+      trigger: "axis",
+      ...tooltipStyle,
+      formatter: (params: any[]) => {
+        const p = params?.[0];
+        const rel = Number(p?.value?.[2] ?? 0);
+        const distanceMeters = (p?.value?.[4] ?? null) as number | null;
+        let html = formatTooltipHeader(rel, distanceMeters, xAxisMode, Number(p?.value?.[3] ?? 0));
+        for (const row of params) {
+          if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
+            html += `<div>${row.marker} ${row.seriesName}: <strong>${Number(row.value[1]).toFixed(0)} bpm</strong></div>`;
+          }
+        }
+        return html;
+      }
+    },
+    legend: { textStyle: { color: axisColor, fontSize: 12 }, top: 0 },
+    visualMap: hrVisualMap,
+    grid: { left: 50, right: 16, top: 42, bottom: 46 },
+    xAxis: sharedXAxis,
+    yAxis: {
+      type: "value", name: "bpm", min: 40,
+      nameTextStyle: { color: axisColor, fontSize: 11 },
+      axisLabel: { color: axisColor, fontSize: 11 },
+      splitLine: { lineStyle: { color: gridLine } },
+    },
+    dataZoom: [
+      {
+        type: "inside",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseWheel: false,
+        start: zoomRange?.start ?? 0,
+        end: zoomRange?.end ?? 100,
+      },
+    ],
+    series: [
+      {
+        name: tr("chart.heartRate"), type: "line", smooth: smoothGraphs, showSymbol: false,
+        lineStyle: { width: 2 },
+        areaStyle: { opacity: 0.12 },
+        sampling: smoothGraphs ? "lttb" : undefined,
+        data: heartRateLineDataSmoothed,
+        markLine: lapMarkers.length ? {
+          animation: false,
+          symbol: ["none", "none"],
+          lineStyle: { color: isDark ? "rgba(148,163,184,0.55)" : "rgba(71,85,105,0.5)", type: "dashed", width: 1 },
+          label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
+          data: lapMarkers,
+        } : undefined,
+      },
+    ],
+  };
+
+  const paceOption = {
+    tooltip: {
+      trigger: "axis",
+      ...tooltipStyle,
+      formatter: (params: any[]) => {
+        const p = params?.[0];
+        const rel = Number(p?.value?.[2] ?? 0);
+        const distanceMeters = (p?.value?.[4] ?? null) as number | null;
+        let html = formatTooltipHeader(rel, distanceMeters, xAxisMode, Number(p?.value?.[3] ?? 0));
+        for (const row of params) {
+          if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
+            html += `<div>${row.marker} ${row.seriesName}: <strong>${formatPaceValue(Number(row.value[1]))} ${paceLabel(distanceUnit)}</strong></div>`;
+          }
+        }
+        return html;
+      }
+    },
+    legend: { textStyle: { color: axisColor, fontSize: 12 }, top: 0 },
+    grid: { left: 50, right: 16, top: 42, bottom: 46 },
+    xAxis: sharedXAxis,
+    yAxis: {
+      type: "value", name: paceLabel(distanceUnit), inverse: true,
+      nameTextStyle: { color: axisColor, fontSize: 11 },
+      axisLabel: { color: axisColor, fontSize: 11 },
+      splitLine: { lineStyle: { color: gridLine } },
+    },
+    dataZoom: [
+      {
+        type: "inside",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseWheel: false,
+        start: zoomRange?.start ?? 0,
+        end: zoomRange?.end ?? 100,
+      },
+    ],
+    series: [
+      {
+        name: tr("chart.pace"), type: "line", smooth: smoothGraphs, showSymbol: false,
+        lineStyle: { width: 2, color: "#f43f5e" },
+        areaStyle: { color: isDark ? "rgba(244, 63, 94, 0.1)" : "rgba(244, 63, 94, 0.12)" },
+        sampling: smoothGraphs ? "lttb" : undefined,
+        data: paceLineDataSmoothed,
+        markLine: lapMarkers.length ? {
+          animation: false,
+          symbol: ["none", "none"],
+          lineStyle: { color: isDark ? "rgba(148,163,184,0.55)" : "rgba(71,85,105,0.5)", type: "dashed", width: 1 },
+          label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
+          data: lapMarkers,
+        } : undefined,
+      },
+    ],
+  };
+
   const timelineOption = {
     tooltip: {
       trigger: "axis",
@@ -557,6 +698,13 @@ export function ActivityInsights({
     ],
   };
 
+  const elevationAxisBounds = paddedAxisBounds(
+    elevationLineDataSmoothed.map((row) => [row[0], row[1]] as [number, number | null]),
+    0,
+    distanceUnit === "mi" ? 30 : 10,
+    distanceUnit === "mi" ? 50 : 10,
+  );
+
   const elevationOption = {
     tooltip: {
       trigger: "axis",
@@ -574,6 +722,7 @@ export function ActivityInsights({
     xAxis: sharedXAxis,
     yAxis: {
       type: "value", name: elevationLabel(distanceUnit),
+      ...elevationAxisBounds,
       nameTextStyle: { color: axisColor, fontSize: 11 },
       axisLabel: { color: axisColor, fontSize: 11 },
       splitLine: { lineStyle: { color: gridLine } },
@@ -615,30 +764,21 @@ export function ActivityInsights({
         let html = formatTooltipHeader(rel, distanceMeters, xAxisMode, Number(p?.value?.[3] ?? 0));
         for (const row of params) {
           if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
-            const unit = row.seriesName === tr("insights.power") ? " W" : " rpm";
-            html += `<div>${row.marker} ${row.seriesName}: <strong>${Number(row.value[1]).toFixed(2)}${unit}</strong></div>`;
+            html += `<div>${row.marker} ${row.seriesName}: <strong>${Number(row.value[1]).toFixed(0)} rpm</strong></div>`;
           }
         }
         return html;
       }
     },
     legend: { textStyle: { color: axisColor, fontSize: 12 }, top: 0 },
-    grid: { left: 44, right: hasPowerData && hasCadenceData ? 44 : 16, top: 44, bottom: 44 },
+    grid: { left: 50, right: 16, top: 42, bottom: 46 },
     xAxis: sharedXAxis,
-    yAxis: [
-      {
-        type: "value", name: hasCadenceData ? "rpm" : "W",
-        nameTextStyle: { color: axisColor, fontSize: 11 },
-        axisLabel: { color: axisColor, fontSize: 11 },
-        splitLine: { lineStyle: { color: gridLine } },
-      },
-      ...(hasPowerData && hasCadenceData ? [{
-        type: "value", name: "W",
-        nameTextStyle: { color: axisColor, fontSize: 11 },
-        axisLabel: { color: axisColor, fontSize: 11 },
-        splitLine: { show: false },
-      }] : []),
-    ],
+    yAxis: {
+      type: "value", name: "rpm",
+      nameTextStyle: { color: axisColor, fontSize: 11 },
+      axisLabel: { color: axisColor, fontSize: 11 },
+      splitLine: { lineStyle: { color: gridLine } },
+    },
     dataZoom: [
       {
         type: "inside",
@@ -649,7 +789,7 @@ export function ActivityInsights({
       },
     ],
     series: [
-      ...(hasCadenceData ? [{
+      {
         name: tr("insights.cadence"), type: "line", smooth: smoothGraphs, showSymbol: false,
         lineStyle: { width: 2, color: "#22d3ee" },
         sampling: smoothGraphs ? "lttb" : undefined,
@@ -661,13 +801,60 @@ export function ActivityInsights({
           label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
           data: lapMarkers,
         } : undefined,
-      }] : []),
-      ...(hasPowerData ? [{
-        name: tr("insights.power"), type: "line", yAxisIndex: hasCadenceData ? 1 : 0, smooth: smoothGraphs, showSymbol: false,
+      },
+    ],
+  };
+
+  const powerOption = {
+    tooltip: {
+      trigger: "axis",
+      ...tooltipStyle,
+      formatter: (params: any[]) => {
+        const p = params?.[0];
+        const rel = Number(p?.value?.[2] ?? 0);
+        const distanceMeters = (p?.value?.[4] ?? null) as number | null;
+        let html = formatTooltipHeader(rel, distanceMeters, xAxisMode, Number(p?.value?.[3] ?? 0));
+        for (const row of params) {
+          if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
+            html += `<div>${row.marker} ${row.seriesName}: <strong>${Number(row.value[1]).toFixed(0)} W</strong></div>`;
+          }
+        }
+        return html;
+      }
+    },
+    legend: { textStyle: { color: axisColor, fontSize: 12 }, top: 0 },
+    visualMap: powerVisualMap,
+    grid: { left: 50, right: 16, top: 42, bottom: 46 },
+    xAxis: sharedXAxis,
+    yAxis: {
+      type: "value", name: "W",
+      nameTextStyle: { color: axisColor, fontSize: 11 },
+      axisLabel: { color: axisColor, fontSize: 11 },
+      splitLine: { lineStyle: { color: gridLine } },
+    },
+    dataZoom: [
+      {
+        type: "inside",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseWheel: false,
+        start: zoomRange?.start ?? 0,
+        end: zoomRange?.end ?? 100,
+      },
+    ],
+    series: [
+      {
+        name: tr("insights.power"), type: "line", smooth: smoothGraphs, showSymbol: false,
+        lineStyle: { width: 2 },
         sampling: smoothGraphs ? "lttb" : undefined,
         data: powerLineDataSmoothed,
-        lineStyle: { color: "#f97316" },
-      }] : []),
+        markLine: lapMarkers.length ? {
+          animation: false,
+          symbol: ["none", "none"],
+          lineStyle: { color: isDark ? "rgba(148,163,184,0.55)" : "rgba(71,85,105,0.5)", type: "dashed", width: 1 },
+          label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
+          data: lapMarkers,
+        } : undefined,
+      },
     ],
   };
 
@@ -765,7 +952,7 @@ export function ActivityInsights({
       formatter: (p: any) => {
         const label = String(p?.name ?? "");
         const count = Number(p?.value ?? 0);
-        return `<div><strong>${label} bpm</strong></div><div>Samples: <strong>${count}</strong></div>`;
+        return `<div><strong>${label} bpm</strong></div><div>${tr("insights.samples")}: <strong>${count}</strong></div>`;
       },
     },
     grid: { left: 44, right: 16, top: 28, bottom: 82 },
@@ -780,7 +967,7 @@ export function ActivityInsights({
     },
     yAxis: {
       type: "value",
-      name: "samples",
+      name: tr("insights.samples").toLowerCase(),
       nameTextStyle: { color: axisColor, fontSize: 11 },
       axisLabel: { color: axisColor, fontSize: 11 },
       splitLine: { lineStyle: { color: gridLine } },
@@ -846,31 +1033,31 @@ export function ActivityInsights({
 
   const heatMetrics: HeatMetric[] = [
     ...(hasHeartRateData ? [{
-      label: "HR",
+      label: tr("insights.heartRateShort"),
       unit: "bpm",
       getter: (d: (typeof timeline)[number]) => d.heartRate,
       colors: isDark ? ["#2a0b12", "#dc2626", "#fb7185"] : ["#fee2e2", "#f87171", "#dc2626"],
     }] : []),
     ...(hasSpeedData ? [{
-      label: "Speed",
+      label: tr("insights.speed"),
       unit: speedLabel(distanceUnit),
       getter: (d: (typeof timeline)[number]) => d.speedInUnit,
       colors: isDark ? ["#0e2a1e", "#16a34a", "#4ade80"] : ["#dcfce7", "#4ade80", "#15803d"],
     }] : []),
     ...(hasCadenceData ? [{
-      label: "Cadence",
+      label: tr("insights.cadence"),
       unit: "rpm",
       getter: (d: (typeof timeline)[number]) => d.cadence,
       colors: isDark ? ["#2f1a05", "#f59e0b", "#facc15"] : ["#fef3c7", "#fbbf24", "#d97706"],
     }] : []),
     ...(hasPowerData ? [{
-      label: "Power",
+      label: tr("insights.power"),
       unit: "W",
       getter: (d: (typeof timeline)[number]) => d.power,
       colors: isDark ? ["#2b1730", "#a855f7", "#d8b4fe"] : ["#f3e8ff", "#c084fc", "#7e22ce"],
     }] : []),
     ...(hasTemperatureData ? [{
-      label: "Temp",
+      label: tr("insights.temperatureShort"),
       unit: "degC",
       getter: (d: (typeof timeline)[number]) => d.temperatureC,
       colors: isDark ? ["#0b1a3a", "#1d4ed8", "#38bdf8"] : ["#dbeafe", "#60a5fa", "#1d4ed8"],
@@ -1098,29 +1285,71 @@ export function ActivityInsights({
     },
   };
 
-  const visibleCharts = [
-    {
-      id: "speed-trend",
-      available: hasSpeedData,
-      title: tr("insights.speedTrend"),
-      option: timelineOption,
-      onEvents: zoomEvents,
-      height: insightChartHeight,
-    },
+  type VisibleChart = {
+    id: string;
+    available: boolean;
+    title: string;
+    option: Record<string, unknown>;
+    onEvents?: typeof zoomEvents;
+    height: number;
+  };
+
+  const paceChart: VisibleChart = {
+    id: "pace",
+    available: hasSpeedData,
+    title: tr("chart.pace"),
+    option: paceOption,
+    onEvents: zoomEvents,
+    height: insightChartHeight,
+  };
+  const heartRateChart: VisibleChart = {
+    id: "heart-rate",
+    available: hasHeartRateData,
+    title: tr("chart.heartRate"),
+    option: heartRateOption,
+    onEvents: zoomEvents,
+    height: insightChartHeight,
+  };
+  const speedChart: VisibleChart = {
+    id: "speed",
+    available: hasSpeedData,
+    title: tr("insights.speed"),
+    option: timelineOption,
+    onEvents: zoomEvents,
+    height: insightChartHeight,
+  };
+  const powerChart: VisibleChart = {
+    id: "power",
+    available: hasPowerData,
+    title: tr("insights.power"),
+    option: powerOption,
+    onEvents: zoomEvents,
+    height: insightChartHeight,
+  };
+  const cadenceChart: VisibleChart = {
+    id: "cadence",
+    available: hasCadenceData,
+    title: tr("insights.cadence"),
+    option: cadenceOption,
+    onEvents: zoomEvents,
+    height: insightChartHeight,
+  };
+
+  const metricCharts = usePaceDisplay
+    ? [paceChart, heartRateChart, cadenceChart, powerChart]
+    : hasPowerData
+      ? [powerChart, heartRateChart, speedChart, cadenceChart]
+      : [speedChart, heartRateChart, cadenceChart];
+
+  const visibleMetricCharts = metricCharts.filter((chart) => chart.available);
+
+  const supplementalCharts = [
     {
       id: "heart-rate-histogram",
       available: hasHeartRateData,
       title: tr("insights.hrHistogram"),
       option: hrHistogramOption,
       onEvents: undefined,
-      height: insightChartHeight,
-    },
-    {
-      id: "cadence-power",
-      available: hasCadenceData || hasPowerData,
-      title: hasCadenceData && hasPowerData ? tr("insights.cadenceAndPower") : (hasPowerData ? tr("insights.power") : tr("insights.cadence")),
-      option: cadenceOption,
-      onEvents: zoomEvents,
       height: insightChartHeight,
     },
     {
@@ -1195,6 +1424,12 @@ export function ActivityInsights({
           <ReactECharts option={heartRateDriftOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: insightChartHeight, width: "100%" }} />
         </article>
       )}
+      {visibleMetricCharts.map((chart) => (
+        <article className="panel" key={chart.id}>
+          <h3>{chart.title}</h3>
+          <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />
+        </article>
+      ))}
       {hasHeartRateZoneData && (
         <article className="panel">
           <h3>{tr("insights.heartRateZoneTime")}</h3>
@@ -1207,7 +1442,7 @@ export function ActivityInsights({
           <ZoneTimeBars title={tr("insights.powerZoneTime")} zones={powerZones} minutes={powerZoneMinutes} unit="W" />
         </article>
       )}
-      {visibleCharts.map((chart) => (
+      {supplementalCharts.map((chart) => (
         <article className="panel" key={chart.id}>
           <h3>{chart.title}</h3>
           <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />

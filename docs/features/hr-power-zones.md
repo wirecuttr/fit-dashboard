@@ -14,7 +14,10 @@ zones when FIT boundaries are unavailable.
 
 Power-zone data is not currently extracted or displayed. Garmin FIT activities
 can include time-in-zone data for power, FTP, calculation type, and sometimes
-explicit power-zone boundaries.
+explicit power-zone boundaries. Several Garmin FIT activities also contain
+activity-level and lap-level result metrics such as Training Stress Score,
+Intensity Factor, threshold power, left/right balance, ascent, descent, and
+power totals that should be retained with the imported activity.
 
 ## Local FIT Findings
 
@@ -112,6 +115,8 @@ activity result stats that the app already imports.
 
 In scope for this feature:
 
+Zone/profile metadata:
+
 - `TimeInZone.time_in_hr_zone`
 - `TimeInZone.time_in_power_zone`
 - `TimeInZone.hr_zone_high_boundary`
@@ -129,18 +134,38 @@ In scope for this feature:
 - Inferred power boundaries from FTP when explicit FIT boundaries are absent and
   `pwr_calc_type = percent_ftp`.
 
+Activity and lap result metadata:
+
+- Session scalar fields: `avg_power`, `max_power`, `total_ascent`,
+  `total_descent`, `training_stress_score`, `intensity_factor`,
+  `threshold_power`, decoded `left_right_balance`, `total_work`,
+  `avg_temperature`, `min_temperature`, `max_temperature`,
+  `total_training_effect`, `total_anaerobic_training_effect`,
+  `training_load_peak`, `workout_feel`, `workout_rpe`, `time_standing`,
+  `stand_count`, `total_grit`, `avg_flow`, and `jump_count`.
+- The same scalar result fields on lap messages when present.
+- Header display for FTP, TSS, IF, average left/right balance, ascent, descent,
+  and max power when those values exist.
+
+FIT message collections retained in activity metadata:
+
+- Decoded `Session` messages.
+- Decoded `Lap` messages.
+- Decoded `TimeInZone` messages.
+- Decoded `Split` and `SplitSummary` messages.
+- Decoded `ClimbPro` messages.
+- Decoded rider-position and gear-change `Event` messages.
+
 Out of scope or already handled:
 
 - `Session.max_heart_rate`: activity result max HR. Already stored and displayed
   by the app; this feature should not add a second copy in the zone model.
-- `Session.avg_heart_rate`, `Session.avg_power`, `Session.max_power`,
-  `Session.normalized_power`, `Session.training_stress_score`,
-  `Session.intensity_factor`, `Session.threshold_power`,
-  `Session.total_training_effect`, and
-  `Session.total_anaerobic_training_effect`: related activity result metrics,
-  not zone metadata for this branch.
-- `Lap.avg_heart_rate`, `Lap.max_heart_rate`, `Lap.normalized_power`, and other
-  lap result metrics: useful elsewhere, but not part of this zone feature.
+- `Session.avg_heart_rate` and `Session.normalized_power`: already stored by the
+  app before this branch.
+- Full record-level streams beyond the existing app record model. This branch
+  does not add per-record left/right balance samples, rider-position samples,
+  gear samples, ClimbPro streams, or split streams as first-class chart series.
+- Device/accessory battery level, battery status, and battery voltage fields.
 - `UserProfile.age`, `height`, `weight`, `gender`, `activity_class`, unit
   settings, `wake_time`, and `sleep_time`: profile fields that are not needed
   for zone rendering/export in this feature.
@@ -155,9 +180,9 @@ chart-local calculations.
 Use extracted FIT values when present. When the FIT omits
 `power_zone_high_boundary` but provides `pwr_calc_type = percent_ftp` and FTP,
 bake in inferred default percent-FTP power boundaries for import and display.
-This is expected to work for the Edge-style files in this dataset, and current
-usage involves regular reimporting, so the implementation can be revised later
-if validation exposes a bad assumption.
+For Edge-style files in the local dataset, this produces the boundaries needed
+to interpret Garmin-provided power time-in-zone values. Extracted FIT boundaries
+always take precedence over inferred boundaries.
 
 Recommended metadata shape:
 
@@ -293,10 +318,12 @@ JSON export should include the persisted zone metadata. Inferred fields must kee
 their source marker so consumers can distinguish extracted values from inferred
 display helpers.
 
-Export should include a normalized `zones` object rather than dumping the full
-internal `metadata_json` blob. Field names should make activity result stats and
-configured zone/profile values distinct, for example `configuredMaxHeartRate`
-instead of `maxHeartRate`.
+JSON export includes the full persisted activity metadata, including session
+result fields, lap result fields, and retained FIT message collections. It also
+includes a normalized `zones` object with source markers so consumers can read
+zone data without depending on the internal metadata layout. Field names should
+make activity result stats and configured zone/profile values distinct, for
+example `configuredMaxHeartRate` instead of `maxHeartRate`.
 
 ## Future User-Entered Zones
 
@@ -305,8 +332,9 @@ boundaries, not as a replacement for imported FIT activity metadata. This branch
 keeps imported zones activity-scoped and source-marked so future charts can
 choose between FIT activity zones or a dated user zone profile.
 
-User-entered zones should be persisted as app state in the database, likely via a
-small `zone_profiles` table with a JSON zone definition for the first pass. Do
+User-entered zones should be persisted as app state in the database. The
+recommended first pass is a small `zone_profiles` table with a JSON zone
+definition. Do
 not write user zone profiles into each activity row. Imported FIT zones remain
 activity metadata; user profiles are app/user configuration that can be applied
 by date, sport, and user preference later.
@@ -323,6 +351,9 @@ history in this branch.
   `time_in_power_zone` alone. The inference path uses FTP plus the percent-FTP
   calculation type.
 - No custom UI for selecting alternate zone models.
+- No display of training-effect, workout-feel, temperature, ClimbPro, split,
+  rider-position, or gear-change data in this branch. Those values are retained
+  in metadata for export and future features.
 
 ## Acceptance Criteria
 
@@ -339,3 +370,5 @@ history in this branch.
   without zone colouring or default zone-time charts.
 - Power-zone chart is shown only when meaningful power-zone data exists.
 - JSON export includes zone metadata with source markers.
+- JSON export includes the persisted session/lap result fields and retained FIT
+  message collections through the full metadata object.
