@@ -71,6 +71,7 @@ type ZoneTimeBarsProps = {
   zones: ZoneDefinition[];
   minutes: number[];
   unit: string;
+  totalMinutes: number;
 };
 
 function formatDurationClock(minutes: number): string {
@@ -146,23 +147,23 @@ function buildZoneTimeRows(zones: ZoneDefinition[], minutes: number[], unit: str
   });
 }
 
-function ZoneTimeBars({ title, zones, minutes, unit }: ZoneTimeBarsProps) {
+function ZoneTimeBars({ title, zones, minutes, unit, totalMinutes }: ZoneTimeBarsProps) {
   const rows = buildZoneTimeRows(zones, minutes, unit);
-  const maxMinutes = Math.max(...rows.map((row) => row.minutes), 0);
-  const totalMinutes = rows.reduce((sum, row) => sum + row.minutes, 0);
+  const chartTotalMinutes = Math.max(0, totalMinutes);
+  const zoneTotalMinutes = rows.reduce((sum, row) => sum + row.minutes, 0);
 
   return (
     <div className="zone-time-bars" aria-label={title}>
       {rows.map((row) => {
-        const percentOfMax = maxMinutes > 0 ? (row.minutes / maxMinutes) * 100 : 0;
-        const percentOfTotal = totalMinutes > 0 ? (row.minutes / totalMinutes) * 100 : 0;
+        const percentOfTotal = chartTotalMinutes > 0 ? (row.minutes / chartTotalMinutes) * 100 : 0;
+        const percentOfZoneTime = zoneTotalMinutes > 0 ? (row.minutes / zoneTotalMinutes) * 100 : 0;
         const duration = formatDurationClock(row.minutes);
 
         return (
           <div
             key={`${row.label}-${row.range}`}
             className={`zone-time-row${row.minutes <= 0 ? " empty" : ""}`}
-            title={`${row.label} - ${row.range} - ${duration} - ${percentOfTotal.toFixed(0)}%`}
+            title={`${row.label} - ${row.range} - ${duration} - ${percentOfTotal.toFixed(0)}% of activity - ${percentOfZoneTime.toFixed(0)}% of zone time`}
           >
             <span className="zone-time-label">{row.label}</span>
             <span className="zone-time-range">{row.range}</span>
@@ -171,7 +172,7 @@ function ZoneTimeBars({ title, zones, minutes, unit }: ZoneTimeBarsProps) {
               <span
                 className="zone-time-fill"
                 style={{
-                  width: `${percentOfMax}%`,
+                  width: `${Math.min(100, percentOfTotal)}%`,
                   backgroundColor: row.color,
                 }}
               />
@@ -530,6 +531,7 @@ export function ActivityInsights({
     }
   }
   const hasPowerZoneData = powerZones.length > 0 && (hasPowerData || powerZoneMinutes.some((value) => value > 0));
+  const zoneChartTotalMinutes = totalDurationMs > 0 ? totalDurationMs / 60000 : 0;
 
   const sharedXAxis = {
     type: "value",
@@ -1615,13 +1617,13 @@ export function ActivityInsights({
       {hasHeartRateZoneData && (
         <article className="panel">
           <h3>{tr("insights.heartRateZoneTime")}</h3>
-          <ZoneTimeBars title={tr("insights.heartRateZoneTime")} zones={hrZones} minutes={zoneMinutes} unit="bpm" />
+          <ZoneTimeBars title={tr("insights.heartRateZoneTime")} zones={hrZones} minutes={zoneMinutes} unit="bpm" totalMinutes={zoneChartTotalMinutes} />
         </article>
       )}
       {hasPowerZoneData && (
         <article className="panel">
           <h3>{tr("insights.powerZoneTime")}</h3>
-          <ZoneTimeBars title={tr("insights.powerZoneTime")} zones={powerZones} minutes={powerZoneMinutes} unit="W" />
+          <ZoneTimeBars title={tr("insights.powerZoneTime")} zones={powerZones} minutes={powerZoneMinutes} unit="W" totalMinutes={zoneChartTotalMinutes} />
         </article>
       )}
     </>
