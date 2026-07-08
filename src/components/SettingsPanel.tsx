@@ -84,11 +84,13 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
     distanceUnit,
     timeFormat,
     mapStyle,
+    smoothGraphs,
     supporterBadge,
     setTheme,
     setDistanceUnit,
     setTimeFormat,
     setMapStyle,
+    setSmoothGraphs,
     verifySupporterCode,
     removeSupporterBadge,
     toggleSettings
@@ -202,6 +204,15 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
               <option value="topo">{t("settings.mapTopo")}</option>
               <option value="satellite">{t("settings.mapSatellite")}</option>
             </select>
+          </label>
+
+          <label className="settings-checkbox" title={t("settings.smoothGraphsTooltip")}>
+            <span>{t("settings.smoothGraphs")}</span>
+            <input
+              type="checkbox"
+              checked={smoothGraphs}
+              onChange={(e) => setSmoothGraphs(e.target.checked)}
+            />
           </label>
         </div>
 

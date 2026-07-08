@@ -372,5 +372,7 @@
   "detail.user": "Użytkownik",
   "detail.height": "Wzrost",
   "detail.weight": "Waga",
-  "detail.restingHr": "HR spocz."
+  "detail.restingHr": "HR spocz.",
+  "settings.smoothGraphs": "Wygładzone wykresy",
+  "settings.smoothGraphsTooltip": "Dynamiczne wygładzanie średnią kroczącą. Przy zbliżeniu używane są bardziej szczegółowe punkty."
 }

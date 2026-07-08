@@ -372,5 +372,7 @@
   "detail.user": "사용자",
   "detail.height": "키",
   "detail.weight": "체중",
-  "detail.restingHr": "안정 시 심박"
+  "detail.restingHr": "안정 시 심박",
+  "settings.smoothGraphs": "부드러운 그래프",
+  "settings.smoothGraphsTooltip": "동적 이동 평균 스무딩. 확대하면 더 세부적인 포인트가 사용됩니다."
 }

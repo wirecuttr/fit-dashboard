@@ -319,7 +319,6 @@ export function Dashboard({ onLogout }: Props) {
   } | null>(null);
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
   const [telemetryXAxisMode, setTelemetryXAxisMode] = useState<TelemetryXAxisMode>("time");
-  const [smoothGraphs, setSmoothGraphs] = useState(true);
   const [appVersion, setAppVersion] = useState("unknown");
   const [versionBadgeStatus, setVersionBadgeStatus] = useState<VersionBadgeStatus>({ state: "hidden", latestVersion: null });
 
@@ -334,7 +333,7 @@ export function Dashboard({ onLogout }: Props) {
   } = useActivityStore();
   const {
     distanceUnit, timeFormat, supporterBadge,
-    toggleSettings, setTheme, mapStyle, setMapStyle,
+    toggleSettings, setTheme, mapStyle, setMapStyle, smoothGraphs,
     loadSupporterStatus, theme,
   } = useSettingsStore();
   const { t } = useTranslation();
@@ -1850,14 +1849,6 @@ export function Dashboard({ onLogout }: Props) {
                         {t("detail.distance")}
                       </button>
                     </div>
-                    <label className="detail-toggle-badge" title={t("detail.smoothGraphsTooltip")}>
-                      <input
-                        type="checkbox"
-                        checked={smoothGraphs}
-                        onChange={(e) => setSmoothGraphs(e.target.checked)}
-                      />
-                      <span>{t("detail.smoothGraphs")}</span>
-                    </label>
                     <button className="btn-secondary" style={{ padding: "0.25rem 0.55rem", fontSize: "0.74rem" }} onClick={() => setTelemetryZoom(null)}>
                       {t("detail.resetZoom")}
                     </button>

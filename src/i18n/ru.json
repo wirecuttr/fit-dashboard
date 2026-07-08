@@ -201,5 +201,7 @@
   "detail.user": "Пользователь",
   "detail.height": "Рост",
   "detail.weight": "Вес",
-  "detail.restingHr": "Пульс покоя"
+  "detail.restingHr": "Пульс покоя",
+  "settings.smoothGraphs": "Сглаживание графиков",
+  "settings.smoothGraphsTooltip": "Использовать динамическое сглаживание скользящим средним. При приближении графика отображаются более детальные точки."
 }

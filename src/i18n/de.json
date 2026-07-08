@@ -372,5 +372,7 @@
   "detail.user": "Benutzer",
   "detail.height": "Größe",
   "detail.weight": "Gewicht",
-  "detail.restingHr": "Ruhe-HF"
+  "detail.restingHr": "Ruhe-HF",
+  "settings.smoothGraphs": "Glatte Diagramme",
+  "settings.smoothGraphsTooltip": "Dynamische gleitende Durchschnittsglättung. Beim Hineinzoomen werden detailliertere Punkte verwendet."
 }

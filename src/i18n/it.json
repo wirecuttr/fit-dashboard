@@ -372,5 +372,7 @@
   "detail.user": "Utente",
   "detail.height": "Altezza",
   "detail.weight": "Peso",
-  "detail.restingHr": "FC riposo"
+  "detail.restingHr": "FC riposo",
+  "settings.smoothGraphs": "Grafici smussati",
+  "settings.smoothGraphsTooltip": "Lisciatura media mobile dinamica. Ingrandendo vengono usati punti più dettagliati."
 }

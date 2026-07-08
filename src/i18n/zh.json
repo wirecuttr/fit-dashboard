@@ -372,5 +372,7 @@
   "detail.user": "用户",
   "detail.height": "身高",
   "detail.weight": "体重",
-  "detail.restingHr": "静息心率"
+  "detail.restingHr": "静息心率",
+  "settings.smoothGraphs": "平滑图表",
+  "settings.smoothGraphsTooltip": "使用动态滚动平均平滑。放大时，将使用更详细的数据点。"
 }

@@ -372,5 +372,7 @@
   "detail.user": "Kullanıcı",
   "detail.height": "Boy",
   "detail.weight": "Kilo",
-  "detail.restingHr": "Dinlenik Nabız"
+  "detail.restingHr": "Dinlenik Nabız",
+  "settings.smoothGraphs": "Yumuşak grafikler",
+  "settings.smoothGraphsTooltip": "Dinamik hareketli ortalama yumuşatma. Yakınlaştırdıkça daha ayrıntılı noktalar kullanılır."
 }

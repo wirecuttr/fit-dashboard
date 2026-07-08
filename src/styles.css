@@ -1384,28 +1384,6 @@ button:focus-visible {
   flex-wrap: wrap;
 }
 
-.detail-toggle-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: var(--input-bg);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.2rem 0.55rem;
-  cursor: pointer;
-  user-select: none;
-}
-
-.detail-toggle-badge input {
-  accent-color: var(--accent);
-  width: 14px;
-  height: 14px;
-  margin: 0;
-}
-
 .detail-axis-toggle {
   display: inline-flex;
   align-items: center;
@@ -2502,6 +2480,20 @@ button:focus-visible {
 .settings-grid select {
   min-height: 36px;
   font-weight: 500;
+}
+
+.settings-grid .settings-checkbox {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+}
+
+.settings-grid .settings-checkbox input {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+  margin: 0;
 }
 
 .supporter-box {

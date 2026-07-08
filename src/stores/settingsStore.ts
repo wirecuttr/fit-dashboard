@@ -13,6 +13,7 @@ type SettingsState = {
   distanceUnit: DistanceUnit;
   timeFormat: TimeFormat;
   mapStyle: MapStyle;
+  smoothGraphs: boolean;
   overviewTableDays: number;
   supporterBadge: boolean;
   donationDismissed: boolean;
@@ -24,6 +25,7 @@ type SettingsState = {
   setDistanceUnit: (unit: DistanceUnit) => void;
   setTimeFormat: (format: TimeFormat) => void;
   setMapStyle: (style: MapStyle) => void;
+  setSmoothGraphs: (smoothGraphs: boolean) => void;
   setOverviewTableDays: (days: number) => void;
   loadSupporterStatus: () => Promise<void>;
   verifySupporterCode: (code: string) => Promise<boolean>;
@@ -39,6 +41,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   distanceUnit: "km",
   timeFormat: "24h",
   mapStyle: "default",
+  smoothGraphs: true,
   overviewTableDays: 7,
   supporterBadge: false,
   donationDismissed: false,
@@ -55,6 +58,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         distanceUnit: parsed.distanceUnit ?? "km",
         timeFormat: parsed.timeFormat ?? "24h",
         mapStyle: parsed.mapStyle ?? "default",
+        smoothGraphs: typeof parsed.smoothGraphs === "boolean" ? parsed.smoothGraphs : true,
         overviewTableDays: Number.isFinite(parsed.overviewTableDays) ? Math.max(1, Math.round(parsed.overviewTableDays)) : 7,
       });
     } catch {
@@ -87,6 +91,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setMapStyle: (mapStyle) => {
     set({ mapStyle });
     persist({ ...get(), mapStyle });
+  },
+
+  setSmoothGraphs: (smoothGraphs) => {
+    set({ smoothGraphs });
+    persist({ ...get(), smoothGraphs });
   },
 
   setOverviewTableDays: (overviewTableDays) => {
@@ -149,6 +158,7 @@ function persist(state: SettingsState) {
       distanceUnit: state.distanceUnit,
       timeFormat: state.timeFormat,
       mapStyle: state.mapStyle,
+      smoothGraphs: state.smoothGraphs,
       overviewTableDays: state.overviewTableDays,
     })
   );

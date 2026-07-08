@@ -372,5 +372,7 @@
   "detail.user": "Gebruiker",
   "detail.height": "Lengte",
   "detail.weight": "Gewicht",
-  "detail.restingHr": "Rust-HR"
+  "detail.restingHr": "Rust-HR",
+  "settings.smoothGraphs": "Vloeiende grafieken",
+  "settings.smoothGraphsTooltip": "Dynamische voortschrijdend gemiddelde afvlakking. Bij inzoomen worden meer gedetailleerde punten gebruikt."
 }

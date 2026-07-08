@@ -372,5 +372,7 @@
   "detail.user": "Usuário",
   "detail.height": "Altura",
   "detail.weight": "Peso",
-  "detail.restingHr": "FC repouso"
+  "detail.restingHr": "FC repouso",
+  "settings.smoothGraphs": "Gráficos suavizados",
+  "settings.smoothGraphsTooltip": "Suavização de média móvel dinâmica. Ao ampliar, pontos mais detalhados são usados."
 }

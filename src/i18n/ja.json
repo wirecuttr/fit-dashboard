@@ -372,5 +372,7 @@
   "detail.user": "ユーザー",
   "detail.height": "身長",
   "detail.weight": "体重",
-  "detail.restingHr": "安静時心拍"
+  "detail.restingHr": "安静時心拍",
+  "settings.smoothGraphs": "スムーズグラフ",
+  "settings.smoothGraphsTooltip": "動的移動平均スムージング。ズームするとより詳細なポイントが使用されます。"
 }
