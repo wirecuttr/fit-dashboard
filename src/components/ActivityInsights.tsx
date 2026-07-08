@@ -183,12 +183,6 @@ function ZoneTimeBars({ title, zones, minutes, unit }: ZoneTimeBarsProps) {
   );
 }
 
-function safeAvg(values: Array<number | null | undefined>): number | null {
-  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-  if (!nums.length) return null;
-  return nums.reduce((sum, n) => sum + n, 0) / nums.length;
-}
-
 function formatPercent(value: number | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "--";
 }
@@ -451,7 +445,6 @@ export function ActivityInsights({
   const hasPotentialStaminaData = potentialStaminaLineData.some((row) => row[1] !== null);
   const hasStaminaData = hasCurrentStaminaData || hasPotentialStaminaData;
   const hasPerformanceConditionData = availability.hasPerformanceCondition;
-  const hasHeatmapData = hasHeartRateData || hasSpeedData || hasCadenceData || hasPowerData || hasTemperatureData;
   const cardiacRecords = analysisRecords.length ? analysisRecords : records;
   const cardiacDecoupling = activity ? calculateCardiacDecoupling(activity, cardiacRecords) : null;
   const cardiacResult = cardiacDecoupling ? selectCardiacResult(cardiacDecoupling.results, cardiacDecoupling.defaultMode) : undefined;
@@ -1310,149 +1303,7 @@ export function ActivityInsights({
     ],
   };
 
-  const totalRelMs = Math.max(0, timeline[timeline.length - 1]?.relMs ?? totalDurationMs);
-  const heatBins = Math.max(1, Math.ceil(totalRelMs / 60000));
-  type HeatMetric = {
-    label: string;
-    unit: string;
-    getter: (d: (typeof timeline)[number]) => number | null;
-    colors: string[];
-  };
-
-  const heatMetrics: HeatMetric[] = [
-    ...(hasHeartRateData ? [{
-      label: tr("insights.heartRateShort"),
-      unit: "bpm",
-      getter: (d: (typeof timeline)[number]) => d.heartRate,
-      colors: isDark ? ["#2a0b12", "#dc2626", "#fb7185"] : ["#fee2e2", "#f87171", "#dc2626"],
-    }] : []),
-    ...(hasSpeedData ? [{
-      label: tr("insights.speed"),
-      unit: speedLabel(distanceUnit),
-      getter: (d: (typeof timeline)[number]) => d.speedInUnit,
-      colors: isDark ? ["#0e2a1e", "#16a34a", "#4ade80"] : ["#dcfce7", "#4ade80", "#15803d"],
-    }] : []),
-    ...(hasCadenceData ? [{
-      label: tr("insights.cadence"),
-      unit: "rpm",
-      getter: (d: (typeof timeline)[number]) => d.cadence,
-      colors: isDark ? ["#2f1a05", "#f59e0b", "#facc15"] : ["#fef3c7", "#fbbf24", "#d97706"],
-    }] : []),
-    ...(hasPowerData ? [{
-      label: tr("insights.power"),
-      unit: "W",
-      getter: (d: (typeof timeline)[number]) => d.power,
-      colors: isDark ? ["#2b1730", "#a855f7", "#d8b4fe"] : ["#f3e8ff", "#c084fc", "#7e22ce"],
-    }] : []),
-    ...(hasTemperatureData ? [{
-      label: tr("insights.temperatureShort"),
-      unit: "degC",
-      getter: (d: (typeof timeline)[number]) => d.temperatureC,
-      colors: isDark ? ["#0b1a3a", "#1d4ed8", "#38bdf8"] : ["#dbeafe", "#60a5fa", "#1d4ed8"],
-    }] : []),
-  ];
-
-  const heatRowBounds = heatMetrics.map(() => ({ min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY }));
-  const rawHeatCells: Array<Array<{ x: number; raw: number | null; timestampMs?: number }>> = heatMetrics.map(() => []);
-
-  for (let x = 0; x < heatBins; x += 1) {
-    const startMs = x * 60000;
-    const endMs = startMs + 60000;
-    const slice = timeline.filter((d) => d.relMs >= startMs && d.relMs < endMs);
-    const timestampMs = slice[0]?.timestampMs;
-    for (let row = 0; row < heatMetrics.length; row += 1) {
-      const metricValue = safeAvg(slice.map((r) => heatMetrics[row].getter(r)));
-      const raw = typeof metricValue === "number" && Number.isFinite(metricValue) ? Number(metricValue.toFixed(2)) : null;
-      if (raw !== null) {
-        heatRowBounds[row].min = Math.min(heatRowBounds[row].min, raw);
-        heatRowBounds[row].max = Math.max(heatRowBounds[row].max, raw);
-      }
-      rawHeatCells[row].push({ x, raw, timestampMs });
-    }
-  }
-
-  const heatSeriesData: Array<Array<{ value: [number, number, number]; raw: number | null; label: string; unit: string }>> =
-    rawHeatCells.map((rowCells, row) => {
-      const bounds = heatRowBounds[row];
-      const hasBounds = Number.isFinite(bounds.min) && Number.isFinite(bounds.max);
-      return rowCells.map(({ x, raw }) => {
-        let normalized = 0;
-        if (raw !== null && hasBounds) {
-          normalized = bounds.max > bounds.min ? (raw - bounds.min) / (bounds.max - bounds.min) : 0.5;
-        }
-        return {
-          value: [x, 0, Number(normalized.toFixed(4))],
-          raw,
-          timestampMs: rowCells[x]?.timestampMs,
-          label: heatMetrics[row].label,
-          unit: heatMetrics[row].unit,
-        };
-      });
-    });
-
   const insightChartHeight = 280;
-  const rowHeight = 34;
-  const rowGap = 14;
-  const rowTop = heatMetrics.map((_, idx) => 16 + idx * (rowHeight + rowGap));
-  const heatChartHeight = Math.max(insightChartHeight, 44 + heatMetrics.length * rowHeight + Math.max(0, heatMetrics.length - 1) * rowGap);
-
-  const heatOption = {
-    tooltip: {
-      position: "top",
-      ...tooltipStyle,
-      formatter: (p: any) => {
-        const minuteIdx = Number(p?.value?.[0] ?? 0);
-        const value = (p?.data?.raw ?? null) as number | null;
-        const label = String(p?.data?.label ?? "Metric");
-        const unit = String(p?.data?.unit ?? "");
-        const startMs = minuteIdx * 60000;
-        const endMs = (minuteIdx + 1) * 60000;
-        const timestampMs = (p?.data?.timestampMs ?? undefined) as number | undefined;
-        const valueText = value === null ? "--" : `${value.toFixed(2)} ${unit}`;
-        return `<div><strong>${label}</strong></div>${formatTooltipHeader(startMs, null, "time", timestampMs)}<div>${formatRelTime(startMs)} - ${formatRelTime(endMs)}: <strong>${valueText}</strong></div>`;
-      },
-    },
-    grid: rowTop.map((top) => ({ left: 58, right: 14, top, height: rowHeight })),
-    xAxis: rowTop.map((_, idx) => ({
-      type: "category",
-      gridIndex: idx,
-      data: Array.from({ length: heatBins }, (_, i) => formatRelTime(i * 60000)),
-      axisLabel: {
-        show: idx === rowTop.length - 1,
-        color: axisColor,
-        interval: Math.max(0, Math.floor(heatBins / 14)),
-        fontSize: 11,
-      },
-      axisLine: { show: idx === rowTop.length - 1, lineStyle: { color: gridLine } },
-      axisTick: { show: idx === rowTop.length - 1 },
-      splitLine: { show: false },
-    })),
-    yAxis: heatMetrics.map((metric, idx) => ({
-      type: "category",
-      gridIndex: idx,
-      data: [metric.label],
-      axisLabel: { color: axisColor, fontSize: 11 },
-      axisTick: { show: false },
-      axisLine: { show: false },
-      splitLine: { show: false },
-    })),
-    visualMap: heatMetrics.map((metric, idx) => ({
-      show: false,
-      min: 0,
-      max: 1,
-      dimension: 2,
-      seriesIndex: idx,
-      inRange: { color: metric.colors },
-    })),
-    series: heatMetrics.map((_, idx) => ({
-      type: "heatmap",
-      xAxisIndex: idx,
-      yAxisIndex: idx,
-      encode: { x: 0, y: 1, value: 2 },
-      data: heatSeriesData[idx],
-      emphasis: { itemStyle: { borderColor: isDark ? "#fff" : "#0f172a", borderWidth: 1 } },
-    })),
-  };
 
   const heartRateDriftYAxes = heartRateDriftChartData ? [
     {
@@ -1675,14 +1526,6 @@ export function ActivityInsights({
       option: hrHistogramOption,
       onEvents: undefined,
       height: insightChartHeight,
-    },
-    {
-      id: "effort-heatmap",
-      available: hasHeatmapData,
-      title: tr("insights.effortHeatmap"),
-      option: heatOption,
-      onEvents: undefined,
-      height: heatChartHeight,
     },
     {
       id: "elevation",
