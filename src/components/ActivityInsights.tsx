@@ -1122,12 +1122,20 @@ export function ActivityInsights({
   const hrPowerScatter = timeline
     .filter((d) => typeof d.heartRate === "number" && typeof d.power === "number")
     .map((d) => [d.heartRate as number, d.power as number]);
+  const hrPowerScatterXAxisBounds = paddedAxisBounds(
+    hrPowerScatter.map(([heartRate]) => [0, heartRate] as [number, number | null]),
+    30,
+    5,
+    5,
+  );
 
   const scatterOption = {
     tooltip: { trigger: "item", ...tooltipStyle },
     grid: { left: 44, right: 20, top: 28, bottom: 40 },
     xAxis: {
       type: "value", name: "HR",
+      scale: true,
+      ...hrPowerScatterXAxisBounds,
       nameTextStyle: { color: axisColor, fontSize: 11 },
       axisLabel: { color: axisColor, fontSize: 11 },
       splitLine: { lineStyle: { color: gridLine } },
@@ -1506,11 +1514,20 @@ export function ActivityInsights({
     height: insightChartHeight,
   };
 
+  const elevationChart: VisibleChart = {
+    id: "elevation",
+    available: hasElevationData,
+    title: tr("insights.elevation"),
+    option: elevationOption,
+    onEvents: zoomEvents,
+    height: insightChartHeight,
+  };
+
   const metricCharts = usePaceDisplay
-    ? [paceChart, heartRateChart, cadenceChart, powerChart]
+    ? [paceChart, heartRateChart, cadenceChart, elevationChart, powerChart]
     : hasPowerData
-      ? [powerChart, heartRateChart, speedChart, cadenceChart]
-      : [speedChart, heartRateChart, cadenceChart];
+      ? [powerChart, heartRateChart, speedChart, cadenceChart, elevationChart]
+      : [speedChart, heartRateChart, cadenceChart, elevationChart];
 
   const visibleMetricCharts = metricCharts.filter((chart) => chart.available);
 
@@ -1525,14 +1542,6 @@ export function ActivityInsights({
       title: tr("insights.hrHistogram"),
       option: hrHistogramOption,
       onEvents: undefined,
-      height: insightChartHeight,
-    },
-    {
-      id: "elevation",
-      available: hasElevationData,
-      title: tr("insights.elevation"),
-      option: elevationOption,
-      onEvents: zoomEvents,
       height: insightChartHeight,
     },
     {
@@ -1597,6 +1606,12 @@ export function ActivityInsights({
           <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />
         </article>
       ))}
+      {supplementalCharts.map((chart) => (
+        <article className="panel" key={chart.id}>
+          <h3>{chart.title}</h3>
+          <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />
+        </article>
+      ))}
       {hasHeartRateZoneData && (
         <article className="panel">
           <h3>{tr("insights.heartRateZoneTime")}</h3>
@@ -1609,12 +1624,6 @@ export function ActivityInsights({
           <ZoneTimeBars title={tr("insights.powerZoneTime")} zones={powerZones} minutes={powerZoneMinutes} unit="W" />
         </article>
       )}
-      {supplementalCharts.map((chart) => (
-        <article className="panel" key={chart.id}>
-          <h3>{chart.title}</h3>
-          <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />
-        </article>
-      ))}
     </>
   );
 }
