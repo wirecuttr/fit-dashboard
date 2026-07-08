@@ -790,7 +790,7 @@ export function ActivityInsights({
     series: [
       {
         name: tr("insights.elevation"), type: "line", smooth: smoothGraphs, showSymbol: false,
-        lineStyle: { width: 1.5, color: "#f97316" },
+        lineStyle: { width: 1.5, color: "#64748b" },
         sampling: smoothGraphs ? "lttb" : undefined,
         data: elevationLineDataSmoothed,
         markLine: lapMarkers.length ? {
@@ -1253,7 +1253,7 @@ export function ActivityInsights({
         return `${formatTooltipHeader(relMs, distanceMeters, "time", timestampMs)}<div>${selectedScatterYMetric.label}: <strong>${y.toFixed(1)} ${selectedScatterYMetric.axisName}</strong></div><div>${selectedScatterXMetric.label}: <strong>${x.toFixed(1)} ${selectedScatterXMetric.axisName}</strong></div>`;
       },
     },
-    grid: { left: 48, right: 20, top: 28, bottom: 42 },
+    grid: { left: 48, right: 56, top: 28, bottom: 42, containLabel: true },
     xAxis: {
       type: "value", name: selectedScatterXMetric?.axisName ?? "",
       scale: true,

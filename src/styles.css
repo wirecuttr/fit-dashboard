@@ -1804,7 +1804,15 @@ button:focus-visible {
   height: 0.62rem;
   overflow: hidden;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+  background:
+    repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(10% - 1px),
+      color-mix(in srgb, var(--text-muted) 34%, transparent) calc(10% - 1px),
+      color-mix(in srgb, var(--text-muted) 34%, transparent) 10%
+    ),
+    color-mix(in srgb, var(--text-muted) 18%, transparent);
 }
 
 .zone-time-fill {
