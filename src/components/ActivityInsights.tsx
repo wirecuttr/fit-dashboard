@@ -1157,7 +1157,7 @@ export function ActivityInsights({
 
   const hrHistogram = (() => {
     if (!hrValues.length) {
-      return { labels: [] as string[], counts: [] as number[], centers: [] as number[], binWidth: 1 };
+      return { labels: [] as string[], minutes: [] as number[], centers: [] as number[], binWidth: 1, zoneMinutes: [] as number[] };
     }
     const minHr = Math.floor(Math.min(...hrValues));
     const maxHr = Math.ceil(Math.max(...hrValues));
@@ -1167,28 +1167,48 @@ export function ActivityInsights({
     const start = Math.floor(minHr / binWidth) * binWidth;
     const end = Math.ceil(maxHr / binWidth) * binWidth;
     const binCount = Math.max(1, Math.ceil((end - start) / binWidth));
-    const counts = new Array<number>(binCount).fill(0);
+    const minutes = new Array<number>(binCount).fill(0);
+    const histogramZoneMinutes = hrZones.map(() => 0);
+    const positiveDeltas = timeline
+      .slice(0, -1)
+      .map((point, idx) => (timeline[idx + 1].relMs - point.relMs) / 60000)
+      .filter((delta) => Number.isFinite(delta) && delta > 0)
+      .sort((a, b) => a - b);
+    const medianDeltaMin = positiveDeltas.length
+      ? positiveDeltas[Math.floor(positiveDeltas.length / 2)]
+      : 0;
+    const maxDeltaMin = Math.max(10 / 60, medianDeltaMin * 3);
 
-    for (const hr of hrValues) {
+    for (let i = 0; i < timeline.length - 1; i += 1) {
+      const hr = timeline[i].heartRate;
+      if (typeof hr !== "number" || hr <= 0) continue;
+      const rawDeltaMin = (timeline[i + 1].relMs - timeline[i].relMs) / 60000;
+      if (!Number.isFinite(rawDeltaMin) || rawDeltaMin <= 0) continue;
+      const dtMin = Math.min(rawDeltaMin, maxDeltaMin);
       const binIndex = Math.min(binCount - 1, Math.max(0, Math.floor((hr - start) / binWidth)));
-      counts[binIndex] += 1;
+      minutes[binIndex] += dtMin;
+
+      const zoneIndex = resolveHeartRateZoneIndex(hr, hrZones);
+      if (zoneIndex !== null && histogramZoneMinutes[zoneIndex] !== undefined) {
+        histogramZoneMinutes[zoneIndex] += dtMin;
+      }
     }
 
-    const labels = counts.map((_, idx) => {
+    const labels = minutes.map((_, idx) => {
       const left = start + idx * binWidth;
       const right = left + binWidth;
       return `${left}-${right}`;
     });
 
-    const centers = counts.map((_, idx) => {
+    const centers = minutes.map((_, idx) => {
       const left = start + idx * binWidth;
       return left + binWidth / 2;
     });
 
-    return { labels, counts, centers, binWidth };
+    return { labels, minutes, centers, binWidth, zoneMinutes: histogramZoneMinutes };
   })();
 
-  const hrHistogramZoneRows = buildZoneTimeRows(hrZones, zoneMinutes, "bpm");
+  const hrHistogramZoneRows = buildZoneTimeRows(hrZones, hrHistogram.zoneMinutes, "bpm");
   const hrHistogramZoneLabels = hrHistogramZoneRows.flatMap((row, rowIdx) => {
     const matchingBinIndexes = hrHistogram.centers
       .map((center, idx) => ({ center, idx }))
@@ -1219,8 +1239,8 @@ export function ActivityInsights({
       ...tooltipStyle,
       formatter: (p: any) => {
         const label = String(p?.name ?? "");
-        const count = Number(p?.value ?? 0);
-        return `<div><strong>${label} bpm</strong></div><div>${tr("insights.samples")}: <strong>${count}</strong></div>`;
+        const minutes = Number(p?.value ?? 0);
+        return `<div><strong>${label} bpm</strong></div><div>${tr("detail.time")}: <strong>${formatDurationClock(minutes)}</strong></div>`;
       },
     },
     grid: { left: 44, right: 16, top: 28, bottom: 82 },
@@ -1235,9 +1255,9 @@ export function ActivityInsights({
     },
     yAxis: {
       type: "value",
-      name: tr("insights.samples").toLowerCase(),
+      name: tr("detail.time"),
       nameTextStyle: { color: axisColor, fontSize: 11 },
-      axisLabel: { color: axisColor, fontSize: 11 },
+      axisLabel: { color: axisColor, fontSize: 11, formatter: (value: number) => formatDurationClock(Number(value)) },
       splitLine: { lineStyle: { color: gridLine } },
     },
     series: [
@@ -1246,12 +1266,12 @@ export function ActivityInsights({
         barGap: "0%",
         barWidth: "96%",
         itemStyle: { borderRadius: [2, 2, 0, 0] },
-        data: hrHistogram.counts.map((count, idx) => {
+        data: hrHistogram.minutes.map((minutes, idx) => {
           const centerHr = hrHistogram.centers[idx] ?? 0;
           const zoneIndex = resolveHeartRateZoneIndex(centerHr, hrZones);
           const color = zoneIndex === null ? (isDark ? "#64748b" : "#94a3b8") : hrZones[zoneIndex].color;
           return {
-            value: count,
+            value: minutes,
             itemStyle: { color },
           };
         }),
