@@ -22,8 +22,8 @@ import { getRecordDataAvailability } from "../lib/recordDataAvailability";
 import type { Activity, RecordPoint } from "../types";
 import appIcon from "../assets/app-icon.svg";
 import {
-  IconActivity, IconDistance, IconClock, IconSport, IconSpeed, IconHeart,
-  IconMountain, IconDevice, IconCadence, IconBattery, IconSearch, IconUser,
+  IconActivity, IconDistance, IconClock, IconSport, IconGauge, IconHeart,
+  IconMountain, IconDevice, IconCrank, IconMetronome, IconShoe, IconBattery, IconSearch, IconUser,
   IconSort, IconSortDirection, IconMenu, IconSun, IconMoon, IconSettings,
   IconLogout, IconRefresh, IconChevron, IconCollapse, IconExpand, IconPower,
   IconEdit, IconTrash, IconCheck, IconX, IconDownload, IconFile, IconBarChart,
@@ -159,6 +159,13 @@ function activityUsesPaceDisplay(activity: Pick<Activity, "sport" | "metadata_js
   return ["treadmill", "trail", "track", "indoor_running", "indoor_walking", "casual_walking", "speed_walking"].includes(subSport);
 }
 
+function cadenceIconForActivity(activity: Pick<Activity, "sport" | "metadata_json" | "sub_sport"> | null | undefined): Icon {
+  if (activityUsesPaceDisplay(activity)) return "shoe";
+  const subSport = activity?.sub_sport || metadataString(activity?.metadata_json, "sub_sport");
+  if (isCyclingSport(activity?.sport) || isCyclingSport(subSport)) return "crank";
+  return "metronome";
+}
+
 function paceFromKmh(speedKmh: number, distanceUnitMeters: number, distanceSuffix: string): string {
   const speedMps = speedKmh / 3.6;
   return speedMps > 0 ? formatPace(distanceUnitMeters / speedMps, distanceSuffix) : "-";
@@ -259,7 +266,7 @@ function computeRecordStats(records: RecordPoint[]) {
 }
 
 /* ── SVG Icons ───────────────────────────────────────────────────── */
-type Icon = "clock" | "distance" | "speed" | "heart" | "mountain" | "power" | "cadence" | "battery" | "avg" | "flame" | "vo2" | "user";
+type Icon = "clock" | "distance" | "speed" | "heart" | "mountain" | "power" | "crank" | "shoe" | "metronome" | "battery" | "avg" | "flame" | "vo2" | "user";
 
 
 
@@ -1186,8 +1193,8 @@ export function Dashboard({ onLogout }: Props) {
     const leftRightBalance = formatLeftRightBalance(session.left_right_balance);
     if (leftRightBalance) push("left_right_balance", t("detail.leftRightBalance"), leftRightBalance, "power");
 
-    if (typeof session.avg_cadence === "number" && session.avg_cadence > 0) push("avg_cadence", t("detail.avgCadence"), `${Math.round(session.avg_cadence)} rpm`, "cadence");
-    if (typeof session.max_cadence === "number" && session.max_cadence > 0) push("max_cadence", t("detail.maxCadence"), `${Math.round(session.max_cadence)} rpm`, "cadence");
+    if (typeof session.avg_cadence === "number" && session.avg_cadence > 0) push("avg_cadence", t("detail.avgCadence"), `${Math.round(session.avg_cadence)} rpm`, "metronome");
+    if (typeof session.max_cadence === "number" && session.max_cadence > 0) push("max_cadence", t("detail.maxCadence"), `${Math.round(session.max_cadence)} rpm`, "metronome");
     if (typeof session.beginning_body_battery === "number" && typeof session.ending_body_battery === "number") {
       const delta = session.ending_body_battery - session.beginning_body_battery;
       const deltaLabel = delta > 0 ? `+${delta}` : `${delta}`;
@@ -1219,7 +1226,7 @@ export function Dashboard({ onLogout }: Props) {
       { key: "heart", label: "Heart Rate", icon: "heart", keys: ["avg_hr", "max_hr"] },
       { key: "elevation", label: t("insights.elevation"), icon: "mountain", keys: ["min_alt", "max_alt", "total_ascent", "total_descent"] },
       { key: "power", label: t("insights.power"), icon: "power", keys: ["avg_power", "max_power", "normalized_power", "tss", "intensity_factor", "left_right_balance"] },
-      { key: "cadence", label: t("insights.cadence"), icon: "cadence", keys: ["avg_cadence", "max_cadence"] },
+      { key: "cadence", label: t("insights.cadence"), icon: cadenceIconForActivity(selectedActivity), keys: ["avg_cadence", "max_cadence"] },
       { key: "user", label: t("detail.user"), icon: "user", keys: ["ftp", "vo2_max", "user_height", "user_weight", "resting_hr", "bb_change"] },
     ];
     const labelOverrides: Record<string, string> = {
@@ -1862,11 +1869,13 @@ export function Dashboard({ onLogout }: Props) {
                       <div className="detail-stat-group-label">
                         <span className="detail-stat-group-icon">
                           {group.icon === "clock" && <IconClock />}
-                          {group.icon === "speed" && <IconSpeed />}
+                          {group.icon === "speed" && <IconGauge />}
                           {group.icon === "heart" && <IconHeart />}
                           {group.icon === "mountain" && <IconMountain />}
                           {group.icon === "power" && <IconPower />}
-                          {group.icon === "cadence" && <IconCadence />}
+                          {group.icon === "crank" && <IconCrank />}
+                          {group.icon === "shoe" && <IconShoe />}
+                          {group.icon === "metronome" && <IconMetronome />}
                           {group.icon === "battery" && <IconBattery />}
                           {group.icon === "flame" && <IconFlame />}
                           {group.icon === "user" && <IconUser />}

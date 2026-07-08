@@ -4,12 +4,11 @@ import { api } from "../lib/api";
 import { openExternalLink } from "../lib/links";
 import { useTranslation, LANGUAGES } from "../lib/i18n";
 import {
-  IconActivity, IconAvg, IconBarChart, IconBattery, IconBug, IconCadence, IconCheck,
+  IconActivity, IconAvg, IconBarChart, IconBattery, IconBug, IconChainring, IconCheck,
   IconChevron, IconClipboard, IconClock, IconCollapse, IconCrank, IconDevice, IconDiscord,
-  IconDistance, IconLocation, IconDownload, IconEdit, IconExpand, IconFile, IconFlame, IconGlobe,
+  IconDistance, IconLocation, IconDownload, IconEdit, IconExpand, IconFile, IconFlame, IconGauge, IconGlobe,
   IconHeart, IconLogout, IconMail, IconMenu, IconMetronome, IconMoon, IconMountain, IconPower,
-  IconRefresh, IconSearch, IconSettings, IconSort, IconSortDirection, IconSport,
-  IconSpeed, IconSun, IconTrash, IconUser, IconVo2, IconX
+  IconRefresh, IconSearch, IconShoe, IconSettings, IconSort, IconSortDirection, IconSport, IconSun, IconTrash, IconUser, IconVo2, IconX
 } from "./Icons";
 
 
@@ -19,7 +18,8 @@ const ICON_PREVIEW_ITEMS = [
   { name: "IconBarChart", icon: <IconBarChart size={18} /> },
   { name: "IconBattery", icon: <IconBattery /> },
   { name: "IconBug", icon: <IconBug /> },
-  { name: "IconCadence", icon: <IconCadence /> },
+  { name: "IconChainring", icon: <IconChainring /> },
+  { name: "IconGauge", icon: <IconGauge /> },
   { name: "IconCheck", icon: <IconCheck /> },
   { name: "IconChevron", icon: <IconChevron /> },
   { name: "IconClipboard", icon: <IconClipboard /> },
@@ -47,11 +47,11 @@ const ICON_PREVIEW_ITEMS = [
   { name: "IconRefresh", icon: <IconRefresh /> },
   { name: "IconSearch", icon: <IconSearch /> },
   { name: "IconSettings", icon: <IconSettings /> },
+  { name: "IconShoe", icon: <IconShoe /> },
   { name: "IconSort", icon: <IconSort /> },
   { name: "IconSortDirection asc", icon: <IconSortDirection direction="asc" /> },
   { name: "IconSortDirection desc", icon: <IconSortDirection direction="desc" /> },
   { name: "IconSport", icon: <IconSport /> },
-  { name: "IconSpeed", icon: <IconSpeed /> },
   { name: "IconSun", icon: <IconSun /> },
   { name: "IconTrash", icon: <IconTrash /> },
   { name: "IconUser", icon: <IconUser /> },

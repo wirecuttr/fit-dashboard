@@ -23,9 +23,6 @@ export const IconClock: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 export const IconSport: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
 );
-export const IconSpeed: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><path d="M13 2L4 14h7l-1 8 10-12h-7l1-8z" /></svg>
-);
 export const IconHeart: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0016.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 002 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /></svg>
 );
@@ -38,11 +35,11 @@ export const IconDevice: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 export const IconAvg: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><line x1="4" y1="20" x2="20" y2="4" /><circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /></svg>
 );
-export const IconCadence: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+export const IconChainring: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.5" /><path d="M12 4v3" /><path d="M20 12h-3" /><path d="M12 20v-3" /><path d="M4 12h3" /></svg>
 );
 export const IconCrank: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /><path d="M12 7v1.5" /><path d="M17 12h-1.5" /><path d="M12 17v-1.5" /><path d="M7 12h1.5" /><line x1="6.5" y1="6.5" x2="17.5" y2="17.5" /><line x1="5" y1="6.5" x2="8" y2="6.5" /><line x1="16" y1="17.5" x2="19" y2="17.5" /></svg>
+  <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><circle cx="12" cy="12" r="6.5" /><circle cx="12" cy="12" r="1.8" /><line x1="6" y1="6" x2="18" y2="18" /><line x1="4.5" y1="6" x2="8" y2="6" /><line x1="16" y1="18" x2="19.5" y2="18" /></svg>
 );
 export const IconBattery: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><rect x="2" y="7" width="18" height="10" rx="2" /><line x1="22" y1="11" x2="22" y2="13" /><path d="M8 10l3 2-3 2" /><path d="M14 10v4" /></svg>
@@ -139,4 +136,10 @@ export const IconMetronome: React.FC<React.SVGProps<SVGSVGElement>> = (props) =>
   <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><path d="M4 20h16" /><path d="M6 20l4-15h4l4 15" /><line x1="12" y1="18" x2="16" y2="7" /><circle cx="14.5" cy="11" r="1.5" /></svg>
 );
 
+export const IconShoe: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><path d="M3 19h15.5c1.8 0 3-1 3-2.4 0-.9-.6-1.6-1.7-2.1l-4.8-2.2-3.8-4.3-2.6 3H6.5C4.6 11 3 12.6 3 14.5V19z" /><path d="M6 17h15" /></svg>
+);
 
+export const IconGauge: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><path d="M4 16.5a9 9 0 1 1 16 0" /><line x1="12" y1="12" x2="16" y2="8" /><circle cx="12" cy="12" r="1.5" /></svg>
+);
