@@ -3,6 +3,61 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { api } from "../lib/api";
 import { openExternalLink } from "../lib/links";
 import { useTranslation, LANGUAGES } from "../lib/i18n";
+import {
+  IconActivity, IconAvg, IconBarChart, IconBattery, IconBug, IconCadence, IconCheck,
+  IconChevron, IconClipboard, IconClock, IconCollapse, IconCrank, IconDevice, IconDiscord,
+  IconDistance, IconLocation, IconDownload, IconEdit, IconExpand, IconFile, IconFlame, IconGlobe,
+  IconHeart, IconLogout, IconMail, IconMenu, IconMetronome, IconMoon, IconMountain, IconPower,
+  IconRefresh, IconSearch, IconSettings, IconSort, IconSortDirection, IconSport,
+  IconSpeed, IconSun, IconTrash, IconUser, IconVo2, IconX
+} from "./Icons";
+
+
+const ICON_PREVIEW_ITEMS = [
+  { name: "IconActivity", icon: <IconActivity /> },
+  { name: "IconAvg", icon: <IconAvg /> },
+  { name: "IconBarChart", icon: <IconBarChart size={18} /> },
+  { name: "IconBattery", icon: <IconBattery /> },
+  { name: "IconBug", icon: <IconBug /> },
+  { name: "IconCadence", icon: <IconCadence /> },
+  { name: "IconCheck", icon: <IconCheck /> },
+  { name: "IconChevron", icon: <IconChevron /> },
+  { name: "IconClipboard", icon: <IconClipboard /> },
+  { name: "IconClock", icon: <IconClock /> },
+  { name: "IconCollapse", icon: <IconCollapse /> },
+  { name: "IconCrank", icon: <IconCrank /> },
+  { name: "IconDevice", icon: <IconDevice /> },
+  { name: "IconDiscord", icon: <IconDiscord /> },
+  { name: "IconDistance", icon: <IconDistance /> },
+  { name: "IconLocation", icon: <IconLocation /> },
+  { name: "IconDownload", icon: <IconDownload /> },
+  { name: "IconEdit", icon: <IconEdit /> },
+  { name: "IconExpand", icon: <IconExpand /> },
+  { name: "IconFile", icon: <IconFile /> },
+  { name: "IconFlame", icon: <IconFlame /> },
+  { name: "IconGlobe", icon: <IconGlobe /> },
+  { name: "IconHeart", icon: <IconHeart /> },
+  { name: "IconLogout", icon: <IconLogout /> },
+  { name: "IconMail", icon: <IconMail /> },
+  { name: "IconMenu", icon: <IconMenu /> },
+  { name: "IconMetronome", icon: <IconMetronome /> },
+  { name: "IconMoon", icon: <IconMoon /> },
+  { name: "IconMountain", icon: <IconMountain /> },
+  { name: "IconPower", icon: <IconPower /> },
+  { name: "IconRefresh", icon: <IconRefresh /> },
+  { name: "IconSearch", icon: <IconSearch /> },
+  { name: "IconSettings", icon: <IconSettings /> },
+  { name: "IconSort", icon: <IconSort /> },
+  { name: "IconSortDirection asc", icon: <IconSortDirection direction="asc" /> },
+  { name: "IconSortDirection desc", icon: <IconSortDirection direction="desc" /> },
+  { name: "IconSport", icon: <IconSport /> },
+  { name: "IconSpeed", icon: <IconSpeed /> },
+  { name: "IconSun", icon: <IconSun /> },
+  { name: "IconTrash", icon: <IconTrash /> },
+  { name: "IconUser", icon: <IconUser /> },
+  { name: "IconVo2", icon: <IconVo2 /> },
+  { name: "IconX", icon: <IconX /> },
+];
 
 type StorageInfo = {
   data_dir: string;
@@ -20,33 +75,7 @@ type Props = {
   versionBadgeStatus: VersionBadgeStatus;
 };
 
-const iconProps = {
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 2,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-};
 
-function IconBug() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...iconProps}><path d="M20 8h-2.2a6.9 6.9 0 00-1.3-1.3l1.1-1.9-1.7-1-1.1 1.9a7.3 7.3 0 00-2.7-.6 7.3 7.3 0 00-2.7.6L8.3 3.8l-1.7 1 1.1 1.9A6.9 6.9 0 006.4 8H4v2h2v2H4v2h2v2a6 6 0 006 6 6 6 0 006-6v-2h2v-2h-2v-2h2z" /><circle cx="10" cy="11" r="1" /><circle cx="14" cy="11" r="1" /><path d="M9.5 15c.8.7 1.6 1 2.5 1 .9 0 1.7-.3 2.5-1" /></svg>;
-}
-
-function IconDiscord() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M20.317 4.369A19.791 19.791 0 0015.39 2.8a14.99 14.99 0 00-.678 1.367 18.27 18.27 0 00-5.424 0A14.9 14.9 0 008.61 2.8a19.736 19.736 0 00-4.928 1.57C.564 9.092-.282 13.695.141 18.234a19.91 19.91 0 006.034 2.966c.489-.67.924-1.378 1.294-2.119a12.777 12.777 0 01-2.037-.978c.172-.126.339-.257.501-.39a14.165 14.165 0 0012.134 0c.162.133.329.264.501.39-.649.382-1.33.709-2.038.978.37.74.805 1.448 1.295 2.118a19.88 19.88 0 006.033-2.965c.496-5.263-.845-9.823-3.541-13.865zM9.75 15.081c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.951-2.418 2.157-2.418 1.215 0 2.166 1.095 2.157 2.418 0 1.334-.951 2.419-2.157 2.419zm4.5 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.951-2.418 2.157-2.418 1.214 0 2.166 1.095 2.157 2.418 0 1.334-.943 2.419-2.157 2.419z" />
-    </svg>
-  );
-}
-
-function IconGlobe() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...iconProps}><circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15 15 0 010 20" /><path d="M12 2a15 15 0 000 20" /></svg>;
-}
-
-function IconMail() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...iconProps}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>;
-}
 
 export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
   const {
@@ -191,6 +220,19 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
             <a className="settings-link-btn" href="https://www.fitdashboard.app/#about" target="_blank" rel="noreferrer noopener" onClick={openExternalLink}>
               <IconMail /> {t("settings.contact")}
             </a>
+          </div>
+        </div>
+
+
+        <div className="icon-preview-box">
+          <strong>Icon Preview</strong>
+          <div className="icon-preview-grid">
+            {ICON_PREVIEW_ITEMS.map((item) => (
+              <div key={item.name} className="icon-preview-item">
+                <span className="icon-preview-glyph">{item.icon}</span>
+                <span>{item.name}</span>
+              </div>
+            ))}
           </div>
         </div>
 

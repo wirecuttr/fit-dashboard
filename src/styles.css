@@ -1272,6 +1272,40 @@ button:focus-visible {
   color: var(--text-muted);
 }
 
+.stat-card-group {
+  gap: 0.65rem;
+}
+
+.stat-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-group-heading .stat-icon {
+  flex: 0 0 32px;
+  margin-bottom: 0;
+}
+
+.stat-metric-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.stat-submetric {
+  min-width: 0;
+}
+
+.stat-submetric .stat-value {
+  font-size: 1.25rem;
+}
+
 .stat-card .stat-label {
   font-size: 0.72rem;
   color: var(--text-muted);
@@ -1482,19 +1516,59 @@ button:focus-visible {
   flex-wrap: wrap;
 }
 
+.detail-stats-strip.grouped {
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.detail-stat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-right: 1rem;
+  border-right: 1px solid var(--border);
+}
+
+.detail-stat-group:last-child {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.detail-stat-group-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.detail-stat-group-icon {
+  color: var(--accent);
+  display: inline-flex;
+}
+
+.detail-stat-group-icon.danger {
+  color: var(--danger);
+}
+
+.detail-stat-group-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.detail-stat-group-items {
+  display: flex;
+  gap: 0.95rem;
+  flex-wrap: wrap;
+}
+
 .mini-stat {
   display: flex;
   flex-direction: column;
   gap: 0.05rem;
-}
-
-.mini-stat .mini-icon {
-  color: var(--accent);
-  display: flex;
-}
-
-.mini-stat .mini-icon.danger {
-  color: var(--danger);
 }
 
 .mini-stat .mini-value {
@@ -2486,6 +2560,53 @@ button:focus-visible {
   background: var(--accent-glow);
 }
 
+.icon-preview-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: var(--input-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.icon-preview-box strong {
+  font-size: 0.86rem;
+}
+
+.icon-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.icon-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.icon-preview-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  color: var(--accent);
+}
+
+.icon-preview-glyph svg {
+  max-width: 18px;
+  max-height: 18px;
+}
+
 .storage-box {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -3403,11 +3524,15 @@ button:focus-visible {
   .supporter-box { flex-direction: column; align-items: flex-start; }
   .detail-title-row { flex-direction: column; align-items: flex-start; }
   .detail-stats-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .detail-stats-strip.grouped { display: flex; }
 }
 
 @media (max-width: 400px) {
   .stats-row { grid-template-columns: 1fr; }
   .detail-stats-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-stats-strip.grouped { display: flex; }
+  .detail-stat-group { width: 100%; border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 0.75rem; }
+  .detail-stat-group:last-child { border-bottom: 0; padding-bottom: 0; }
 }
 
 /* Datepicker Popover */

@@ -22,6 +22,14 @@ import { getRecordDataAvailability } from "../lib/recordDataAvailability";
 import type { Activity, RecordPoint } from "../types";
 import appIcon from "../assets/app-icon.svg";
 import {
+  IconActivity, IconDistance, IconClock, IconSport, IconSpeed, IconHeart,
+  IconMountain, IconDevice, IconCadence, IconBattery, IconSearch, IconUser,
+  IconSort, IconSortDirection, IconMenu, IconSun, IconMoon, IconSettings,
+  IconLogout, IconRefresh, IconChevron, IconCollapse, IconExpand, IconPower,
+  IconEdit, IconTrash, IconCheck, IconX, IconDownload, IconFile, IconBarChart,
+  IconClipboard, IconFlame
+} from "./Icons";
+import {
   convertElevationMeters,
   convertSpeedKmh,
   distanceDivisor,
@@ -96,8 +104,25 @@ function formatLeftRightBalance(balance?: { left_percent?: number | null; right_
   return `${formatPercentValue(left)} / ${formatPercentValue(right)}`;
 }
 
+function formatUserHeight(heightM: number, unit: "km" | "mi"): string | null {
+  if (!Number.isFinite(heightM) || heightM <= 0) return null;
+  if (unit === "mi") {
+    const totalInches = Math.round(heightM * 39.3701);
+    const feet = Math.floor(totalInches / 12);
+    const inches = totalInches % 12;
+    return `${feet} ft ${inches} in`;
+  }
+  return `${Math.round(heightM * 100)} cm`;
+}
+
+function formatUserWeight(weightKg: number, unit: "km" | "mi"): string | null {
+  if (!Number.isFinite(weightKg) || weightKg <= 0) return null;
+  if (unit === "mi") return `${(weightKg * 2.20462).toFixed(1)} lb`;
+  return `${weightKg.toFixed(1)} kg`;
+}
+
 function sumPositiveNumbers(values: Array<number | null | undefined>): number | null {
-  const total = values.reduce((sum, value) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? sum + value : sum), 0);
+  const total = values.reduce<number>((sum, value) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? sum + value : sum), 0);
   return total > 0 ? total : null;
 }
 
@@ -234,114 +259,9 @@ function computeRecordStats(records: RecordPoint[]) {
 }
 
 /* ── SVG Icons ───────────────────────────────────────────────────── */
-type Icon = "clock" | "distance" | "speed" | "heart" | "mountain" | "power" | "cadence" | "battery" | "avg" | "flame" | "vo2";
+type Icon = "clock" | "distance" | "speed" | "heart" | "mountain" | "power" | "cadence" | "battery" | "avg" | "flame" | "vo2" | "user";
 
-const svgProps = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
 
-function IconActivity() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>;
-}
-function IconDistance() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M12 21s7-5.5 7-11a7 7 0 10-14 0c0 5.5 7 11 7 11z" /><circle cx="12" cy="10" r="2.6" /></svg>;
-}
-function IconClock() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>;
-}
-function IconSport() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>;
-}
-function IconSpeed() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M13 2L4 14h7l-1 8 10-12h-7l1-8z" /></svg>;
-}
-function IconHeart() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0016.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 002 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /></svg>;
-}
-function IconMountain() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="m8 3 4 8 5-5 5 15H2L8 3z" /></svg>;
-}
-function IconDevice() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><rect x="5" y="2" width="14" height="20" rx="2" /><line x1="12" y1="18" x2="12" y2="18" /></svg>;
-}
-function IconAvg() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><line x1="4" y1="20" x2="20" y2="4" /><circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /></svg>;
-}
-function IconCadence() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.5" /><path d="M12 4v3" /><path d="M20 12h-3" /><path d="M12 20v-3" /><path d="M4 12h3" /></svg>;
-}
-function IconBattery() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><rect x="2" y="7" width="18" height="10" rx="2" /><line x1="22" y1="11" x2="22" y2="13" /><path d="M8 10l3 2-3 2" /><path d="M14 10v4" /></svg>;
-}
-function IconSearch() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>;
-}
-function IconSort() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><line x1="6" y1="7" x2="18" y2="7" /><line x1="9" y1="12" x2="18" y2="12" /><line x1="12" y1="17" x2="18" y2="17" /></svg>;
-}
-function IconSortDirection({ direction }: { direction: "asc" | "desc" }) {
-  return direction === "asc"
-    ? <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="7 11 12 6 17 11" /><line x1="12" y1="18" x2="12" y2="7" /></svg>
-    : <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="7 13 12 18 17 13" /><line x1="12" y1="6" x2="12" y2="17" /></svg>;
-}
-function IconMenu() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" /></svg>;
-}
-function IconSun() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>;
-}
-function IconMoon() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" /></svg>;
-}
-function IconSettings() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>;
-}
-function IconLogout() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps}><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>;
-}
-function IconRefresh() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" /></svg>;
-}
-function IconChevron() {
-  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>;
-}
-function IconCollapse() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="11 17 6 12 11 7" /><polyline points="18 17 13 12 18 7" /></svg>;
-}
-function IconExpand() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="13 17 18 12 13 7" /><polyline points="6 17 11 12 6 7" /></svg>;
-}
-function IconPower() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M18.36 6.64a9 9 0 11-12.73 0" /><line x1="12" y1="2" x2="12" y2="12" /></svg>;
-}
-function IconEdit() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>;
-}
-function IconTrash() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>;
-}
-function IconCheck() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><polyline points="20 6 9 17 4 12" /></svg>;
-}
-function IconX() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>;
-}
-function IconDownload() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>;
-}
-function IconFile() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>;
-}
-function IconBarChart({ size = 32 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>;
-}
-function IconClipboard() {
-  return <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" /></svg>;
-}
-function IconFlame() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 2.5z" /></svg>;
-}
-function IconVo2() {
-  return <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M4.882 19q-1.203 0-2.042-.854Q2 17.293 2 16.073v-4.161q0-1.007.433-1.886q.433-.878 1.223-1.487l4.113-3.227q.427-.333.656-.813t.229-1.026V2h1v1.473q0 .546.238 1.026t.672.813l4.094 3.226q.784.61 1.217 1.488q.433.879.433 1.885v.32h-1v-.32q0-.763-.339-1.43t-.927-1.15L11.54 7.375v10.987q-.489-.373-.748-.951q-.258-.578-.252-1.338V6.608L9.154 5.48L7.75 6.608v9.465q.006 1.212-.83 2.07T4.882 19m.009-1q.784 0 1.325-.571t.534-1.356V7.375L4.266 9.331q-.608.483-.937 1.15Q3 11.149 3 11.911v4.162q0 .804.553 1.366q.553.561 1.338.561m8.801 1q-.31 0-.539-.23t-.23-.54v-3.845q0-.31.23-.54t.54-.23h2.346q.309 0 .539.23t.23.54v3.846q0 .31-.23.54q-.23.229-.54.229zm.116-.885h2.115V14.5h-2.115zM18.192 21v-2.366q0-.326.222-.548q.22-.22.548-.22h2.269V16.5h-3.039v-.885h3.154q.327 0 .548.222q.222.22.222.548v1.596q0 .327-.222.548q-.221.221-.548.221h-2.269v1.366h3.038V21zm-4.769-8.315"/></svg>
-}
 
 /* ── Dashboard Component ─────────────────────────────────────────── */
 
@@ -1181,9 +1101,12 @@ export function Dashboard({ onLogout }: Props) {
     () => getAccessoryDevices(selectedMetadata),
     [selectedMetadata]
   );
+  type DetailStat = { key: string; label: string; value: string; secondary?: string; icon: Icon };
+  type DetailStatGroup = { key: string; label: string; icon: Icon; stats: DetailStat[] };
+
   const detailStats = useMemo(() => {
-    if (!selectedActivity) return [] as Array<{ key: string; label: string; value: string; secondary?: string; icon: Icon }>;
-    const out: Array<{ key: string; label: string; value: string; secondary?: string; icon: Icon }> = [];
+    if (!selectedActivity) return [] as DetailStat[];
+    const out: DetailStat[] = [];
     const seen = new Set<string>();
     const push = (key: string, label: string, value: string | null | undefined, icon: Icon, secondary?: string) => {
       if (!value || seen.has(key)) return;
@@ -1218,6 +1141,7 @@ export function Dashboard({ onLogout }: Props) {
 
     const session = selectedMetadata?.session ?? {};
     const metric = selectedMetadata?.activity_metrics ?? {};
+    const userProfile = selectedMetadata?.user_profile ?? {};
     const avgHr = recordStats.avgHr > 0 ? Math.round(recordStats.avgHr) : (typeof session.avg_heart_rate === "number" ? session.avg_heart_rate : null);
     const maxHr = recordStats.maxHr > 0 ? recordStats.maxHr : (typeof session.max_heart_rate === "number" ? session.max_heart_rate : null);
     if (avgHr && avgHr > 0) push("avg_hr", t("detail.avgHr"), `${Math.round(avgHr)} bpm`, "heart");
@@ -1252,7 +1176,7 @@ export function Dashboard({ onLogout }: Props) {
       : (typeof selectedMetadata?.zones?.power?.functional_threshold_power === "number" && selectedMetadata.zones.power.functional_threshold_power > 0
           ? selectedMetadata.zones.power.functional_threshold_power
           : null);
-    if (typeof ftp === "number") push("ftp", t("detail.ftp"), `${formatStatNumber(Math.round(ftp))} W`, "power");
+    if (typeof ftp === "number") push("ftp", t("detail.ftp"), `${formatStatNumber(Math.round(ftp))} W`, "user");
     if (typeof session.training_stress_score === "number" && session.training_stress_score > 0) {
       push("tss", t("detail.tss"), formatStatNumber(session.training_stress_score, 1), "power");
     }
@@ -1275,10 +1199,61 @@ export function Dashboard({ onLogout }: Props) {
         `${session.beginning_body_battery} -> ${session.ending_body_battery}`
       );
     }
-    if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", t("detail.vo2Max"), `${metric.vo2_max.toFixed(1)}`, "vo2");
+    if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", t("detail.vo2Max"), `${metric.vo2_max.toFixed(1)}`, "user");
+    const userHeight = typeof userProfile.height_m === "number" ? formatUserHeight(userProfile.height_m, distanceUnit) : null;
+    if (userHeight) push("user_height", t("detail.height"), userHeight, "user");
+    const userWeight = typeof userProfile.weight_kg === "number" ? formatUserWeight(userProfile.weight_kg, distanceUnit) : null;
+    if (userWeight) push("user_weight", t("detail.weight"), userWeight, "user");
+    const restingHr = typeof selectedMetadata?.zones?.heart_rate?.resting_heart_rate === "number"
+      ? selectedMetadata.zones.heart_rate.resting_heart_rate
+      : (typeof userProfile.resting_heart_rate === "number" ? userProfile.resting_heart_rate : null);
+    if (typeof restingHr === "number" && restingHr > 0) push("resting_hr", t("detail.restingHr"), `${Math.round(restingHr)} bpm`, "user");
     if (typeof session.total_calories === "number" && session.total_calories > 0) push("total_calories", t("detail.calories"), `${Math.round(session.total_calories)} kcal`, "flame");
     return out;
   }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, sessionNormalizedPower, t]);
+
+  const detailStatGroups = useMemo(() => {
+    const groupDefinitions: Array<{ key: string; label: string; icon: Icon; keys: string[] }> = [
+      { key: "activity", label: t("detail.summary"), icon: "clock", keys: ["duration", "distance", "total_calories"] },
+      { key: "speed", label: activityUsesPaceDisplay(selectedActivity) ? t("detail.pace") : t("insights.speed"), icon: "speed", keys: ["avg_speed", "max_speed"] },
+      { key: "heart", label: "Heart Rate", icon: "heart", keys: ["avg_hr", "max_hr"] },
+      { key: "elevation", label: t("insights.elevation"), icon: "mountain", keys: ["min_alt", "max_alt", "total_ascent", "total_descent"] },
+      { key: "power", label: t("insights.power"), icon: "power", keys: ["avg_power", "max_power", "normalized_power", "tss", "intensity_factor", "left_right_balance"] },
+      { key: "cadence", label: t("insights.cadence"), icon: "cadence", keys: ["avg_cadence", "max_cadence"] },
+      { key: "user", label: t("detail.user"), icon: "user", keys: ["ftp", "vo2_max", "user_height", "user_weight", "resting_hr", "bb_change"] },
+    ];
+    const labelOverrides: Record<string, string> = {
+      avg_speed: activityUsesPaceDisplay(selectedActivity) ? "Avg" : "Avg",
+      max_speed: "Max",
+      avg_hr: "Avg",
+      max_hr: "Max",
+      min_alt: "Min",
+      max_alt: "Max",
+      total_ascent: "Ascent",
+      total_descent: "Descent",
+      avg_power: "Avg",
+      max_power: "Max",
+      normalized_power: "Norm",
+      ftp: "FTP",
+      tss: "TSS",
+      intensity_factor: "IF",
+      left_right_balance: "L/R Balance",
+      user_height: t("detail.height"),
+      user_weight: t("detail.weight"),
+      resting_hr: t("detail.restingHr"),
+      avg_cadence: "Avg",
+      max_cadence: "Max",
+    };
+    const byKey = new Map(detailStats.map((stat) => [stat.key, stat]));
+
+    return groupDefinitions.flatMap<DetailStatGroup>((group) => {
+      const stats = group.keys
+        .map((key) => byKey.get(key))
+        .filter((stat): stat is DetailStat => Boolean(stat))
+        .map((stat) => ({ ...stat, label: labelOverrides[stat.key] ?? stat.label }));
+      return stats.length ? [{ key: group.key, label: group.label, icon: group.icon, stats }] : [];
+    });
+  }, [detailStats, selectedActivity, t]);
 
   const lapRows = useMemo(() => {
     const laps = selectedMetadata?.laps ?? [];
@@ -1793,13 +1768,21 @@ export function Dashboard({ onLogout }: Props) {
             <>
               <div className="stats-row">
                 <div className="stat-card"><div className="stat-icon"><IconActivity /></div><div className="stat-value">{filtered.length}</div><div className="stat-label">{t("overview.filteredActivities")}</div></div>
-                <div className="stat-card"><div className="stat-icon"><IconDistance /></div><div className="stat-value">{totalDistance.toFixed(1)} <small>{distanceSuffix}</small></div><div className="stat-label">{t("overview.totalDistance")}</div></div>
-                <div className="stat-card"><div className="stat-icon"><IconClock /></div><div className="stat-value">{formatDuration(totalDuration)}</div><div className="stat-label">{t("overview.totalDuration")}</div></div>
+                <div className="stat-card stat-card-group">
+                  <div className="stat-group-heading"><div className="stat-icon"><IconDistance /></div><span>{t("detail.distance")}</span></div>
+                  <div className="stat-metric-pair">
+                    <div className="stat-submetric"><div className="stat-value">{totalDistance.toFixed(1)} <small>{distanceSuffix}</small></div><div className="stat-label">{t("overview.total")}</div></div>
+                    <div className="stat-submetric"><div className="stat-value">{avgDistance.toFixed(1)} <small>{distanceSuffix}</small></div><div className="stat-label">{t("overview.avgPerActivity")}</div></div>
+                  </div>
+                </div>
+                <div className="stat-card stat-card-group">
+                  <div className="stat-group-heading"><div className="stat-icon"><IconClock /></div><span>{t("detail.duration")}</span></div>
+                  <div className="stat-metric-pair">
+                    <div className="stat-submetric"><div className="stat-value">{formatDuration(totalDuration)}</div><div className="stat-label">{t("overview.total")}</div></div>
+                    <div className="stat-submetric"><div className="stat-value">{formatDurationShort(avgDuration)}</div><div className="stat-label">{t("overview.avgPerActivity")}</div></div>
+                  </div>
+                </div>
                 <div className="stat-card"><div className="stat-icon"><IconSport /></div><div className="stat-value">{filteredSports.length}</div><div className="stat-label">{t("overview.uniqueSports")}</div></div>
-              </div>
-              <div className="stats-row">
-                <div className="stat-card"><div className="stat-icon"><IconAvg /></div><div className="stat-value">{avgDistance.toFixed(1)} <small>{distanceSuffix}</small></div><div className="stat-label">{t("overview.avgDistancePerActivity")}</div></div>
-                <div className="stat-card"><div className="stat-icon"><IconClock /></div><div className="stat-value">{formatDurationShort(avgDuration)}</div><div className="stat-label">{t("overview.avgDurationPerActivity")}</div></div>
                 <div className="stat-card"><div className="stat-icon"><IconDevice /></div><div className="stat-value">{filteredDevices.length}</div><div className="stat-label">{t("overview.devices")}</div></div>
               </div>
               <div className="overview-contribution-row">
@@ -1873,25 +1856,32 @@ export function Dashboard({ onLogout }: Props) {
                     </button>
                   </div>
                 </div>
-                <div className="detail-stats-strip">
-                  {detailStats.map((s) => (
-                    <div key={s.key} className="mini-stat">
-                      <span className={`mini-icon ${s.key === "max_hr" ? "danger" : ""}`}>
-                        {s.icon === "clock" && <IconClock />}
-                        {s.icon === "distance" && <IconDistance />}
-                        {s.icon === "speed" && <IconSpeed />}
-                        {s.icon === "heart" && <IconHeart />}
-                        {s.icon === "mountain" && <IconMountain />}
-                        {s.icon === "power" && <IconPower />}
-                        {s.icon === "cadence" && <IconCadence />}
-                        {s.icon === "battery" && <IconBattery />}
-                        {s.icon === "avg" && <IconAvg />}
-                        {s.icon === "flame" && <IconFlame />}
-                        {s.icon === "vo2" && <IconVo2 />}
-                      </span>
-                      <span className="mini-value">{s.value}</span>
-                      <span className="mini-label">{s.label}</span>
-                      {s.secondary && <span className="mini-label" style={{ fontSize: "0.68rem", marginTop: "2px" }}>{s.secondary}</span>}
+                <div className="detail-stats-strip grouped">
+                  {detailStatGroups.map((group) => (
+                    <div key={group.key} className="detail-stat-group">
+                      <div className="detail-stat-group-label">
+                        <span className="detail-stat-group-icon">
+                          {group.icon === "clock" && <IconClock />}
+                          {group.icon === "speed" && <IconSpeed />}
+                          {group.icon === "heart" && <IconHeart />}
+                          {group.icon === "mountain" && <IconMountain />}
+                          {group.icon === "power" && <IconPower />}
+                          {group.icon === "cadence" && <IconCadence />}
+                          {group.icon === "battery" && <IconBattery />}
+                          {group.icon === "flame" && <IconFlame />}
+                          {group.icon === "user" && <IconUser />}
+                        </span>
+                        <span>{group.label}</span>
+                      </div>
+                      <div className="detail-stat-group-items">
+                        {group.stats.map((s) => (
+                          <div key={s.key} className="mini-stat">
+                            <span className="mini-value">{s.value}</span>
+                            <span className="mini-label">{s.label}</span>
+                            {s.secondary && <span className="mini-label" style={{ fontSize: "0.68rem", marginTop: "2px" }}>{s.secondary}</span>}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
