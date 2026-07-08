@@ -1746,6 +1746,25 @@ button:focus-visible {
   font-size: 0.9rem;
 }
 
+.scatter-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.scatter-chart-header h3 {
+  margin: 0;
+}
+
+.scatter-chart-header select {
+  min-height: 32px;
+  max-width: min(15rem, 55%);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .zone-time-bars {
   display: grid;
   gap: 0.55rem;

@@ -374,5 +374,7 @@
   "detail.weight": "Peso",
   "detail.restingHr": "FC reposo",
   "settings.smoothGraphs": "Gráficos suavizados",
-  "settings.smoothGraphsTooltip": "Suavizado de media móvil dinámica. Al hacer zoom, se usan puntos más detallados."
+  "settings.smoothGraphsTooltip": "Suavizado de media móvil dinámica. Al hacer zoom, se usan puntos más detallados.",
+  "insights.scatterComparison": "Scatterplot",
+  "insights.scatterMetric": "Scatterplot metric"
 }

@@ -374,5 +374,7 @@
   "detail.weight": "Poids",
   "detail.restingHr": "FC repos",
   "settings.smoothGraphs": "Graphiques lissés",
-  "settings.smoothGraphsTooltip": "Lissage par moyenne mobile dynamique. En zoomant, des points plus détaillés sont utilisés."
+  "settings.smoothGraphsTooltip": "Lissage par moyenne mobile dynamique. En zoomant, des points plus détaillés sont utilisés.",
+  "insights.scatterComparison": "Scatterplot",
+  "insights.scatterMetric": "Scatterplot metric"
 }

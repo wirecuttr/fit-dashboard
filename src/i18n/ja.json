@@ -374,5 +374,7 @@
   "detail.weight": "体重",
   "detail.restingHr": "安静時心拍",
   "settings.smoothGraphs": "スムーズグラフ",
-  "settings.smoothGraphsTooltip": "動的移動平均スムージング。ズームするとより詳細なポイントが使用されます。"
+  "settings.smoothGraphsTooltip": "動的移動平均スムージング。ズームするとより詳細なポイントが使用されます。",
+  "insights.scatterComparison": "Scatterplot",
+  "insights.scatterMetric": "Scatterplot metric"
 }

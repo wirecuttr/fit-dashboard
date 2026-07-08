@@ -374,5 +374,7 @@
   "detail.weight": "Kilo",
   "detail.restingHr": "Dinlenik Nabız",
   "settings.smoothGraphs": "Yumuşak grafikler",
-  "settings.smoothGraphsTooltip": "Dinamik hareketli ortalama yumuşatma. Yakınlaştırdıkça daha ayrıntılı noktalar kullanılır."
+  "settings.smoothGraphsTooltip": "Dinamik hareketli ortalama yumuşatma. Yakınlaştırdıkça daha ayrıntılı noktalar kullanılır.",
+  "insights.scatterComparison": "Scatterplot",
+  "insights.scatterMetric": "Scatterplot metric"
 }

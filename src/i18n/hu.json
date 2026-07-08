@@ -374,5 +374,7 @@
   "detail.weight": "Súly",
   "detail.restingHr": "Nyugalmi pulzus",
   "settings.smoothGraphs": "Simított grafikonok",
-  "settings.smoothGraphsTooltip": "Dinamikus gördülő átlag simítás. Nagyítás közben részletesebb pontok használatosak."
+  "settings.smoothGraphsTooltip": "Dinamikus gördülő átlag simítás. Nagyítás közben részletesebb pontok használatosak.",
+  "insights.scatterComparison": "Scatterplot",
+  "insights.scatterMetric": "Scatterplot metric"
 }

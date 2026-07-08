@@ -203,5 +203,7 @@
   "detail.weight": "Вес",
   "detail.restingHr": "Пульс покоя",
   "settings.smoothGraphs": "Сглаживание графиков",
-  "settings.smoothGraphsTooltip": "Использовать динамическое сглаживание скользящим средним. При приближении графика отображаются более детальные точки."
+  "settings.smoothGraphsTooltip": "Использовать динамическое сглаживание скользящим средним. При приближении графика отображаются более детальные точки.",
+  "insights.scatterComparison": "Scatterplot",
+  "insights.scatterMetric": "Scatterplot metric"
 }

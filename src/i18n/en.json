@@ -377,5 +377,7 @@
   "detail.weight": "Weight",
   "detail.restingHr": "Resting HR",
   "settings.smoothGraphs": "Smooth graphs",
-  "settings.smoothGraphsTooltip": "Use dynamic rolling average smoothing. As you zoom in, more detailed points are used."
+  "settings.smoothGraphsTooltip": "Use dynamic rolling average smoothing. As you zoom in, more detailed points are used.",
+  "insights.scatterComparison": "Scatterplot",
+  "insights.scatterMetric": "Scatterplot metric"
 }

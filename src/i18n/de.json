@@ -374,5 +374,7 @@
   "detail.weight": "Gewicht",
   "detail.restingHr": "Ruhe-HF",
   "settings.smoothGraphs": "Glatte Diagramme",
-  "settings.smoothGraphsTooltip": "Dynamische gleitende Durchschnittsglättung. Beim Hineinzoomen werden detailliertere Punkte verwendet."
+  "settings.smoothGraphsTooltip": "Dynamische gleitende Durchschnittsglättung. Beim Hineinzoomen werden detailliertere Punkte verwendet.",
+  "insights.scatterComparison": "Scatterplot",
+  "insights.scatterMetric": "Scatterplot metric"
 }

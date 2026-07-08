@@ -374,5 +374,7 @@
   "detail.weight": "Peso",
   "detail.restingHr": "FC riposo",
   "settings.smoothGraphs": "Grafici smussati",
-  "settings.smoothGraphsTooltip": "Lisciatura media mobile dinamica. Ingrandendo vengono usati punti più dettagliati."
+  "settings.smoothGraphsTooltip": "Lisciatura media mobile dinamica. Ingrandendo vengono usati punti più dettagliati.",
+  "insights.scatterComparison": "Scatterplot",
+  "insights.scatterMetric": "Scatterplot metric"
 }

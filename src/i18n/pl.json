@@ -374,5 +374,7 @@
   "detail.weight": "Waga",
   "detail.restingHr": "HR spocz.",
   "settings.smoothGraphs": "Wygładzone wykresy",
-  "settings.smoothGraphsTooltip": "Dynamiczne wygładzanie średnią kroczącą. Przy zbliżeniu używane są bardziej szczegółowe punkty."
+  "settings.smoothGraphsTooltip": "Dynamiczne wygładzanie średnią kroczącą. Przy zbliżeniu używane są bardziej szczegółowe punkty.",
+  "insights.scatterComparison": "Scatterplot",
+  "insights.scatterMetric": "Scatterplot metric"
 }

@@ -55,6 +55,23 @@ type Props = {
 };
 
 type SeriesRow = [number, number | null, number, number, number | null];
+type ScatterMetricKey = "heartRate" | "power" | "cadence" | "speed" | "pace" | "elevation";
+type ScatterPresetKey = "power_heart_rate" | "power_cadence" | "cadence_heart_rate" | "speed_heart_rate" | "pace_heart_rate" | "elevation_heart_rate";
+
+type ScatterPreset = {
+  key: ScatterPresetKey;
+  yMetric: ScatterMetricKey;
+  xMetric: ScatterMetricKey;
+};
+
+const SCATTER_PRESETS: ScatterPreset[] = [
+  { key: "power_heart_rate", yMetric: "power", xMetric: "heartRate" },
+  { key: "power_cadence", yMetric: "power", xMetric: "cadence" },
+  { key: "cadence_heart_rate", yMetric: "cadence", xMetric: "heartRate" },
+  { key: "pace_heart_rate", yMetric: "pace", xMetric: "heartRate" },
+  { key: "speed_heart_rate", yMetric: "speed", xMetric: "heartRate" },
+  { key: "elevation_heart_rate", yMetric: "elevation", xMetric: "heartRate" },
+];
 
 function isSeriesRow(row: [number | null, number | null, number, number, number | null]): row is SeriesRow {
   return typeof row[0] === "number" && Number.isFinite(row[0]);
@@ -350,6 +367,7 @@ export function ActivityInsights({
   const isDark = theme === "dark";
   const { t: tr } = useTranslation();
   const [heartRateDriftHelpOpen, setHeartRateDriftHelpOpen] = useState(false);
+  const [scatterPresetKey, setScatterPresetKey] = useState<ScatterPresetKey>("power_heart_rate");
   const availability = getRecordDataAvailability(records);
   const axisColor = isDark ? "#8899b8" : "#64748b";
   const gridLine = isDark ? "rgba(100, 140, 220, 0.08)" : "rgba(0, 0, 0, 0.06)";
@@ -1121,39 +1139,144 @@ export function ActivityInsights({
     ],
   };
 
-  const hrPowerScatter = timeline
-    .filter((d) => typeof d.heartRate === "number" && typeof d.power === "number")
-    .map((d) => [d.heartRate as number, d.power as number]);
-  const hrPowerScatterXAxisBounds = paddedAxisBounds(
-    hrPowerScatter.map(([heartRate]) => [0, heartRate] as [number, number | null]),
-    30,
-    5,
-    5,
-  );
+  type TimelinePoint = (typeof timeline)[number];
+  const scatterMetrics: Record<ScatterMetricKey, {
+    label: string;
+    axisName: string;
+    colour: string;
+    minFloor: number;
+    minPadding: number;
+    step: number;
+    getValue: (point: TimelinePoint) => number | null;
+  }> = {
+    heartRate: {
+      label: tr("chart.heartRate"),
+      axisName: "bpm",
+      colour: "#ef4444",
+      minFloor: 30,
+      minPadding: 5,
+      step: 5,
+      getValue: (point) => point.heartRate,
+    },
+    power: {
+      label: tr("insights.power"),
+      axisName: "W",
+      colour: "#f59e0b",
+      minFloor: 0,
+      minPadding: 10,
+      step: 10,
+      getValue: (point) => point.power,
+    },
+    cadence: {
+      label: tr("insights.cadence"),
+      axisName: "rpm",
+      colour: "#8b5cf6",
+      minFloor: 0,
+      minPadding: 5,
+      step: 5,
+      getValue: (point) => point.cadence,
+    },
+    speed: {
+      label: tr("insights.speed"),
+      axisName: speedLabel(distanceUnit),
+      colour: "#0ea5e9",
+      minFloor: 0,
+      minPadding: 0.5,
+      step: 1,
+      getValue: (point) => point.speedInUnit,
+    },
+    pace: {
+      label: tr("chart.pace"),
+      axisName: paceLabel(distanceUnit),
+      colour: "#10b981",
+      minFloor: 0,
+      minPadding: 0.25,
+      step: 0.5,
+      getValue: (point) => point.paceMinPerUnit,
+    },
+    elevation: {
+      label: tr("insights.elevation"),
+      axisName: elevationLabel(distanceUnit),
+      colour: "#64748b",
+      minFloor: Number.NEGATIVE_INFINITY,
+      minPadding: 5,
+      step: 10,
+      getValue: (point) => point.altitudeInUnit,
+    },
+  };
+
+  const availableScatterPresets = SCATTER_PRESETS.filter((preset) => {
+    const xMetric = scatterMetrics[preset.xMetric];
+    const yMetric = scatterMetrics[preset.yMetric];
+    return timeline.some((point) => {
+      const x = xMetric.getValue(point);
+      const y = yMetric.getValue(point);
+      return typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y);
+    });
+  });
+  const selectedScatterPreset = availableScatterPresets.find((preset) => preset.key === scatterPresetKey) ?? availableScatterPresets[0] ?? null;
+  const selectedScatterXMetric = selectedScatterPreset ? scatterMetrics[selectedScatterPreset.xMetric] : null;
+  const selectedScatterYMetric = selectedScatterPreset ? scatterMetrics[selectedScatterPreset.yMetric] : null;
+  const scatterTitle = selectedScatterPreset && selectedScatterXMetric && selectedScatterYMetric
+    ? `${selectedScatterYMetric.label} vs ${selectedScatterXMetric.label}`
+    : tr("insights.scatterComparison");
+  const scatterData = selectedScatterPreset && selectedScatterXMetric && selectedScatterYMetric
+    ? timeline
+        .map((point) => {
+          const x = selectedScatterXMetric.getValue(point);
+          const y = selectedScatterYMetric.getValue(point);
+          return typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y)
+            ? [x, y, point.relMs, point.timestampMs, point.distanceMeters] as [number, number, number, number, number | null]
+            : null;
+        })
+        .filter((point): point is [number, number, number, number, number | null] => point !== null)
+    : [];
+  const scatterXAxisBounds = selectedScatterXMetric
+    ? paddedAxisBounds(scatterData.map(([x]) => [0, x] as [number, number | null]), selectedScatterXMetric.minFloor, selectedScatterXMetric.minPadding, selectedScatterXMetric.step)
+    : undefined;
+  const scatterYAxisBounds = selectedScatterYMetric
+    ? paddedAxisBounds(scatterData.map(([, y]) => [0, y] as [number, number | null]), selectedScatterYMetric.minFloor, selectedScatterYMetric.minPadding, selectedScatterYMetric.step)
+    : undefined;
 
   const scatterOption = {
-    tooltip: { trigger: "item", ...tooltipStyle },
-    grid: { left: 44, right: 20, top: 28, bottom: 40 },
+    tooltip: {
+      trigger: "item",
+      ...tooltipStyle,
+      formatter: (p: any) => {
+        if (!selectedScatterXMetric || !selectedScatterYMetric) return "";
+        const value = p?.value ?? [];
+        const x = Number(value[0]);
+        const y = Number(value[1]);
+        const relMs = Number(value[2] ?? 0);
+        const timestampMs = Number(value[3] ?? 0);
+        const distanceMeters = typeof value[4] === "number" ? value[4] : null;
+        return `${formatTooltipHeader(relMs, distanceMeters, "time", timestampMs)}<div>${selectedScatterYMetric.label}: <strong>${y.toFixed(1)} ${selectedScatterYMetric.axisName}</strong></div><div>${selectedScatterXMetric.label}: <strong>${x.toFixed(1)} ${selectedScatterXMetric.axisName}</strong></div>`;
+      },
+    },
+    grid: { left: 48, right: 20, top: 28, bottom: 42 },
     xAxis: {
-      type: "value", name: "HR",
+      type: "value", name: selectedScatterXMetric?.axisName ?? "",
       scale: true,
-      ...hrPowerScatterXAxisBounds,
+      ...scatterXAxisBounds,
       nameTextStyle: { color: axisColor, fontSize: 11 },
       axisLabel: { color: axisColor, fontSize: 11 },
       splitLine: { lineStyle: { color: gridLine } },
     },
     yAxis: {
-      type: "value", name: "W",
+      type: "value", name: selectedScatterYMetric?.axisName ?? "",
+      scale: true,
+      ...scatterYAxisBounds,
       nameTextStyle: { color: axisColor, fontSize: 11 },
       axisLabel: { color: axisColor, fontSize: 11 },
       splitLine: { lineStyle: { color: gridLine } },
     },
     series: [
       {
+        name: scatterTitle,
         type: "scatter",
         symbolSize: 5,
-        itemStyle: { color: "#f59e0b", opacity: 0.7 },
-        data: hrPowerScatter,
+        itemStyle: { color: selectedScatterYMetric?.colour ?? "#f59e0b", opacity: 0.7 },
+        data: scatterData,
       },
     ],
   };
@@ -1547,9 +1670,9 @@ export function ActivityInsights({
       height: insightChartHeight,
     },
     {
-      id: "power-heart-rate",
-      available: hasPowerData && hasHeartRateData,
-      title: tr("insights.powerVsHeartRate"),
+      id: "scatter-comparison",
+      available: scatterData.length > 0,
+      title: scatterTitle,
       option: scatterOption,
       onEvents: undefined,
       height: insightChartHeight,
@@ -1610,7 +1733,28 @@ export function ActivityInsights({
       ))}
       {supplementalCharts.map((chart) => (
         <article className="panel" key={chart.id}>
-          <h3>{chart.title}</h3>
+          {chart.id === "scatter-comparison" ? (
+            <div className="scatter-chart-header">
+              <h3>{chart.title}</h3>
+              <select
+                value={selectedScatterPreset?.key ?? ""}
+                onChange={(event) => setScatterPresetKey(event.target.value as ScatterPresetKey)}
+                aria-label={tr("insights.scatterMetric")}
+              >
+                {availableScatterPresets.map((preset) => {
+                  const xMetric = scatterMetrics[preset.xMetric];
+                  const yMetric = scatterMetrics[preset.yMetric];
+                  return (
+                    <option key={preset.key} value={preset.key}>
+                      {`${yMetric.label} vs ${xMetric.label}`}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          ) : (
+            <h3>{chart.title}</h3>
+          )}
           <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />
         </article>
       ))}
