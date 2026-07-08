@@ -3,7 +3,6 @@
   "app.connectionError": "Could not reach the backend. Ensure server is running, then retry.",
   "app.retry": "Retry",
   "app.loadingDashboard": "Loading dashboard...",
-
   "onboarding.welcome": "Welcome to FIT Dashboard",
   "onboarding.subtitle": "Create your local account to secure your data.",
   "onboarding.usernamePlaceholder": "Username",
@@ -15,20 +14,17 @@
   "onboarding.createFailed": "Could not create account right now. Please try again.",
   "onboarding.creating": "Creating...",
   "onboarding.createAccount": "Create Account",
-
   "unlock.title": "Unlock Dashboard",
   "unlock.subtitle": "Enter your password to open your local dashboard.",
   "unlock.passwordPlaceholder": "Password",
   "unlock.invalidPassword": "Invalid password.",
   "unlock.loggingIn": "Logging in...",
   "unlock.unlock": "Unlock",
-
   "donation.noSubscriptions": "No subscriptions. No advertisements. You are in control of your data.",
   "donation.supportOn": "Support on",
   "donation.orGetYour": "or get your",
   "donation.supporterBadge": "supporter badge",
   "donation.dismissBanner": "Dismiss banner",
-
   "header.workoutLogAnalytics": "Workout log Analytics",
   "header.overview": "Overview",
   "header.individual": "Individual",
@@ -38,7 +34,6 @@
   "header.settings": "Settings",
   "header.logout": "Logout",
   "header.supporter": "Supporter",
-
   "sidebar.activityCenter": "Activity Center",
   "sidebar.importingProgress": "Importing... {current}/{total}",
   "sidebar.importFiles": "Import Activity Files",
@@ -86,7 +81,6 @@
   "sidebar.expandSidebar": "Expand sidebar",
   "sidebar.collapseSidebar": "Collapse sidebar",
   "sidebar.toggleSidebar": "Toggle sidebar",
-
   "overview.importLogsToSee": "Import logs to see overview.",
   "overview.filteredActivities": "Filtered Activities",
   "overview.totalDistance": "Total Distance",
@@ -94,8 +88,9 @@
   "overview.uniqueSports": "Unique Sports",
   "overview.avgDistancePerActivity": "Avg Distance / Activity",
   "overview.avgDurationPerActivity": "Avg Duration / Activity",
+  "overview.total": "Total",
+  "overview.avgPerActivity": "Avg / Activity",
   "overview.devices": "Devices",
-
   "detail.duration": "Duration",
   "detail.distance": "Distance",
   "detail.avgSpeed": "Avg Speed",
@@ -108,7 +103,7 @@
   "detail.maxPace": "Max Pace",
   "detail.minElevation": "Min Elevation",
   "detail.maxPower": "Max Power",
-  "detail.normalizedPowerShort": "Norm",
+  "detail.normalizedPowerShort": "Norm Pwr",
   "detail.ftp": "FTP",
   "detail.tss": "TSS",
   "detail.intensityFactorShort": "IF",
@@ -139,11 +134,10 @@
   "detail.time": "Time",
   "detail.cumulativeTime": "Cumulative Time",
   "detail.avgPace": "Avg Pace",
-  "detail.totalAscent": "Total Ascent",
-  "detail.totalDescent": "Total Descent",
+  "detail.totalAscent": "Ascent",
+  "detail.totalDescent": "Descent",
   "detail.summary": "Summary",
   "detail.smoothGraphsTooltip": "Use dynamic rolling average smoothing. As you zoom in, more detailed points are used.",
-
   "laps.title": "Laps",
   "laps.header": "Laps",
   "laps.time": "Time",
@@ -157,17 +151,14 @@
   "laps.avgCadence": "Avg Cadence",
   "laps.calories": "Calories",
   "laps.summary": "Summary",
-
   "contextMenu.rename": "Rename",
   "contextMenu.delete": "Delete",
   "contextMenu.export": "Export",
-
   "bulk.exportingActivities": "Exporting Activities",
   "bulk.deletingActivities": "Deleting Activities",
   "bulk.finishing": "Finishing...",
   "bulk.removingData": "Removing activity data...",
   "bulk.xOfY": "{done} of {total}",
-
   "import.noSupportedFiles": "No supported files selected (.fit, .tcx, .gpx).",
   "import.noSupportedDropped": "No supported files dropped (.fit, .tcx, .gpx).",
   "import.syncNoFiles": "Sync complete: no supported files found.",
@@ -197,7 +188,6 @@
   "import.preparingSyncQueue": "Preparing sync queue...",
   "import.syncProcessing": "Sync: {current}/{total}",
   "import.refreshingAfterSyncs": "Refreshing after {count} successful syncs...",
-
   "settings.title": "Settings",
   "settings.closeSettings": "Close settings",
   "settings.language": "Language",
@@ -245,7 +235,6 @@
   "settings.confirmClearBlacklist": "Clear all blacklisted file hashes? Deleted activities will be importable again.",
   "settings.clearedHashes": "Cleared {count} blacklisted hash(es).",
   "settings.clearBlacklistFailed": "Failed to clear blacklist: {error}",
-
   "heatmap.activityContributions": "Activity Contributions",
   "heatmap.less": "Less",
   "heatmap.more": "More",
@@ -254,7 +243,6 @@
   "heatmap.fri": "Fri",
   "heatmap.activity": "activity",
   "heatmap.activities": "activities",
-
   "insights.emptyState": "Import and select an activity to unlock pace, power, cadence, and effort insights.",
   "insights.speedTrend": "Speed Trend",
   "insights.heartRateZoneTime": "Heart Rate Zone Time",
@@ -262,7 +250,7 @@
   "insights.hrHistogram": "Heart Rate Histogram",
   "insights.cadenceAndPower": "Cadence & Power",
   "insights.cadence": "Cadence",
-  "insights.effortHeatmap": "Effort Heatmap",
+  "insights.effortHeatmap": "Relative Intensity",
   "insights.elevation": "Elevation",
   "insights.powerVsHeartRate": "Power vs Heart Rate",
   "insights.speed": "Speed",
@@ -308,7 +296,6 @@
   "insights.cardiacReasonRollingCoverage": "Normalized-power rolling-window coverage is too low.",
   "insights.cardiacReasonInvalidAverage": "Segment averages are not valid for this calculation.",
   "insights.cardiacReasonUnavailable": "Heart rate drift cannot be calculated for this activity.",
-
   "table.activitySummary": "Activity Summary Table",
   "table.last": "last",
   "table.days": "days",
@@ -329,19 +316,15 @@
   "table.prev": "Prev",
   "table.next": "Next",
   "table.last_page": "Last",
-
   "map.exploredLocations": "Explored Locations",
   "map.subtitle": "GPS density heatmap with auto-clustering at low zoom levels",
   "map.style": "Style",
   "map.resetZoom": "Reset zoom",
-
   "donut.activityTypes": "Activity Types",
   "donut.activities": "Activities",
-
   "trend.weeklyTrainingTrend": "Weekly Training Trend",
   "trend.distance": "Distance",
   "trend.duration": "Duration",
-
   "compare.selectActivities": "Select up to 4 activities from the sidebar using the checkboxes to compare them.",
   "compare.loading": "Loading comparison data...",
   "compare.noAvailableCharts": "No comparable telemetry data available.",
@@ -350,11 +333,9 @@
   "compare.speed": "Speed",
   "compare.power": "Power",
   "compare.altitude": "Altitude",
-
   "chart.heartRate": "Heart Rate",
   "chart.pace": "Pace",
   "chart.distance": "Distance",
-
   "activityMap.gpsRoute": "GPS Route",
   "activityMap.style": "Style",
   "activityMap.color": "Color",
@@ -383,5 +364,17 @@
   "activityMap.noDataAtPoint": "No data at this point",
   "activityMap.low": "Low",
   "activityMap.high": "High",
-  "activityMap.noGpsCoordinates": "No GPS coordinates found in this activity."
+  "activityMap.noGpsCoordinates": "No GPS coordinates found in this activity.",
+  "insights.temperature": "Temperature",
+  "insights.respirationRate": "Respiration Rate",
+  "insights.breathsPerMinute": "breaths/min",
+  "insights.breathsPerMinuteShort": "br/min",
+  "insights.stamina": "Stamina",
+  "insights.currentStamina": "Current Stamina",
+  "insights.potentialStamina": "Potential Stamina",
+  "insights.performanceCondition": "Performance Condition",
+  "detail.user": "User",
+  "detail.height": "Height",
+  "detail.weight": "Weight",
+  "detail.restingHr": "Resting HR"
 }

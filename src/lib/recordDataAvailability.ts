@@ -8,6 +8,9 @@ export type RecordDataAvailability = {
   hasPower: boolean;
   hasCadence: boolean;
   hasTemperature: boolean;
+  hasRespiration: boolean;
+  hasStamina: boolean;
+  hasPerformanceCondition: boolean;
   hasElevation: boolean;
 };
 
@@ -19,6 +22,9 @@ const emptyAvailability: RecordDataAvailability = {
   hasPower: false,
   hasCadence: false,
   hasTemperature: false,
+  hasRespiration: false,
+  hasStamina: false,
+  hasPerformanceCondition: false,
   hasElevation: false,
 };
 
@@ -51,6 +57,9 @@ export function getRecordDataAvailability(records: RecordPoint[]): RecordDataAva
   let hasPower = false;
   let hasCadence = false;
   let hasTemperature = false;
+  let hasRespiration = false;
+  let hasStamina = false;
+  let hasPerformanceCondition = false;
   let hasElevation = false;
 
   for (const record of records) {
@@ -60,6 +69,9 @@ export function getRecordDataAvailability(records: RecordPoint[]): RecordDataAva
     if (isFiniteNumber(record.power) && record.power > 0) hasPower = true;
     if (isFiniteNumber(record.cadence) && record.cadence > 0) hasCadence = true;
     if (isFiniteNumber(record.temperature_c)) hasTemperature = true;
+    if (isFiniteNumber(record.respiration_rate_brpm)) hasRespiration = true;
+    if (isFiniteNumber(record.current_stamina_pct) || isFiniteNumber(record.potential_stamina_pct)) hasStamina = true;
+    if (isFiniteNumber(record.performance_condition)) hasPerformanceCondition = true;
     if (isFiniteNumber(record.altitude_m)) hasElevation = true;
   }
 
@@ -73,6 +85,9 @@ export function getRecordDataAvailability(records: RecordPoint[]): RecordDataAva
     hasPower,
     hasCadence,
     hasTemperature,
+    hasRespiration,
+    hasStamina,
+    hasPerformanceCondition,
     hasElevation,
   };
 }
@@ -87,6 +102,9 @@ export function combineRecordDataAvailability(items: RecordDataAvailability[]): 
       hasPower: combined.hasPower || item.hasPower,
       hasCadence: combined.hasCadence || item.hasCadence,
       hasTemperature: combined.hasTemperature || item.hasTemperature,
+      hasRespiration: combined.hasRespiration || item.hasRespiration,
+      hasStamina: combined.hasStamina || item.hasStamina,
+      hasPerformanceCondition: combined.hasPerformanceCondition || item.hasPerformanceCondition,
       hasElevation: combined.hasElevation || item.hasElevation,
     }),
     emptyAvailability

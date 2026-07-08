@@ -311,6 +311,26 @@ function paddedAxisBounds(points: Array<[number, number | null]>, minFloor: numb
   return { min, max };
 }
 
+function paddedAxisBoundsWithMinimumRange(points: Array<[number, number | null]>, minimumRange: number, step = 1): { min: number; max: number } | undefined {
+  const values = points.flatMap(([, value]) => typeof value === "number" && Number.isFinite(value) ? [value] : []);
+  if (!values.length) return undefined;
+
+  const axisStep = Math.max(0.1, step);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const observedRange = high - low;
+  const targetRange = Math.max(minimumRange, observedRange > 0 ? observedRange * 1.2 : minimumRange);
+  const center = (low + high) / 2;
+  let min = Math.floor((center - targetRange / 2) / axisStep) * axisStep;
+  let max = Math.ceil((center + targetRange / 2) / axisStep) * axisStep;
+  if (max - min < minimumRange) {
+    const extra = (minimumRange - (max - min)) / 2;
+    min = Math.floor((min - extra) / axisStep) * axisStep;
+    max = Math.ceil((max + extra) / axisStep) * axisStep;
+  }
+  return { min, max };
+}
+
 function selectCardiacResult(results: CardiacDecouplingModeResult[], defaultMode: CardiacDecouplingMode | undefined): CardiacDecouplingModeResult | undefined {
   return results.find((result) => result.mode === defaultMode) ?? results.find((result) => result.available) ?? results[0];
 }
@@ -389,6 +409,10 @@ export function ActivityInsights({
       power: r.power ?? null,
       cadence: r.cadence ?? null,
       temperatureC: r.temperature_c ?? null,
+      respirationRateBrpm: r.respiration_rate_brpm ?? null,
+      currentStaminaPct: r.current_stamina_pct ?? null,
+      potentialStaminaPct: r.potential_stamina_pct ?? null,
+      performanceCondition: r.performance_condition ?? null,
       timestampMs: point.timestampMs,
     };
   });
@@ -399,6 +423,11 @@ export function ActivityInsights({
   const elevationLineData = timeline.map((d) => [d.x, d.altitudeInUnit, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
   const cadenceLineData = timeline.map((d) => [d.x, d.cadence, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
   const powerLineData = timeline.map((d) => [d.x, d.power, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
+  const temperatureLineData = timeline.map((d) => [d.x, d.temperatureC, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
+  const respirationLineData = timeline.map((d) => [d.x, d.respirationRateBrpm, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
+  const currentStaminaLineData = timeline.map((d) => [d.x, d.currentStaminaPct, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
+  const potentialStaminaLineData = timeline.map((d) => [d.x, d.potentialStaminaPct, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
+  const performanceConditionLineData = timeline.map((d) => [d.x, d.performanceCondition, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
 
   const heartRateLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(heartRateLineData, 1, smoothWindow) : heartRateLineData;
   const paceLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(paceLineData, 1, smoothWindow) : paceLineData;
@@ -406,6 +435,10 @@ export function ActivityInsights({
   const elevationLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(elevationLineData, 1, smoothWindow) : elevationLineData;
   const cadenceLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(cadenceLineData, 1, smoothWindow) : cadenceLineData;
   const powerLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(powerLineData, 1, smoothWindow) : powerLineData;
+  const temperatureLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(temperatureLineData, 1, smoothWindow) : temperatureLineData;
+  const respirationLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(respirationLineData, 1, smoothWindow) : respirationLineData;
+  const currentStaminaLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(currentStaminaLineData, 1, smoothWindow) : currentStaminaLineData;
+  const potentialStaminaLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(potentialStaminaLineData, 1, smoothWindow) : potentialStaminaLineData;
 
   const hasPowerData = availability.hasPower;
   const hasHeartRateData = availability.hasHeartRate;
@@ -413,6 +446,11 @@ export function ActivityInsights({
   const hasSpeedData = availability.hasSpeed;
   const hasCadenceData = availability.hasCadence;
   const hasTemperatureData = availability.hasTemperature;
+  const hasRespirationData = availability.hasRespiration;
+  const hasCurrentStaminaData = currentStaminaLineData.some((row) => row[1] !== null);
+  const hasPotentialStaminaData = potentialStaminaLineData.some((row) => row[1] !== null);
+  const hasStaminaData = hasCurrentStaminaData || hasPotentialStaminaData;
+  const hasPerformanceConditionData = availability.hasPerformanceCondition;
   const hasHeatmapData = hasHeartRateData || hasSpeedData || hasCadenceData || hasPowerData || hasTemperatureData;
   const cardiacRecords = analysisRecords.length ? analysisRecords : records;
   const cardiacDecoupling = activity ? calculateCardiacDecoupling(activity, cardiacRecords) : null;
@@ -847,6 +885,236 @@ export function ActivityInsights({
         lineStyle: { width: 2 },
         sampling: smoothGraphs ? "lttb" : undefined,
         data: powerLineDataSmoothed,
+        markLine: lapMarkers.length ? {
+          animation: false,
+          symbol: ["none", "none"],
+          lineStyle: { color: isDark ? "rgba(148,163,184,0.55)" : "rgba(71,85,105,0.5)", type: "dashed", width: 1 },
+          label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
+          data: lapMarkers,
+        } : undefined,
+      },
+    ],
+  };
+
+  const temperatureAxisBounds = paddedAxisBoundsWithMinimumRange(
+    temperatureLineDataSmoothed.map((row) => [row[0], row[1]] as [number, number | null]),
+    10,
+    1,
+  );
+  const respirationAxisBounds = paddedAxisBoundsWithMinimumRange(
+    respirationLineDataSmoothed.map((row) => [row[0], row[1]] as [number, number | null]),
+    5,
+    1,
+  );
+  const performanceConditionAxisBounds = paddedAxisBoundsWithMinimumRange(
+    performanceConditionLineData.map((row) => [row[0], row[1]] as [number, number | null]),
+    4,
+    1,
+  );
+
+  const temperatureOption = {
+    tooltip: {
+      trigger: "axis",
+      ...tooltipStyle,
+      formatter: (params: any[]) => {
+        const p = params?.[0];
+        const rel = Number(p?.value?.[2] ?? 0);
+        const distanceMeters = (p?.value?.[4] ?? null) as number | null;
+        let html = formatTooltipHeader(rel, distanceMeters, xAxisMode, Number(p?.value?.[3] ?? 0));
+        for (const row of params) {
+          if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
+            html += `<div>${row.marker} ${row.seriesName}: <strong>${Number(row.value[1]).toFixed(1)} C</strong></div>`;
+          }
+        }
+        return html;
+      },
+    },
+    legend: { textStyle: { color: axisColor, fontSize: 12 }, top: 0 },
+    grid: { left: 50, right: 16, top: 42, bottom: 46 },
+    xAxis: sharedXAxis,
+    yAxis: {
+      type: "value", name: "C", ...temperatureAxisBounds,
+      nameTextStyle: { color: axisColor, fontSize: 11 },
+      axisLabel: { color: axisColor, fontSize: 11 },
+      splitLine: { lineStyle: { color: gridLine } },
+    },
+    dataZoom: [
+      {
+        type: "inside",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseWheel: false,
+        start: zoomRange?.start ?? 0,
+        end: zoomRange?.end ?? 100,
+      },
+    ],
+    series: [
+      {
+        name: tr("insights.temperature"), type: "line", smooth: smoothGraphs, showSymbol: false,
+        lineStyle: { width: 2, color: "#ea580c" },
+        sampling: smoothGraphs ? "lttb" : undefined,
+        data: temperatureLineDataSmoothed,
+        markLine: lapMarkers.length ? {
+          animation: false,
+          symbol: ["none", "none"],
+          lineStyle: { color: isDark ? "rgba(148,163,184,0.55)" : "rgba(71,85,105,0.5)", type: "dashed", width: 1 },
+          label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
+          data: lapMarkers,
+        } : undefined,
+      },
+    ],
+  };
+
+  const respirationOption = {
+    tooltip: {
+      trigger: "axis",
+      ...tooltipStyle,
+      formatter: (params: any[]) => {
+        const p = params?.[0];
+        const rel = Number(p?.value?.[2] ?? 0);
+        const distanceMeters = (p?.value?.[4] ?? null) as number | null;
+        let html = formatTooltipHeader(rel, distanceMeters, xAxisMode, Number(p?.value?.[3] ?? 0));
+        for (const row of params) {
+          if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
+            html += `<div>${row.marker} ${row.seriesName}: <strong>${Number(row.value[1]).toFixed(1)} ${tr("insights.breathsPerMinute")}</strong></div>`;
+          }
+        }
+        return html;
+      },
+    },
+    legend: { textStyle: { color: axisColor, fontSize: 12 }, top: 0 },
+    grid: { left: 50, right: 16, top: 42, bottom: 46 },
+    xAxis: sharedXAxis,
+    yAxis: {
+      type: "value", name: tr("insights.breathsPerMinuteShort"), ...respirationAxisBounds,
+      nameTextStyle: { color: axisColor, fontSize: 11 },
+      axisLabel: { color: axisColor, fontSize: 11 },
+      splitLine: { lineStyle: { color: gridLine } },
+    },
+    dataZoom: [
+      {
+        type: "inside",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseWheel: false,
+        start: zoomRange?.start ?? 0,
+        end: zoomRange?.end ?? 100,
+      },
+    ],
+    series: [
+      {
+        name: tr("insights.respirationRate"), type: "line", smooth: smoothGraphs, showSymbol: false,
+        lineStyle: { width: 2, color: "#0891b2" },
+        sampling: smoothGraphs ? "lttb" : undefined,
+        data: respirationLineDataSmoothed,
+        markLine: lapMarkers.length ? {
+          animation: false,
+          symbol: ["none", "none"],
+          lineStyle: { color: isDark ? "rgba(148,163,184,0.55)" : "rgba(71,85,105,0.5)", type: "dashed", width: 1 },
+          label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
+          data: lapMarkers,
+        } : undefined,
+      },
+    ],
+  };
+
+  const staminaOption = {
+    tooltip: {
+      trigger: "axis",
+      ...tooltipStyle,
+      formatter: (params: any[]) => {
+        const p = params?.[0];
+        const rel = Number(p?.value?.[2] ?? 0);
+        const distanceMeters = (p?.value?.[4] ?? null) as number | null;
+        let html = formatTooltipHeader(rel, distanceMeters, xAxisMode, Number(p?.value?.[3] ?? 0));
+        for (const row of params) {
+          if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
+            html += `<div>${row.marker} ${row.seriesName}: <strong>${Number(row.value[1]).toFixed(0)}%</strong></div>`;
+          }
+        }
+        return html;
+      },
+    },
+    legend: { textStyle: { color: axisColor, fontSize: 12 }, top: 0 },
+    grid: { left: 50, right: 16, top: 42, bottom: 46 },
+    xAxis: sharedXAxis,
+    yAxis: {
+      type: "value", name: "%", min: 0, max: 100,
+      nameTextStyle: { color: axisColor, fontSize: 11 },
+      axisLabel: { color: axisColor, fontSize: 11 },
+      splitLine: { lineStyle: { color: gridLine } },
+    },
+    dataZoom: [
+      {
+        type: "inside",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseWheel: false,
+        start: zoomRange?.start ?? 0,
+        end: zoomRange?.end ?? 100,
+      },
+    ],
+    series: [
+      ...(hasCurrentStaminaData ? [{
+        name: tr("insights.currentStamina"), type: "line", smooth: smoothGraphs, showSymbol: false,
+        lineStyle: { width: 2, color: "#dc2626" },
+        sampling: smoothGraphs ? "lttb" : undefined,
+        data: currentStaminaLineDataSmoothed,
+        markLine: lapMarkers.length ? {
+          animation: false,
+          symbol: ["none", "none"],
+          lineStyle: { color: isDark ? "rgba(148,163,184,0.55)" : "rgba(71,85,105,0.5)", type: "dashed", width: 1 },
+          label: { color: axisColor, fontSize: 10, formatter: "{b}", position: "insideEndTop" },
+          data: lapMarkers,
+        } : undefined,
+      }] : []),
+      ...(hasPotentialStaminaData ? [{
+        name: tr("insights.potentialStamina"), type: "line", smooth: smoothGraphs, showSymbol: false,
+        lineStyle: { width: 2, color: "#2563eb" },
+        sampling: smoothGraphs ? "lttb" : undefined,
+        data: potentialStaminaLineDataSmoothed,
+      }] : []),
+    ],
+  };
+
+  const performanceConditionOption = {
+    tooltip: {
+      trigger: "axis",
+      ...tooltipStyle,
+      formatter: (params: any[]) => {
+        const p = params?.[0];
+        const rel = Number(p?.value?.[2] ?? 0);
+        const distanceMeters = (p?.value?.[4] ?? null) as number | null;
+        let html = formatTooltipHeader(rel, distanceMeters, xAxisMode, Number(p?.value?.[3] ?? 0));
+        for (const row of params) {
+          if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
+            html += `<div>${row.marker} ${row.seriesName}: <strong>${Number(row.value[1]).toFixed(0)}</strong></div>`;
+          }
+        }
+        return html;
+      },
+    },
+    legend: { textStyle: { color: axisColor, fontSize: 12 }, top: 0 },
+    grid: { left: 50, right: 16, top: 42, bottom: 46 },
+    xAxis: sharedXAxis,
+    yAxis: {
+      type: "value", ...performanceConditionAxisBounds,
+      nameTextStyle: { color: axisColor, fontSize: 11 },
+      axisLabel: { color: axisColor, fontSize: 11 },
+      splitLine: { lineStyle: { color: gridLine } },
+    },
+    dataZoom: [
+      {
+        type: "inside",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseWheel: false,
+        start: zoomRange?.start ?? 0,
+        end: zoomRange?.end ?? 100,
+      },
+    ],
+    series: [
+      {
+        name: tr("insights.performanceCondition"), type: "line", smooth: false, showSymbol: false,
+        lineStyle: { width: 2, color: "#059669" },
+        step: "middle",
+        data: performanceConditionLineData,
         markLine: lapMarkers.length ? {
           animation: false,
           symbol: ["none", "none"],
@@ -1334,6 +1602,38 @@ export function ActivityInsights({
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
+  const staminaChart: VisibleChart = {
+    id: "stamina",
+    available: hasStaminaData,
+    title: tr("insights.stamina"),
+    option: staminaOption,
+    onEvents: zoomEvents,
+    height: insightChartHeight,
+  };
+  const performanceConditionChart: VisibleChart = {
+    id: "performance-condition",
+    available: hasPerformanceConditionData,
+    title: tr("insights.performanceCondition"),
+    option: performanceConditionOption,
+    onEvents: zoomEvents,
+    height: insightChartHeight,
+  };
+  const respirationChart: VisibleChart = {
+    id: "respiration-rate",
+    available: hasRespirationData,
+    title: tr("insights.respirationRate"),
+    option: respirationOption,
+    onEvents: zoomEvents,
+    height: insightChartHeight,
+  };
+  const temperatureChart: VisibleChart = {
+    id: "temperature",
+    available: hasTemperatureData,
+    title: tr("insights.temperature"),
+    option: temperatureOption,
+    onEvents: zoomEvents,
+    height: insightChartHeight,
+  };
 
   const metricCharts = usePaceDisplay
     ? [paceChart, heartRateChart, cadenceChart, powerChart]
@@ -1344,6 +1644,10 @@ export function ActivityInsights({
   const visibleMetricCharts = metricCharts.filter((chart) => chart.available);
 
   const supplementalCharts = [
+    staminaChart,
+    performanceConditionChart,
+    respirationChart,
+    temperatureChart,
     {
       id: "heart-rate-histogram",
       available: hasHeartRateData,

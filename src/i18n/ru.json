@@ -3,7 +3,6 @@
   "app.connectionError": "Не удалось связаться с сервером. Убедитесь, что сервер запущен, и повторите попытку.",
   "app.retry": "Повторить",
   "app.loadingDashboard": "Загрузка панели мониторинга...",
-
   "onboarding.welcome": "Добро пожаловать в FIT Dashboard",
   "onboarding.subtitle": "Создайте локальную учетную запись для защиты ваших данных.",
   "onboarding.usernamePlaceholder": "Имя пользователя",
@@ -15,20 +14,17 @@
   "onboarding.createFailed": "Не удалось создать учетную запись прямо сейчас. Пожалуйста, попробуйте позже.",
   "onboarding.creating": "Создание...",
   "onboarding.createAccount": "Создать учетную запись",
-
   "unlock.title": "Разблокировать панель",
   "unlock.subtitle": "Введите пароль, чтобы открыть локальную панель мониторинга.",
   "unlock.passwordPlaceholder": "Пароль",
   "unlock.invalidPassword": "Неверный пароль.",
   "unlock.loggingIn": "Вход в систему...",
   "unlock.unlock": "Разблокировать",
-
   "donation.noSubscriptions": "Без подписок. Без рекламы. Вы полностью контролируете свои данные.",
   "donation.supportOn": "Поддержать на",
   "donation.orGetYour": "или получить свой",
   "donation.supporterBadge": "значок спонсора",
   "donation.dismissBanner": "Скрыть баннер",
-
   "header.workoutLogAnalytics": "Аналитика журналов тренировок",
   "header.overview": "Обзор",
   "header.individual": "Детально",
@@ -38,7 +34,6 @@
   "header.settings": "Настройки",
   "header.logout": "Выйти",
   "header.supporter": "Спонсор",
-
   "sidebar.activityCenter": "Центр активности",
   "sidebar.importingProgress": "Импорт... {current}/{total}",
   "sidebar.importFiles": "Импортировать файлы активности",
@@ -86,7 +81,6 @@
   "sidebar.expandSidebar": "Развернуть боковую панель",
   "sidebar.collapseSidebar": "Свернуть боковую панель",
   "sidebar.toggleSidebar": "Переключить боковую панель",
-
   "overview.importLogsToSee": "Импортируйте журналы тренировок для отображения обзора.",
   "overview.filteredActivities": "Отфильтрованные активности",
   "overview.totalDistance": "Общая дистанция",
@@ -94,8 +88,9 @@
   "overview.uniqueSports": "Уникальные виды спорта",
   "overview.avgDistancePerActivity": "Ср. дистанция за активность",
   "overview.avgDurationPerActivity": "Ср. длительность за активность",
+  "overview.total": "Всего",
+  "overview.avgPerActivity": "Ср. / активность",
   "overview.devices": "Устройства",
-
   "detail.duration": "Длительность",
   "detail.distance": "Дистанция",
   "detail.avgSpeed": "Средняя скорость",
@@ -143,7 +138,6 @@
   "detail.totalDescent": "Общий сброс высоты",
   "detail.summary": "Итоги",
   "detail.smoothGraphsTooltip": "Использовать динамическое сглаживание скользящим средним. При приближении графика отображаются более детальные точки.",
-
   "laps.title": "Круги",
   "laps.header": "Круги",
   "laps.time": "Время",
@@ -157,17 +151,14 @@
   "laps.avgCadence": "Средний каденс",
   "laps.calories": "Калории",
   "laps.summary": "Итоги",
-
   "contextMenu.rename": "Переименовать",
   "contextMenu.delete": "Удалить",
   "contextMenu.export": "Экспортировать",
-
   "bulk.exportingActivities": "Экспорт активностей",
   "bulk.deletingActivities": "Удаление активностей",
   "bulk.finishing": "Завершение...",
   "bulk.removingData": "Удаление данных активности...",
   "bulk.xOfY": "{done} из {total}",
-
   "import.noSupportedFiles": "Не выбраны поддерживаемые файлы (.fit, .tcx, .gpx).",
   "import.noSupportedDropped": "Перетащенные файлы не поддерживаются (.fit, .tcx, .gpx).",
   "import.syncNoFiles": "Синхронизация завершена: поддерживаемые файлы не найдены.",
@@ -198,5 +189,17 @@
   "insights.powerZoneTime": "Время в зонах мощности",
   "insights.heartRateShort": "ЧСС",
   "insights.temperatureShort": "Темп.",
-  "activityMap.noDataAtPoint": "Нет данных в этой точке"
+  "activityMap.noDataAtPoint": "Нет данных в этой точке",
+  "insights.temperature": "Температура",
+  "insights.respirationRate": "Частота дыхания",
+  "insights.breathsPerMinute": "вдохов/мин",
+  "insights.breathsPerMinuteShort": "вд/мин",
+  "insights.stamina": "Stamina",
+  "insights.currentStamina": "Текущая Stamina",
+  "insights.potentialStamina": "Потенциальная Stamina",
+  "insights.performanceCondition": "Состояние производительности",
+  "detail.user": "Пользователь",
+  "detail.height": "Рост",
+  "detail.weight": "Вес",
+  "detail.restingHr": "Пульс покоя"
 }
