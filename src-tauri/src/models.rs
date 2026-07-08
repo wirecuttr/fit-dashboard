@@ -35,6 +35,10 @@ pub struct RecordPoint {
     pub heart_rate: Option<i64>,
     pub power: Option<i64>,
     pub temperature_c: Option<f64>,
+    pub respiration_rate_brpm: Option<f64>,
+    pub current_stamina_pct: Option<f64>,
+    pub potential_stamina_pct: Option<f64>,
+    pub performance_condition: Option<i64>,
 }
 
 #[derive(Debug, Clone)]

@@ -123,6 +123,22 @@ export type ActivityMetadata = {
   activity_metrics?: {
     vo2_max?: number | null;
   };
+  user_profile?: {
+    friendly_name?: string | null;
+    gender?: string | null;
+    age?: number | null;
+    height_m?: number | null;
+    weight_kg?: number | null;
+    resting_heart_rate?: number | null;
+    default_max_running_heart_rate?: number | null;
+    default_max_biking_heart_rate?: number | null;
+    default_max_heart_rate?: number | null;
+    activity_class?: number | null;
+    wake_time?: number | null;
+    sleep_time?: number | null;
+    user_running_step_length_m?: number | null;
+    user_walking_step_length_m?: number | null;
+  } | null;
   session?: {
     beginning_body_battery?: number | null;
     ending_body_battery?: number | null;

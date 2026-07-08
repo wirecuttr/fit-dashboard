@@ -971,6 +971,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     let mut device_info_creator_name: Option<String> = None;
     let mut device_info_creator_serial: Option<i64> = None;
     let mut vo2_max: Option<f64> = None;
+    let mut user_profile = serde_json::Map::new();
 
     let mut session_beginning_body_battery: Option<i64> = None;
     let mut session_ending_body_battery: Option<i64> = None;
@@ -1039,6 +1040,10 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             let mut heart_rate = None;
             let mut power = None;
             let mut temperature_c = None;
+            let mut respiration_rate_brpm = None;
+            let mut current_stamina_pct = None;
+            let mut potential_stamina_pct = None;
+            let mut performance_condition = None;
 
             for field in rec.fields() {
                 match field.name() {
@@ -1066,6 +1071,18 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     "heart_rate" => heart_rate = value_i64(field.value()),
                     "power" => power = value_i64(field.value()),
                     "temperature" => temperature_c = value_f64(field.value()),
+                    "enhanced_respiration_rate" => respiration_rate_brpm = value_f64(field.value()),
+                    "respiration_rate" => {
+                        if respiration_rate_brpm.is_none() {
+                            respiration_rate_brpm = value_f64(field.value());
+                        }
+                    }
+                    // Garmin proprietary record field 138, empirically mapped to current stamina.
+                    "unknown_field_138" | "current_stamina" => current_stamina_pct = value_f64(field.value()),
+                    // Garmin proprietary record field 137, empirically mapped to potential stamina.
+                    "unknown_field_137" | "potential_stamina" => potential_stamina_pct = value_f64(field.value()),
+                    // Garmin proprietary record field 90, empirically mapped to Performance Condition.
+                    "unknown_field_90" | "performance_condition" => performance_condition = value_i64(field.value()),
                     _ => {}
                 }
             }
@@ -1084,6 +1101,10 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     heart_rate,
                     power,
                     temperature_c,
+                    respiration_rate_brpm,
+                    current_stamina_pct,
+                    potential_stamina_pct,
+                    performance_condition,
                 });
             }
         } else if rec.kind() == MesgNum::Session {
@@ -1543,8 +1564,48 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             push_decoded_fit_message(&mut fit_climb_pro_messages, &rec);
         } else if rec.kind() == MesgNum::UserProfile {
             for field in rec.fields() {
-                if field.name() == "resting_heart_rate" && zones.resting_heart_rate.is_none() {
-                    zones.resting_heart_rate = value_i64_in_range(field.value(), 20, 120);
+                match field.name() {
+                    "friendly_name" | "gender" | "language" | "elev_setting" | "weight_setting"
+                    | "hr_setting" | "speed_setting" | "dist_setting" | "power_setting"
+                    | "position_setting" | "temperature_setting" | "height_setting" | "depth_setting" => {
+                        if let Value::String(value) = field.value() {
+                            let trimmed = value.trim();
+                            if !trimmed.is_empty() {
+                                user_profile.insert(field.name().to_string(), serde_json::Value::String(trimmed.to_string()));
+                            }
+                        }
+                    }
+                    "age" | "activity_class" | "default_max_running_heart_rate"
+                    | "default_max_biking_heart_rate" | "default_max_heart_rate"
+                    | "wake_time" | "sleep_time" => {
+                        if let Some(value) = value_i64(field.value()) {
+                            user_profile.insert(field.name().to_string(), serde_json::json!(value));
+                        }
+                    }
+                    "height" => {
+                        if let Some(value) = value_f64(field.value()).filter(|value| *value > 0.0 && *value < 3.0) {
+                            user_profile.insert("height_m".to_string(), serde_json::json!(value));
+                        }
+                    }
+                    "weight" => {
+                        if let Some(value) = value_f64(field.value()).filter(|value| *value > 0.0 && *value < 500.0) {
+                            user_profile.insert("weight_kg".to_string(), serde_json::json!(value));
+                        }
+                    }
+                    "resting_heart_rate" => {
+                        if zones.resting_heart_rate.is_none() {
+                            zones.resting_heart_rate = value_i64_in_range(field.value(), 20, 120);
+                        }
+                        if let Some(value) = value_i64_in_range(field.value(), 20, 120) {
+                            user_profile.insert("resting_heart_rate".to_string(), serde_json::json!(value));
+                        }
+                    }
+                    "user_running_step_length" | "user_walking_step_length" => {
+                        if let Some(value) = value_f64(field.value()).filter(|value| *value > 0.0 && *value < 5.0) {
+                            user_profile.insert(format!("{}_m", field.name()), serde_json::json!(value));
+                        }
+                    }
+                    _ => {}
                 }
             }
         } else if rec.kind() == MesgNum::Lap {
@@ -1914,6 +1975,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         "activity_metrics": {
             "vo2_max": vo2_max
         },
+        "user_profile": serde_json::Value::Object(user_profile),
         "activity": {
             "total_timer_time_s": activity_total_timer_time_s
         },
@@ -2065,6 +2127,10 @@ fn parse_tcx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             heart_rate: child_node(tp, "HeartRateBpm").and_then(|hr| child_i64(hr, "Value")),
             power,
             temperature_c,
+            respiration_rate_brpm: None,
+            current_stamina_pct: None,
+            potential_stamina_pct: None,
+            performance_condition: None,
         });
     }
 
@@ -2238,6 +2304,10 @@ fn parse_gpx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             heart_rate,
             power,
             temperature_c,
+            respiration_rate_brpm: None,
+            current_stamina_pct: None,
+            potential_stamina_pct: None,
+            performance_condition: None,
         });
     }
 
@@ -2320,6 +2390,10 @@ mod tests {
             heart_rate: None,
             power: None,
             temperature_c: None,
+            respiration_rate_brpm: None,
+            current_stamina_pct: None,
+            potential_stamina_pct: None,
+            performance_condition: None,
         }
     }
 

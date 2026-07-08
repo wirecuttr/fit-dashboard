@@ -53,6 +53,10 @@ export function buildCsv(activity: Activity, records: RecordPoint[]): string {
     "cadence",
     "power_w",
     "temperature_c",
+    "respiration_rate_brpm",
+    "current_stamina_pct",
+    "potential_stamina_pct",
+    "performance_condition",
     "metadata",
   ];
 
@@ -95,6 +99,10 @@ export function buildCsv(activity: Activity, records: RecordPoint[]): string {
       r.cadence != null ? String(r.cadence) : "",
       r.power != null ? String(r.power) : "",
       formatNum(r.temperature_c, 1),
+      formatNum(r.respiration_rate_brpm, 2),
+      formatNum(r.current_stamina_pct, 1),
+      formatNum(r.potential_stamina_pct, 1),
+      r.performance_condition != null ? String(r.performance_condition) : "",
       i === 0 ? escapeCsv(metadata) : "",
     ].map(escapeCsv);
     return values.join(",");

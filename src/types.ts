@@ -31,6 +31,10 @@ export type RecordPoint = {
   cadence?: number;
   power?: number;
   temperature_c?: number;
+  respiration_rate_brpm?: number;
+  current_stamina_pct?: number;
+  potential_stamina_pct?: number;
+  performance_condition?: number;
 };
 
 export type OverviewStats = {

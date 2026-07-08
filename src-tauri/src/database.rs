@@ -135,6 +135,10 @@ impl Database {
                 heart_rate BIGINT,
                 power BIGINT,
                 temperature_c REAL,
+                respiration_rate_brpm REAL,
+                current_stamina_pct REAL,
+                potential_stamina_pct REAL,
+                performance_condition BIGINT,
                 raw_fields_json VARCHAR
             );
 
@@ -162,6 +166,10 @@ impl Database {
         conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS location_region VARCHAR", [])?;
         conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS location_country VARCHAR", [])?;
         conn.execute("ALTER TABLE activities ADD COLUMN IF NOT EXISTS location_label VARCHAR", [])?;
+        conn.execute("ALTER TABLE records ADD COLUMN IF NOT EXISTS respiration_rate_brpm REAL", [])?;
+        conn.execute("ALTER TABLE records ADD COLUMN IF NOT EXISTS current_stamina_pct REAL", [])?;
+        conn.execute("ALTER TABLE records ADD COLUMN IF NOT EXISTS potential_stamina_pct REAL", [])?;
+        conn.execute("ALTER TABLE records ADD COLUMN IF NOT EXISTS performance_condition BIGINT", [])?;
 
         self.migrate_numeric_types_if_needed(&conn)?;
         conn.execute(
@@ -281,7 +289,11 @@ impl Database {
                 || !column_type_matches(conn, "records", "altitude_m", "REAL")?
                 || !column_type_matches(conn, "records", "distance_m", "REAL")?
                 || !column_type_matches(conn, "records", "speed_m_s", "REAL")?
-                || !column_type_matches(conn, "records", "temperature_c", "REAL")?;
+                || !column_type_matches(conn, "records", "temperature_c", "REAL")?
+                || !column_type_matches(conn, "records", "respiration_rate_brpm", "REAL")?
+                || !column_type_matches(conn, "records", "current_stamina_pct", "REAL")?
+                || !column_type_matches(conn, "records", "potential_stamina_pct", "REAL")?
+                || !column_type_matches(conn, "records", "performance_condition", "BIGINT")?;
 
         if records_needs_migration {
             tracing::info!("migrating records numeric column types");
@@ -299,13 +311,18 @@ impl Database {
                     heart_rate BIGINT,
                     power BIGINT,
                     temperature_c REAL,
+                    respiration_rate_brpm REAL,
+                    current_stamina_pct REAL,
+                    potential_stamina_pct REAL,
+                    performance_condition BIGINT,
                     raw_fields_json VARCHAR
                 );
 
                 INSERT INTO records_migrated (
                     activity_id, timestamp_ms, latitude, longitude, altitude_m,
                     distance_m, speed_m_s, cadence, heart_rate, power,
-                    temperature_c, raw_fields_json
+                    temperature_c, respiration_rate_brpm, current_stamina_pct,
+                    potential_stamina_pct, performance_condition, raw_fields_json
                 )
                 SELECT
                     activity_id,
@@ -319,6 +336,10 @@ impl Database {
                     heart_rate,
                     power,
                     CAST(temperature_c AS REAL),
+                    CAST(respiration_rate_brpm AS REAL),
+                    CAST(current_stamina_pct AS REAL),
+                    CAST(potential_stamina_pct AS REAL),
+                    performance_condition,
                     raw_fields_json
                 FROM records;
 
@@ -463,8 +484,8 @@ impl Database {
             let tx = conn.unchecked_transaction()?;
             {
                 let mut stmt = tx.prepare(
-                    "INSERT INTO records (activity_id, timestamp_ms, latitude, longitude, altitude_m, distance_m, speed_m_s, cadence, heart_rate, power, temperature_c, raw_fields_json)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    "INSERT INTO records (activity_id, timestamp_ms, latitude, longitude, altitude_m, distance_m, speed_m_s, cadence, heart_rate, power, temperature_c, respiration_rate_brpm, current_stamina_pct, potential_stamina_pct, performance_condition, raw_fields_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                 )?;
 
                 for r in p.records {
@@ -569,7 +590,11 @@ impl Database {
               AVG(cadence) AS cadence,
               AVG(heart_rate) AS heart_rate,
               AVG(power) AS power,
-                            CAST(AVG(temperature_c) AS DOUBLE) AS temperature_c
+                            CAST(AVG(temperature_c) AS DOUBLE) AS temperature_c,
+                            CAST(AVG(respiration_rate_brpm) AS DOUBLE) AS respiration_rate_brpm,
+                            CAST(AVG(current_stamina_pct) AS DOUBLE) AS current_stamina_pct,
+                            CAST(AVG(potential_stamina_pct) AS DOUBLE) AS potential_stamina_pct,
+                            AVG(performance_condition) AS performance_condition
             FROM records
             WHERE activity_id = ?1
             GROUP BY (timestamp_ms / ?2)
@@ -589,6 +614,10 @@ impl Database {
                 heart_rate: row.get::<_, Option<f64>>(7)?.map(|v| v as i64),
                 power: row.get::<_, Option<f64>>(8)?.map(|v| v as i64),
                 temperature_c: row.get(9)?,
+                respiration_rate_brpm: row.get(10)?,
+                current_stamina_pct: row.get(11)?,
+                potential_stamina_pct: row.get(12)?,
+                performance_condition: row.get::<_, Option<f64>>(13)?.map(|v| v.round() as i64),
             })
         })?;
 
@@ -655,6 +684,9 @@ fn insert_record(stmt: &mut duckdb::Statement<'_>, activity_id: i64, r: RecordPo
     let distance_m = r.distance_m.map(round_6_to_f32);
     let speed_m_s = r.speed_m_s.map(round_6_to_f32);
     let temperature_c = r.temperature_c.map(round_6_to_f32);
+    let respiration_rate_brpm = r.respiration_rate_brpm.map(round_6_to_f32);
+    let current_stamina_pct = r.current_stamina_pct.map(round_6_to_f32);
+    let potential_stamina_pct = r.potential_stamina_pct.map(round_6_to_f32);
     let cadence = r.cadence;
 
     stmt.execute(params![
@@ -669,6 +701,10 @@ fn insert_record(stmt: &mut duckdb::Statement<'_>, activity_id: i64, r: RecordPo
         r.heart_rate,
         r.power,
         temperature_c,
+        respiration_rate_brpm,
+        current_stamina_pct,
+        potential_stamina_pct,
+        r.performance_condition,
         "{}"
     ])?;
     Ok(())
