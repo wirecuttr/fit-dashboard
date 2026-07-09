@@ -171,6 +171,13 @@ function ZoneTimeBars({ title, zones, minutes, unit, totalMinutes }: ZoneTimeBar
 
   return (
     <div className="zone-time-bars" aria-label={title}>
+      <div className="zone-time-scale" aria-hidden="true">
+        <div className="zone-time-scale-track">
+          {[0, 20, 40, 60, 80, 100].map((value) => (
+            <span key={value} style={{ left: `${value}%` }}>{value}%</span>
+          ))}
+        </div>
+      </div>
       {rows.map((row) => {
         const percentOfTotal = chartTotalMinutes > 0 ? (row.minutes / chartTotalMinutes) * 100 : 0;
         const percentOfZoneTime = zoneTotalMinutes > 0 ? (row.minutes / zoneTotalMinutes) * 100 : 0;
@@ -1217,9 +1224,7 @@ export function ActivityInsights({
   const selectedScatterPreset = availableScatterPresets.find((preset) => preset.key === scatterPresetKey) ?? availableScatterPresets[0] ?? null;
   const selectedScatterXMetric = selectedScatterPreset ? scatterMetrics[selectedScatterPreset.xMetric] : null;
   const selectedScatterYMetric = selectedScatterPreset ? scatterMetrics[selectedScatterPreset.yMetric] : null;
-  const scatterTitle = selectedScatterPreset && selectedScatterXMetric && selectedScatterYMetric
-    ? `${selectedScatterYMetric.label} vs ${selectedScatterXMetric.label}`
-    : tr("insights.scatterComparison");
+  const scatterTitle = tr("insights.scatterComparison");
   const scatterData = selectedScatterPreset && selectedScatterXMetric && selectedScatterYMetric
     ? timeline
         .map((point) => {
