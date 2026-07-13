@@ -1,4 +1,4 @@
-import ReactECharts from "echarts-for-react";
+import ReactECharts from "./ModularECharts";
 import type { Activity, RecordPoint } from "../types";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";

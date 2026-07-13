@@ -1,13 +1,7 @@
-import { DragEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { DragEvent, lazy, MouseEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useActivityStore } from "../stores/activityStore";
-import { ActivityMap } from "./ActivityMap";
-import { CompareCharts } from "./CompareCharts";
-import { ActivityInsights } from "./ActivityInsights";
 import { ActivityContributionHeatmap } from "./ActivityContributionHeatmap";
-import { OverviewLocationMap } from "./OverviewLocationMap";
-import { OverviewSportTypeDonut } from "./OverviewSportTypeDonut";
-import { OverviewWeeklyTrend } from "./OverviewWeeklyTrend";
 import { OverviewActivityTable } from "./OverviewActivityTable";
 import { DatePickerPopover } from "./DatePickerPopover";
 import { DateRange } from "react-day-picker";
@@ -57,6 +51,25 @@ import { getHeartRateZoneBounds } from "../lib/zones";
 import { resolveHeartRateZoneSelection } from "../lib/hrZones";
 
 type Props = { onLogout: () => Promise<void> };
+
+const ActivityMap = lazy(() => import("./ActivityMap").then((module) => ({ default: module.ActivityMap })));
+const CompareCharts = lazy(() => import("./CompareCharts").then((module) => ({ default: module.CompareCharts })));
+const ActivityInsights = lazy(() => import("./ActivityInsights").then((module) => ({ default: module.ActivityInsights })));
+const OverviewLocationMap = lazy(() => import("./OverviewLocationMap").then((module) => ({ default: module.OverviewLocationMap })));
+const OverviewSportTypeDonut = lazy(() => import("./OverviewSportTypeDonut").then((module) => ({ default: module.OverviewSportTypeDonut })));
+const OverviewWeeklyTrend = lazy(() => import("./OverviewWeeklyTrend").then((module) => ({ default: module.OverviewWeeklyTrend })));
+
+function VisualisationFallback({ label, map = false }: { label: string; map?: boolean }) {
+  return (
+    <div
+      className={`panel visualisation-loading-placeholder${map ? " map" : ""}`}
+      role="status"
+      aria-label={label}
+    >
+      <span className="btn-spinner" aria-hidden="true" />
+    </div>
+  );
+}
 
 type VersionBadgeStatus = {
   state: "hidden" | "latest" | "update";
@@ -1814,16 +1827,24 @@ export function Dashboard({ onLogout }: Props) {
                   <ActivityContributionHeatmap activities={filtered} />
                 </div>
                 <div className="overview-contribution-side">
-                  <OverviewSportTypeDonut activities={filtered} theme={theme} />
+                  <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} />}>
+                    <OverviewSportTypeDonut activities={filtered} theme={theme} />
+                  </Suspense>
                 </div>
               </div>
-              <OverviewLocationMap records={overviewRecords} mapStyle={overviewMapStyle} setMapStyle={setOverviewMapStyle} />
-              <OverviewWeeklyTrend activities={filtered} distanceUnit={distanceUnit} theme={theme} />
+              <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} map />}>
+                <OverviewLocationMap records={overviewRecords} mapStyle={overviewMapStyle} setMapStyle={setOverviewMapStyle} />
+              </Suspense>
+              <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} />}>
+                <OverviewWeeklyTrend activities={filtered} distanceUnit={distanceUnit} theme={theme} />
+              </Suspense>
               <OverviewActivityTable activities={filtered} distanceUnit={distanceUnit} timeFormat={timeFormat} />
             </>
             )
           ) : tab === "compare" ? (
-            <CompareCharts compareIds={compareIds} activities={activities} theme={theme} distanceUnit={distanceUnit} />
+            <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} />}>
+              <CompareCharts compareIds={compareIds} activities={activities} theme={theme} distanceUnit={distanceUnit} />
+            </Suspense>
           ) : selectedActivity ? (
             <>
               <div className="detail-header">
@@ -1905,8 +1926,14 @@ export function Dashboard({ onLogout }: Props) {
                 </div>
               </div>
               <section className="activity-visual-grid">
-                {hasDetailRoute && <ActivityMap records={selectedRecords} mapStyle={activityMapStyle} setMapStyle={setActivityMapStyle} lapTimestampsUtc={lapTimestampsUtc} usePaceDisplay={activityUsesPaceDisplay(selectedActivity)} />}
-                <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} zones={selectedMetadata?.zones ?? null} heartRateZoneBoundsBpm={heartRateZoneSelection?.boundsBpm} heartRateZoneSource={heartRateZoneSelection?.source} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
+                {hasDetailRoute && (
+                  <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} map />}>
+                    <ActivityMap records={selectedRecords} mapStyle={activityMapStyle} setMapStyle={setActivityMapStyle} lapTimestampsUtc={lapTimestampsUtc} usePaceDisplay={activityUsesPaceDisplay(selectedActivity)} />
+                  </Suspense>
+                )}
+                <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} />}>
+                  <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} zones={selectedMetadata?.zones ?? null} heartRateZoneBoundsBpm={heartRateZoneSelection?.boundsBpm} heartRateZoneSource={heartRateZoneSelection?.source} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
+                </Suspense>
               </section>
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">

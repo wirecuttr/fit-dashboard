@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ReactECharts from "echarts-for-react";
+import ReactECharts from "./ModularECharts";
 import type { Activity, RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
 import { buildHeartRateZones, type HeartRateZoneSource } from "../lib/hrZones";
