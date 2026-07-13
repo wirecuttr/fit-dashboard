@@ -334,7 +334,8 @@ export function Dashboard({ onLogout }: Props) {
   } = useActivityStore();
   const {
     distanceUnit, timeFormat, supporterBadge,
-    toggleSettings, setTheme, mapStyle, setMapStyle, smoothGraphs,
+    toggleSettings, setTheme, activityMapStyle, setActivityMapStyle,
+    overviewMapStyle, setOverviewMapStyle, smoothGraphs,
     loadSupporterStatus, theme, manualHeartRateZoneBoundsBpm,
     manualHeartRateZoneUsage, heartRateZonePreferenceStatus,
   } = useSettingsStore();
@@ -1816,7 +1817,7 @@ export function Dashboard({ onLogout }: Props) {
                   <OverviewSportTypeDonut activities={filtered} theme={theme} />
                 </div>
               </div>
-              <OverviewLocationMap records={overviewRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} />
+              <OverviewLocationMap records={overviewRecords} mapStyle={overviewMapStyle} setMapStyle={setOverviewMapStyle} />
               <OverviewWeeklyTrend activities={filtered} distanceUnit={distanceUnit} theme={theme} />
               <OverviewActivityTable activities={filtered} distanceUnit={distanceUnit} timeFormat={timeFormat} />
             </>
@@ -1904,7 +1905,7 @@ export function Dashboard({ onLogout }: Props) {
                 </div>
               </div>
               <section className="activity-visual-grid">
-                {hasDetailRoute && <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} usePaceDisplay={activityUsesPaceDisplay(selectedActivity)} />}
+                {hasDetailRoute && <ActivityMap records={selectedRecords} mapStyle={activityMapStyle} setMapStyle={setActivityMapStyle} lapTimestampsUtc={lapTimestampsUtc} usePaceDisplay={activityUsesPaceDisplay(selectedActivity)} />}
                 <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} zones={selectedMetadata?.zones ?? null} heartRateZoneBoundsBpm={heartRateZoneSelection?.boundsBpm} heartRateZoneSource={heartRateZoneSelection?.source} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
               </section>
               {lapRows.length > 0 && (

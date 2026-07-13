@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from "react";
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import type { RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
-import { useSettingsStore } from "../stores/settingsStore";
 import { useTranslation } from "../lib/i18n";
 
 type Props = {
@@ -11,39 +10,38 @@ type Props = {
   setMapStyle: (style: MapStyle) => void;
 };
 
-type BaseMapInfo = { label: string; tileUrl: string; attribution: string };
+type BaseMapInfo = { labelKey: string; tileUrl: string; attribution: string };
 
-const BASEMAPS: Record<"light" | "dark" | "openstreet" | "topo" | "satellite", BaseMapInfo> = {
+const BASEMAPS: Record<MapStyle, BaseMapInfo> = {
   light: {
-    label: "Light",
+    labelKey: "settings.mapLight",
     tileUrl: "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
     attribution: "(c) OpenStreetMap contributors (c) CARTO",
   },
   openstreet: {
-    label: "OpenStreet",
+    labelKey: "settings.mapOpenStreet",
     tileUrl: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution: "(c) OpenStreetMap contributors",
   },
   topo: {
-    label: "Topo",
+    labelKey: "settings.mapTopo",
     tileUrl: "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
     attribution: "(c) OpenStreetMap contributors, SRTM | OpenTopoMap",
   },
   satellite: {
-    label: "Satellite",
+    labelKey: "settings.mapSatellite",
     tileUrl: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     attribution: "Tiles (c) Esri, Maxar, Earthstar Geographics",
   },
   dark: {
-    label: "Dark",
+    labelKey: "settings.mapDark",
     tileUrl: "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
     attribution: "(c) OpenStreetMap contributors (c) CARTO",
   },
 };
 
-function styleFromMap(ms: MapStyle, theme: "light" | "dark"): StyleSpecification {
-  const actualStyle = ms === "default" ? theme : ms;
-  const s = BASEMAPS[actualStyle as keyof typeof BASEMAPS];
+function styleFromMap(ms: MapStyle): StyleSpecification {
+  const s = BASEMAPS[ms];
   return {
     version: 8,
     sources: {
@@ -68,9 +66,7 @@ const POINT_LAYER_ID = "overview-point-layer";
 export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const theme = useSettingsStore((s) => s.theme);
   const { t } = useTranslation();
-  const selectedStyle = mapStyle === "default" ? theme : mapStyle;
 
   const geojson = useMemo<GeoJSON.FeatureCollection<GeoJSON.Point>>(() => {
     const features: GeoJSON.Feature<GeoJSON.Point>[] = records
@@ -224,7 +220,7 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: styleFromMap(mapStyle, theme),
+      style: styleFromMap(mapStyle),
       center: [0, 0],
       zoom: 2,
       minZoom: 2,
@@ -264,7 +260,7 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
     const map = mapRef.current;
     if (!map || !hasLocations) return;
 
-    map.setStyle(styleFromMap(mapStyle, theme));
+    map.setStyle(styleFromMap(mapStyle));
     const onIdle = () => {
       map.off("idle", onIdle);
       ensureSourcesAndLayers(map);
@@ -274,7 +270,7 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
     return () => {
       map.off("idle", onIdle);
     };
-  }, [mapStyle, theme, hasLocations]);
+  }, [mapStyle, hasLocations]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -312,9 +308,9 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
         <div className="map-controls">
           <label className="map-control">
             <span className="small">{t("map.style")}</span>
-            <select value={selectedStyle} onChange={(e) => setMapStyle(e.target.value as MapStyle)}>
+            <select value={mapStyle} onChange={(e) => setMapStyle(e.target.value as MapStyle)}>
               {Object.entries(BASEMAPS).map(([value, info]) => (
-                <option key={value} value={value}>{info.label}</option>
+                <option key={value} value={value}>{t(info.labelKey)}</option>
               ))}
             </select>
           </label>

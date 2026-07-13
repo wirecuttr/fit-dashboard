@@ -293,7 +293,6 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
     theme,
     distanceUnit,
     timeFormat,
-    mapStyle,
     smoothGraphs,
     supporterBadge,
     manualHeartRateZoneBoundsBpm,
@@ -304,7 +303,6 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
     setTheme,
     setDistanceUnit,
     setTimeFormat,
-    setMapStyle,
     setSmoothGraphs,
     loadHeartRateZonePreferences,
     saveManualHeartRateZoneBounds,
@@ -418,16 +416,6 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
             <option value="24h">{t("settings.24hour")}</option>
             <option value="12h">{t("settings.12hour")}</option>
           </select></label>
-
-          <label><span>{t("settings.mapStyle")}</span><select value={mapStyle} onChange={(e) => setMapStyle(e.target.value as any)}>
-              <option value="default">{t("settings.mapDefault")}</option>
-              <option value="light">{t("settings.mapLight")}</option>
-              <option value="dark">{t("settings.mapDark")}</option>
-              <option value="openstreet">{t("settings.mapOpenStreet")}</option>
-              <option value="topo">{t("settings.mapTopo")}</option>
-              <option value="satellite">{t("settings.mapSatellite")}</option>
-            </select>
-          </label>
 
           <label className="settings-checkbox" title={t("settings.smoothGraphsTooltip")}>
             <span>{t("settings.smoothGraphs")}</span>

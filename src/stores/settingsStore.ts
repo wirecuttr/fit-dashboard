@@ -9,15 +9,20 @@ import {
 type Theme = "light" | "dark";
 type DistanceUnit = "km" | "mi";
 type TimeFormat = "12h" | "24h";
-export type MapStyle = "default" | "light" | "dark" | "openstreet" | "topo" | "satellite";
+export type MapStyle = "light" | "dark" | "openstreet" | "topo" | "satellite";
 export type Language = string;
+
+function isMapStyle(value: unknown): value is MapStyle {
+  return value === "light" || value === "dark" || value === "openstreet" || value === "topo" || value === "satellite";
+}
 
 type SettingsState = {
   theme: Theme;
   language: Language;
   distanceUnit: DistanceUnit;
   timeFormat: TimeFormat;
-  mapStyle: MapStyle;
+  activityMapStyle: MapStyle;
+  overviewMapStyle: MapStyle;
   smoothGraphs: boolean;
   overviewTableDays: number;
   supporterBadge: boolean;
@@ -29,7 +34,8 @@ type SettingsState = {
   setLanguage: (language: Language) => void;
   setDistanceUnit: (unit: DistanceUnit) => void;
   setTimeFormat: (format: TimeFormat) => void;
-  setMapStyle: (style: MapStyle) => void;
+  setActivityMapStyle: (style: MapStyle) => void;
+  setOverviewMapStyle: (style: MapStyle) => void;
   setSmoothGraphs: (smoothGraphs: boolean) => void;
   setOverviewTableDays: (days: number) => void;
   loadSupporterStatus: () => Promise<void>;
@@ -45,7 +51,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   language: "en",
   distanceUnit: "km",
   timeFormat: "24h",
-  mapStyle: "default",
+  activityMapStyle: "light",
+  overviewMapStyle: "light",
   smoothGraphs: true,
   overviewTableDays: 7,
   supporterBadge: false,
@@ -63,7 +70,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         language: parsed.language ?? "en",
         distanceUnit: parsed.distanceUnit ?? "km",
         timeFormat: parsed.timeFormat ?? "24h",
-        mapStyle: parsed.mapStyle ?? "default",
+        activityMapStyle: isMapStyle(parsed.activityMapStyle) ? parsed.activityMapStyle : "light",
+        overviewMapStyle: isMapStyle(parsed.overviewMapStyle) ? parsed.overviewMapStyle : "light",
         smoothGraphs: typeof parsed.smoothGraphs === "boolean" ? parsed.smoothGraphs : true,
         overviewTableDays: Number.isFinite(parsed.overviewTableDays) ? Math.max(1, Math.round(parsed.overviewTableDays)) : 7,
       });
@@ -94,9 +102,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     persist({ ...get(), timeFormat });
   },
 
-  setMapStyle: (mapStyle) => {
-    set({ mapStyle });
-    persist({ ...get(), mapStyle });
+  setActivityMapStyle: (activityMapStyle) => {
+    set({ activityMapStyle });
+    persist({ ...get(), activityMapStyle });
+  },
+
+  setOverviewMapStyle: (overviewMapStyle) => {
+    set({ overviewMapStyle });
+    persist({ ...get(), overviewMapStyle });
   },
 
   setSmoothGraphs: (smoothGraphs) => {
@@ -169,7 +182,8 @@ function persist(state: SettingsState) {
       language: state.language,
       distanceUnit: state.distanceUnit,
       timeFormat: state.timeFormat,
-      mapStyle: state.mapStyle,
+      activityMapStyle: state.activityMapStyle,
+      overviewMapStyle: state.overviewMapStyle,
       smoothGraphs: state.smoothGraphs,
       overviewTableDays: state.overviewTableDays,
     })

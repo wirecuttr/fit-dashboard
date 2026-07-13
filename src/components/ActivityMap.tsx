@@ -35,7 +35,7 @@ const PATH_COLOR_VALUES: PathColorMode[] = [
   "solid", "speed", "heart_rate", "cadence", "altitude", "power", "temperature", "time",
 ];
 
-type BaseMapInfo = { label: string; tileUrl: string; attribution: string };
+type BaseMapInfo = { labelKey: string; tileUrl: string; attribution: string };
 
 type TooltipLabels = {
   speed: string;
@@ -48,37 +48,36 @@ type TooltipLabels = {
   noData: string;
 };
 
-const BASEMAPS: Record<"light" | "dark" | "openstreet" | "topo" | "satellite", BaseMapInfo> = {
+const BASEMAPS: Record<MapStyle, BaseMapInfo> = {
   light: {
-    label: "Light",
+    labelKey: "settings.mapLight",
     tileUrl: "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
     attribution: "\u00a9 OpenStreetMap contributors \u00a9 CARTO"
   },
   openstreet: {
-    label: "OpenStreet",
+    labelKey: "settings.mapOpenStreet",
     tileUrl: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution: "\u00a9 OpenStreetMap contributors"
   },
   topo: {
-    label: "Topo",
+    labelKey: "settings.mapTopo",
     tileUrl: "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
     attribution: "\u00a9 OpenStreetMap contributors, SRTM | OpenTopoMap"
   },
   satellite: {
-    label: "Satellite",
+    labelKey: "settings.mapSatellite",
     tileUrl: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     attribution: "Tiles \u00a9 Esri, Maxar, Earthstar Geographics"
   },
   dark: {
-    label: "Dark",
+    labelKey: "settings.mapDark",
     tileUrl: "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
     attribution: "\u00a9 OpenStreetMap contributors \u00a9 CARTO"
   }
 };
 
-function styleFromMap(ms: MapStyle, theme: "light" | "dark"): StyleSpecification {
-  const actualStyle = ms === "default" ? theme : ms;
-  const s = BASEMAPS[actualStyle as keyof typeof BASEMAPS];
+function styleFromMap(ms: MapStyle): StyleSpecification {
+  const s = BASEMAPS[ms];
   return {
     version: 8,
     sources: { basemap: { type: "raster", tiles: [s.tileUrl], tileSize: 256, attribution: s.attribution } },
@@ -403,9 +402,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
-  const theme = useSettingsStore((s) => s.theme);
   const distanceUnit = useSettingsStore((s) => s.distanceUnit);
-  const selectedStyle = mapStyle === "default" ? theme : mapStyle;
   const { t } = useTranslation();
   const availability = useMemo(() => getRecordDataAvailability(records), [records]);
   const tooltipLabels = useMemo<TooltipLabels>(() => ({
@@ -857,7 +854,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: styleFromMap(mapStyle, theme),
+      style: styleFromMap(mapStyle),
       center: [0, 0],
       zoom: 2,
       minZoom: 5,
@@ -911,7 +908,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     // event listeners. We must call setStyle first, then wait for the
     // map to become idle (all tiles loaded, no pending work) before
     // re-adding our route overlay.
-    map.setStyle(styleFromMap(mapStyle, theme));
+    map.setStyle(styleFromMap(mapStyle));
 
     const onIdle = () => {
       map.off("idle", onIdle);
@@ -923,7 +920,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     return () => {
       map.off("idle", onIdle);
     };
-  }, [mapStyle, theme]);
+  }, [mapStyle]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -986,9 +983,9 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
         <div className="map-controls">
           <div className="map-control">
             <span>{t("activityMap.style")}</span>
-            <select value={selectedStyle} onChange={(e) => setMapStyle(e.target.value as MapStyle)}>
+            <select value={mapStyle} onChange={(e) => setMapStyle(e.target.value as MapStyle)}>
               {Object.entries(BASEMAPS).map(([value, info]) => (
-                <option key={value} value={value}>{info.label}</option>
+                <option key={value} value={value}>{t(info.labelKey)}</option>
               ))}
             </select>
           </div>
