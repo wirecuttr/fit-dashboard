@@ -446,7 +446,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     const speedUnit = speedLabel(distanceUnit);
     return {
       time: formatElapsed(currentElapsedSeconds),
-      speed: `${formatMetric(speedValue, 2)} ${speedUnit}`,
+      speed: `${speedValue.toFixed(1)} ${speedUnit}`,
       heartRate: currentPoint.heart_rate ? `${formatMetric(currentPoint.heart_rate, 0)} bpm` : "--",
       altitude: currentPoint.altitude_m != null ? `${formatMetric(convertElevationMeters(currentPoint.altitude_m, distanceUnit), 0)} ${elevationLabel(distanceUnit)}` : "--",
       cadence: currentPoint.cadence ? `${formatMetric(currentPoint.cadence, 0)} rpm` : "--",
