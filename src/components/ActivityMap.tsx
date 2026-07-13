@@ -498,18 +498,16 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     const speedValue = convertSpeedKmh(speedKmh, distanceUnit);
     const speedUnit = speedLabel(distanceUnit);
     return {
-      time: formatElapsed(currentElapsedSeconds),
       speedOrPace: usePaceDisplay
         ? formatPaceFromSpeed(speedValue, distanceUnit)
         : `${speedValue.toFixed(1)} ${speedUnit}`,
       heartRate: currentPoint.heart_rate ? `${formatMetric(currentPoint.heart_rate, 0)} bpm` : "--",
       altitude: currentPoint.altitude_m != null ? `${formatMetric(convertElevationMeters(currentPoint.altitude_m, distanceUnit), 0)} ${elevationLabel(distanceUnit)}` : "--",
-      cadence: currentPoint.cadence ? `${formatMetric(currentPoint.cadence, 0)} rpm` : "--",
       power: currentPoint.power ? `${formatMetric(currentPoint.power, 0)} W` : "--",
+      cadence: currentPoint.cadence ? `${formatMetric(currentPoint.cadence, 0)} rpm` : "--",
       temp: Number.isFinite(currentPoint.temperature_c) ? `${formatMetric(currentPoint.temperature_c, 1)} C` : "--",
-      point: `${timelineIndex + 1}/${Math.max(1, gpsRecords.length)}`,
     };
-  }, [currentPoint, currentElapsedSeconds, distanceUnit, gpsRecords.length, timelineIndex, usePaceDisplay]);
+  }, [currentPoint, distanceUnit, usePaceDisplay]);
 
   useEffect(() => { coordinatesRef.current = coordinates; }, [coordinates]);
   useEffect(() => { gpsRecordsRef.current = gpsRecords; }, [gpsRecords]);
@@ -1023,13 +1021,11 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
           <div className="telemetry-overlay" aria-live="polite">
             <div className="telemetry-overlay-title">{t("activityMap.timelineTelemetry")}</div>
             <div className="telemetry-overlay-grid">
-              <div><span>{t("activityMap.point")}</span><strong>{telemetryData.point}</strong></div>
-              <div><span>{t("activityMap.time")}</span><strong>{telemetryData.time}</strong></div>
               <div><span>{usePaceDisplay ? t("detail.pace") : t("activityMap.speed")}</span><strong>{telemetryData.speedOrPace}</strong></div>
               <div><span>{t("activityMap.heart")}</span><strong>{telemetryData.heartRate}</strong></div>
-              <div><span>{t("activityMap.alt")}</span><strong>{telemetryData.altitude}</strong></div>
-              <div><span>{t("activityMap.cadence")}</span><strong>{telemetryData.cadence}</strong></div>
+              <div><span>{t("insights.elevation")}</span><strong>{telemetryData.altitude}</strong></div>
               <div><span>{t("activityMap.power")}</span><strong>{telemetryData.power}</strong></div>
+              <div><span>{t("activityMap.cadence")}</span><strong>{telemetryData.cadence}</strong></div>
               <div><span>{t("activityMap.temp")}</span><strong>{telemetryData.temp}</strong></div>
             </div>
           </div>
