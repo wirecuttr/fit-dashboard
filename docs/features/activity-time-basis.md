@@ -2,7 +2,7 @@
 
 ## Status
 
-- Status: implemented; integrated Docker validation pending
+- Status: implemented and validated in the local Docker deployment
 - Working branch: `feature/activity-time-basis`
 - Branch base: local `main` at `220a1fb`
 - Intended destination: local/private `main`
