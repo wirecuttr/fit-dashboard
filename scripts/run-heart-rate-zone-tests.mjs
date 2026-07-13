@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 
-const outDir = mkdtempSync(join(tmpdir(), "fit-dashboard-heart-rate-zone-tests-"));
+const cacheDir = join(process.cwd(), "node_modules", ".cache");
+mkdirSync(cacheDir, { recursive: true });
+const outDir = mkdtempSync(join(cacheDir, "fit-dashboard-heart-rate-zone-tests-"));
 const tscBin = process.platform === "win32" ? "node_modules/.bin/tsc.cmd" : "node_modules/.bin/tsc";
 
 try {

@@ -1,7 +1,9 @@
+import { createStore } from "zustand/vanilla";
 import {
   buildHeartRateZones,
   resolveHeartRateZoneSelection,
   validateManualHeartRateZoneBounds,
+  type HeartRateZonePreferences,
 } from "../src/lib/hrZones";
 import {
   accumulateHeartRateZoneMinutes,
@@ -11,6 +13,12 @@ import {
 } from "../src/lib/heartRateZoneTime";
 import { buildTelemetryPoints } from "../src/lib/telemetryAxis";
 import { compatibleZoneSecondsToMinutes } from "../src/lib/zones";
+import {
+  createHeartRateZonePreferenceActions,
+  createInitialHeartRateZonePreferenceData,
+  type HeartRateZonePreferenceBackend,
+  type HeartRateZonePreferenceSlice,
+} from "../src/stores/heartRateZonePreferenceSlice";
 import type { RecordPoint } from "../src/types";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -26,6 +34,44 @@ function assertEqual<T>(actual: T, expected: T, message: string) {
 function assertArrayEqual(actual: number[] | null, expected: number[], message: string) {
   assert(actual, `${message}: expected an array`);
   assertEqual(JSON.stringify(actual), JSON.stringify(expected), message);
+}
+
+function clonePreferences(preferences: HeartRateZonePreferences): HeartRateZonePreferences {
+  return {
+    ...preferences,
+    bounds_bpm: [...preferences.bounds_bpm],
+  };
+}
+
+function createPreferenceStore(backend: HeartRateZonePreferenceBackend) {
+  return createStore<HeartRateZonePreferenceSlice>((set, get) => ({
+    ...createInitialHeartRateZonePreferenceData(),
+    ...createHeartRateZonePreferenceActions(
+      (partial) => set(partial),
+      get,
+      backend,
+    ),
+  }));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function withoutExpectedWarnings<T>(action: () => Promise<T>): Promise<T> {
+  const warn = console.warn;
+  console.warn = () => undefined;
+  try {
+    return await action();
+  } finally {
+    console.warn = warn;
+  }
 }
 
 function testBoundaryValidation() {
@@ -48,6 +94,14 @@ function testPolicySelection() {
   const fallbackWithoutFit = resolveHeartRateZoneSelection(undefined, manual, "fallback");
   assertEqual(fallbackWithoutFit.source, "manual", "fallback should use manual bounds when FIT bounds are absent");
   assertArrayEqual(fallbackWithoutFit.boundsBpm, manual, "fallback should return manual bounds without FIT data");
+
+  const fallbackWithUnusableFit = resolveHeartRateZoneSelection([100], manual, "fallback");
+  assertEqual(fallbackWithUnusableFit.source, "manual", "fallback should reject an unrenderable FIT boundary set");
+  assertArrayEqual(fallbackWithUnusableFit.boundsBpm, manual, "fallback should use manual bounds when FIT bounds are unrenderable");
+
+  const fallbackWithNormalizedFit = resolveHeartRateZoneSelection([160, 100, 100, 140], manual, "fallback");
+  assertEqual(fallbackWithNormalizedFit.source, "fit", "fallback should accept at least two normalized FIT bounds");
+  assertArrayEqual(fallbackWithNormalizedFit.boundsBpm, [100, 140, 160], "selected FIT bounds should match rendered normalization");
 
   const alwaysWithFit = resolveHeartRateZoneSelection(fit, manual, "always");
   assertEqual(alwaysWithFit.source, "manual", "always should override FIT bounds");
@@ -170,6 +224,112 @@ function testNoHeartRateSamplesHideZoneTime() {
   );
 }
 
+async function testPreferenceStoreLoadsAndSavesConfirmedValues() {
+  let stored: HeartRateZonePreferences = {
+    version: 1,
+    bounds_bpm: [80, 105, 135, 165],
+    usage: "fallback",
+  };
+  const writes: HeartRateZonePreferences[] = [];
+  const store = createPreferenceStore({
+    getHeartRateZonePreferences: async () => clonePreferences(stored),
+    setHeartRateZonePreferences: async (preferences) => {
+      writes.push(clonePreferences(preferences));
+      stored = clonePreferences(preferences);
+      return clonePreferences(stored);
+    },
+  });
+
+  assertEqual(await store.getState().loadHeartRateZonePreferences(), true, "valid preferences should load");
+  assertEqual(store.getState().heartRateZonePreferenceStatus, "ready", "successful load should enable preferences");
+  assertEqual(JSON.stringify(store.getState().manualHeartRateZoneBoundsBpm), JSON.stringify(stored.bounds_bpm), "load should apply stored boundaries");
+
+  const usageSave = store.getState().setManualHeartRateZoneUsage("always");
+  assertEqual(store.getState().manualHeartRateZoneUsage, "always", "usage should apply optimistically");
+  assertEqual(store.getState().heartRateZonePreferenceSaving, true, "optimistic usage should remain marked as saving");
+  assertEqual(await usageSave, true, "valid usage should save");
+  assertEqual(store.getState().confirmedManualHeartRateZoneUsage, "always", "successful usage save should update the confirmed policy");
+
+  const nextBounds = [85, 110, 140, 170];
+  assertEqual(await store.getState().saveManualHeartRateZoneBounds(nextBounds), true, "valid boundaries should save");
+  assertEqual(JSON.stringify(writes[1].bounds_bpm), JSON.stringify(nextBounds), "boundary save should send the draft bounds");
+  assertEqual(writes[1].usage, "always", "boundary save should preserve the confirmed policy");
+  assertEqual(JSON.stringify(store.getState().confirmedManualHeartRateZoneBoundsBpm), JSON.stringify(nextBounds), "successful boundary save should update confirmed bounds");
+}
+
+async function testPreferenceStoreRollsBackAndSerializesWrites() {
+  const pendingSave = deferred<HeartRateZonePreferences>();
+  let saveCalls = 0;
+  const store = createPreferenceStore({
+    getHeartRateZonePreferences: async () => ({
+      version: 1,
+      bounds_bpm: [80, 105, 135, 165],
+      usage: "fallback",
+    }),
+    setHeartRateZonePreferences: async () => {
+      saveCalls += 1;
+      return pendingSave.promise;
+    },
+  });
+  await store.getState().loadHeartRateZonePreferences();
+
+  const usageSave = withoutExpectedWarnings(
+    () => store.getState().setManualHeartRateZoneUsage("always"),
+  );
+  assertEqual(store.getState().manualHeartRateZoneUsage, "always", "pending policy save should apply immediately");
+  assertEqual(
+    await store.getState().saveManualHeartRateZoneBounds([85, 110, 140, 170]),
+    false,
+    "boundary save should be blocked while a policy write is pending",
+  );
+  assertEqual(saveCalls, 1, "concurrent preference writes should be serialized");
+
+  pendingSave.reject(new Error("save failed"));
+  assertEqual(await usageSave, false, "failed policy save should report failure");
+  assertEqual(store.getState().manualHeartRateZoneUsage, "fallback", "failed policy save should restore the confirmed policy");
+  assertEqual(store.getState().confirmedManualHeartRateZoneUsage, "fallback", "failed policy save should not change confirmation");
+  assertEqual(store.getState().heartRateZonePreferenceSaving, false, "failed policy save should clear saving state");
+  assert(!!store.getState().heartRateZonePreferenceError, "failed policy save should expose an error");
+}
+
+async function testPreferenceStorePreservesBoundsAfterSaveFailure() {
+  const originalBounds = [80, 105, 135, 165];
+  const store = createPreferenceStore({
+    getHeartRateZonePreferences: async () => ({
+      version: 1,
+      bounds_bpm: originalBounds,
+      usage: "always",
+    }),
+    setHeartRateZonePreferences: async () => {
+      throw new Error("save failed");
+    },
+  });
+  await store.getState().loadHeartRateZonePreferences();
+
+  const saved = await withoutExpectedWarnings(
+    () => store.getState().saveManualHeartRateZoneBounds([85, 110, 140, 170]),
+  );
+  assertEqual(saved, false, "failed boundary save should report failure");
+  assertEqual(JSON.stringify(store.getState().manualHeartRateZoneBoundsBpm), JSON.stringify(originalBounds), "failed boundary save should preserve active bounds");
+  assertEqual(JSON.stringify(store.getState().confirmedManualHeartRateZoneBoundsBpm), JSON.stringify(originalBounds), "failed boundary save should preserve confirmed bounds");
+}
+
+async function testPreferenceStoreReportsLoadFailure() {
+  const store = createPreferenceStore({
+    getHeartRateZonePreferences: async () => {
+      throw new Error("load failed");
+    },
+    setHeartRateZonePreferences: async (preferences) => preferences,
+  });
+
+  const loaded = await withoutExpectedWarnings(
+    () => store.getState().loadHeartRateZonePreferences(),
+  );
+  assertEqual(loaded, false, "failed preference load should report failure");
+  assertEqual(store.getState().heartRateZonePreferenceStatus, "error", "failed preference load should disable preference controls");
+  assert(!!store.getState().heartRateZonePreferenceError, "failed preference load should expose an error");
+}
+
 const tests = [
   testBoundaryValidation,
   testPolicySelection,
@@ -178,10 +338,20 @@ const tests = [
   testManualZoneRowsRemainOneToOne,
   testActiveTimeZoneAccumulation,
   testNoHeartRateSamplesHideZoneTime,
+  testPreferenceStoreLoadsAndSavesConfirmedValues,
+  testPreferenceStoreRollsBackAndSerializesWrites,
+  testPreferenceStorePreservesBoundsAfterSaveFailure,
+  testPreferenceStoreReportsLoadFailure,
 ];
 
-for (const test of tests) {
-  test();
+async function runTests() {
+  for (const test of tests) {
+    await test();
+  }
+  console.log(`heart rate zone tests passed (${tests.length})`);
 }
 
-console.log(`heart rate zone tests passed (${tests.length})`);
+runTests().catch((error) => {
+  console.error(error);
+  throw error;
+});

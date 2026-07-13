@@ -63,24 +63,26 @@ export function resolveHeartRateZoneSelection(
   manualBoundsBpm: number[],
   usage: ManualHeartRateZoneUsage,
 ): HeartRateZoneSelection {
-  if (usage === "fallback" && fitBoundsBpm?.length) {
-    return { boundsBpm: [...fitBoundsBpm], source: "fit" };
+  const normalizedFitBounds = normalizeHeartRateZoneBounds(fitBoundsBpm);
+  if (usage === "fallback" && normalizedFitBounds.length >= 2) {
+    return { boundsBpm: normalizedFitBounds, source: "fit" };
   }
   return { boundsBpm: [...manualBoundsBpm], source: "manual" };
 }
 
-export function buildHeartRateZones(zoneUpperBoundsBpm?: number[] | null): HeartRateZone[] {
-  if (!Array.isArray(zoneUpperBoundsBpm) || zoneUpperBoundsBpm.length === 0) {
-    return [];
-  }
-
-  const bounds = Array.from(
+function normalizeHeartRateZoneBounds(zoneUpperBoundsBpm?: number[] | null): number[] {
+  if (!Array.isArray(zoneUpperBoundsBpm)) return [];
+  return Array.from(
     new Set(
       zoneUpperBoundsBpm
         .map((value) => Math.round(Number(value)))
         .filter((value) => Number.isFinite(value) && value > 0 && value <= MANUAL_HR_BOUND_MAX_BPM)
     )
   ).sort((a, b) => a - b);
+}
+
+export function buildHeartRateZones(zoneUpperBoundsBpm?: number[] | null): HeartRateZone[] {
+  const bounds = normalizeHeartRateZoneBounds(zoneUpperBoundsBpm);
 
   if (bounds.length < 2) {
     return [];

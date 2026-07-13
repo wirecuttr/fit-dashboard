@@ -808,13 +808,26 @@ impl Database {
         Ok(None)
     }
 
-    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+    fn set_setting_with_checkpoint<F>(&self, key: &str, value: &str, checkpoint: F) -> Result<()>
+    where
+        F: FnOnce(&Self) -> Result<bool>,
+    {
         {
             let conn = self.conn.lock().expect("db mutex poisoned");
             replace_setting_transactionally(&conn, key, value, || Ok(()))?;
         }
-        self.checkpoint_if_wal_exceeds_limit()?;
+        if let Err(error) = checkpoint(self) {
+            tracing::warn!(
+                setting_key = key,
+                error = %error,
+                "setting was committed but the optional WAL checkpoint failed"
+            );
+        }
         Ok(())
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        self.set_setting_with_checkpoint(key, value, Self::checkpoint_if_wal_exceeds_limit)
     }
 
     #[cfg(all(feature = "web", not(feature = "tauri-app")))]
@@ -830,7 +843,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn setting_replacement_rolls_back_when_insert_is_interrupted() {
+    fn heart_rate_zone_setting_replacement_rolls_back_when_insert_is_interrupted() {
         let db = Database::new(":memory:").unwrap();
         db.set_setting("test_setting", "old value").unwrap();
 
@@ -848,6 +861,23 @@ mod tests {
         assert_eq!(
             db.get_setting("test_setting").unwrap(),
             Some("old value".to_string())
+        );
+    }
+
+    #[test]
+    fn heart_rate_zone_checkpoint_failure_does_not_report_committed_setting_as_failed() {
+        let db = Database::new(":memory:").unwrap();
+
+        let result = db.set_setting_with_checkpoint(
+            "test_setting",
+            "committed value",
+            |_| anyhow::bail!("simulated checkpoint failure"),
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(
+            db.get_setting("test_setting").unwrap(),
+            Some("committed value".to_string())
         );
     }
 }

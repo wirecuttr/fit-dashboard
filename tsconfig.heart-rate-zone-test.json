@@ -17,6 +17,7 @@
     "src/lib/telemetryAxis.ts",
     "src/lib/units.ts",
     "src/lib/zones.ts",
+    "src/stores/heartRateZonePreferenceSlice.ts",
     "src/types.ts"
   ]
 }
