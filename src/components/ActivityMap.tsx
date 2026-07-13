@@ -4,6 +4,12 @@ import type { RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getRecordDataAvailability } from "../lib/recordDataAvailability";
+import {
+  interpolateFollowPosition,
+  normaliseBearingDegrees,
+  prepareFollowRoute,
+  smoothFollowBearing,
+} from "../lib/mapFollow";
 import { convertElevationMeters, convertSpeedKmh, elevationLabel, paceLabel, speedLabel, type DistanceUnit } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
 
@@ -17,6 +23,10 @@ type Props = {
 
 type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "altitude" | "power" | "temperature" | "time";
 const PLAYBACK_SPEEDS = [1, 2, 4, 8, 16, 32] as const;
+const FOLLOW_CAMERA_ZOOM = 15.5;
+const FOLLOW_CAMERA_PITCH = 45;
+const FOLLOW_CAMERA_MAX_PITCH = 60;
+const FOLLOW_CAMERA_FRAME_INTERVAL_MS = 1000 / 30;
 
 const IconPlay = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -352,7 +362,6 @@ const SOURCE_ID = "activity-route";
 const HIT_SOURCE_ID = "activity-route-hit-source";
 const MARKER_SOURCE_ID = "activity-route-markers";
 const LAP_SOURCE_ID = "activity-route-lap-markers";
-const SKY_LAYER_ID = "activity-sky-layer";
 const OUTLINE_LAYER_ID = "activity-route-outline-layer";
 const LAYER_ID = "activity-route-layer";
 const HIT_LAYER_ID = "activity-route-hit";
@@ -442,19 +451,22 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   }), [availability]);
 
   const [pathColorMode, setPathColorMode] = useState<PathColorMode>("heart_rate");
-  const [terrainEnabled, setTerrainEnabled] = useState(false);
+  const [followEnabled, setFollowEnabled] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeedIndex, setPlaybackSpeedIndex] = useState(0);
   const pathColorModeRef = useRef(pathColorMode);
-  const terrainEnabledRef = useRef(terrainEnabled);
+  const followEnabledRef = useRef(followEnabled);
   const telemetryEnabledRef = useRef(telemetryEnabled);
   const timelineIndexRef = useRef(timelineIndex);
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number | null>(null);
   const playheadFloatRef = useRef(0);
   const playheadElapsedMsRef = useRef(0);
+  const followBearingRef = useRef<number | null>(null);
+  const lastFollowCameraTimeRef = useRef<number | null>(null);
+  const playbackSpeedRef = useRef<number>(PLAYBACK_SPEEDS[playbackSpeedIndex]);
 
   const gpsRecords = useMemo(() => {
     const rows = records.filter((r) => typeof r.latitude === "number" && typeof r.longitude === "number");
@@ -466,8 +478,15 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     [gpsRecords]
   );
 
+  const preparedFollowRoute = useMemo(() => prepareFollowRoute(gpsRecords.map((record) => ({
+    longitude: record.longitude as number,
+    latitude: record.latitude as number,
+    timestampMs: record.timestamp_ms,
+  }))), [gpsRecords]);
+
   const gpsRecordsRef = useRef(gpsRecords);
   const coordinatesRef = useRef(coordinates);
+  const preparedFollowRouteRef = useRef(preparedFollowRoute);
   const distanceUnitRef = useRef(distanceUnit);
   const maxTimelineIndex = Math.max(0, coordinates.length - 1);
 
@@ -510,6 +529,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
 
   useEffect(() => { coordinatesRef.current = coordinates; }, [coordinates]);
   useEffect(() => { gpsRecordsRef.current = gpsRecords; }, [gpsRecords]);
+  useEffect(() => { preparedFollowRouteRef.current = preparedFollowRoute; }, [preparedFollowRoute]);
   useEffect(() => { distanceUnitRef.current = distanceUnit; }, [distanceUnit]);
   useEffect(() => { pathColorModeRef.current = pathColorMode; }, [pathColorMode]);
   useEffect(() => {
@@ -517,7 +537,10 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       setPathColorMode(pathColorOptions.includes("speed") ? "speed" : "solid");
     }
   }, [pathColorMode, pathColorOptions]);
-  useEffect(() => { terrainEnabledRef.current = terrainEnabled; }, [terrainEnabled]);
+  useEffect(() => { followEnabledRef.current = followEnabled; }, [followEnabled]);
+  useEffect(() => {
+    playbackSpeedRef.current = PLAYBACK_SPEEDS[playbackSpeedIndex];
+  }, [playbackSpeedIndex]);
   useEffect(() => {
     telemetryEnabledRef.current = telemetryEnabled;
     if (telemetryEnabled) {
@@ -535,12 +558,58 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
 
   useEffect(() => {
     const endIndex = Math.max(0, coordinates.length - 1);
+    followEnabledRef.current = false;
+    followBearingRef.current = null;
+    lastFollowCameraTimeRef.current = null;
+    setFollowEnabled(false);
+    const map = mapRef.current;
+    if (map) {
+      map.stop();
+      map.jumpTo({ pitch: 0, bearing: 0 });
+      map.setMaxPitch(0);
+    }
     timelineIndexRef.current = endIndex;
     playheadFloatRef.current = endIndex;
     playheadElapsedMsRef.current = totalElapsedMs;
     setTimelineIndex(endIndex);
     setIsPlaying(false);
-  }, [coordinates.length, totalElapsedMs]);
+  }, [coordinates, totalElapsedMs]);
+
+  function moveFollowCamera(frameTimeMs: number, force = false, animate = false) {
+    if (!followEnabledRef.current) return;
+    const map = mapRef.current;
+    const route = preparedFollowRouteRef.current;
+    if (!map || route.points.length < 2) return;
+    if (!force
+      && lastFollowCameraTimeRef.current !== null
+      && frameTimeMs - lastFollowCameraTimeRef.current < FOLLOW_CAMERA_FRAME_INTERVAL_MS) {
+      return;
+    }
+
+    const targetTimestampMs = route.points[0].timestampMs + playheadElapsedMsRef.current;
+    const position = interpolateFollowPosition(route, targetTimestampMs);
+    if (!position) return;
+
+    const elapsedMs = lastFollowCameraTimeRef.current === null
+      ? FOLLOW_CAMERA_FRAME_INTERVAL_MS
+      : Math.max(0, frameTimeMs - lastFollowCameraTimeRef.current);
+    followBearingRef.current = smoothFollowBearing(
+      followBearingRef.current,
+      position.bearingDeg,
+      elapsedMs,
+      playbackSpeedRef.current,
+    );
+    const camera = {
+      center: [position.longitude, position.latitude] as [number, number],
+      zoom: FOLLOW_CAMERA_ZOOM,
+      pitch: FOLLOW_CAMERA_PITCH,
+      bearing: normaliseBearingDegrees(followBearingRef.current ?? 0),
+    };
+    lastFollowCameraTimeRef.current = frameTimeMs;
+
+    if (animate) map.easeTo({ ...camera, duration: 350 });
+    else map.jumpTo(camera);
+  }
 
   useEffect(() => {
     if (!isPlaying) {
@@ -589,6 +658,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
         playheadElapsedMsRef.current = totalElapsedMs;
         playheadFloatRef.current = maxIndex;
         timelineIndexRef.current = maxIndex;
+        moveFollowCamera(time, true);
         setTimelineIndex(maxIndex);
         setIsPlaying(false);
         return;
@@ -601,6 +671,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
         timelineIndexRef.current = rounded;
         setTimelineIndex(rounded);
       }
+      moveFollowCamera(time);
 
       animationFrameRef.current = requestAnimationFrame(tick);
     };
@@ -616,31 +687,13 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     };
   }, [isPlaying, playbackSpeedIndex, coordinates.length, firstTimestampMs, totalElapsedMs]);
 
+  useEffect(() => {
+    if (!isPlaying && followEnabledRef.current) {
+      moveFollowCamera(performance.now(), true);
+    }
+  }, [timelineIndex]);
+
   /* ── Draw route ─────────────────────────────────────────────── */
-
-  function applyTerrainState(map: maplibregl.Map, enabled: boolean) {
-    if (!enabled) {
-      map.setMaxPitch(0);
-      if (map.getLayer(SKY_LAYER_ID)) {
-        map.removeLayer(SKY_LAYER_ID);
-      }
-      map.easeTo({ pitch: 0, duration: 250 });
-      return;
-    }
-
-    map.setMaxPitch(85);
-
-    if (!map.getLayer(SKY_LAYER_ID)) {
-      map.addLayer({
-        id: SKY_LAYER_ID,
-        type: "sky",
-        paint: {
-          "sky-color": "#87CEEB",
-          "sky-horizon-blend": 0.5,
-        },
-      } as any);
-    }
-  }
 
   function drawRoute(map: maplibregl.Map, fitToRoute: boolean) {
     const coords = coordinatesRef.current;
@@ -822,11 +875,40 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     const map = mapRef.current;
     const coords = coordinatesRef.current;
     if (!map || !coords.length) return;
+    followEnabledRef.current = false;
+    followBearingRef.current = null;
+    lastFollowCameraTimeRef.current = null;
+    setFollowEnabled(false);
+    map.stop();
+    map.jumpTo({ pitch: 0, bearing: 0 });
+    map.setMaxPitch(0);
     const bounds = coords.reduce(
       (b, c) => b.extend(c as [number, number]),
       new maplibregl.LngLatBounds(coords[0] as [number, number], coords[0] as [number, number])
     );
     map.fitBounds(bounds, { padding: 40, maxZoom: 16, duration: 550 });
+  }
+
+  function changeFollowEnabled(enabled: boolean) {
+    const map = mapRef.current;
+    followEnabledRef.current = enabled;
+    followBearingRef.current = null;
+    lastFollowCameraTimeRef.current = null;
+    setFollowEnabled(enabled);
+    if (!map) return;
+
+    map.stop();
+    if (enabled) {
+      map.setMaxPitch(FOLLOW_CAMERA_MAX_PITCH);
+      moveFollowCamera(performance.now(), true, !isPlaying);
+      return;
+    }
+
+    map.setMaxPitch(FOLLOW_CAMERA_MAX_PITCH);
+    map.easeTo({ pitch: 0, bearing: 0, duration: 250 });
+    map.once("moveend", () => {
+      if (!followEnabledRef.current) map.setMaxPitch(0);
+    });
   }
 
   function togglePlayback() {
@@ -863,9 +945,24 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     mapRef.current = map;
 
     map.on("load", () => {
-      applyTerrainState(map, terrainEnabledRef.current);
-      drawRoute(map, true);
+      drawRoute(map, !followEnabledRef.current);
+      if (followEnabledRef.current) {
+        map.setMaxPitch(FOLLOW_CAMERA_MAX_PITCH);
+        moveFollowCamera(performance.now(), true);
+      }
     });
+
+    const stopFollowingForGesture = (event: { originalEvent?: unknown }) => {
+      if (!event.originalEvent || !followEnabledRef.current) return;
+      followEnabledRef.current = false;
+      followBearingRef.current = null;
+      lastFollowCameraTimeRef.current = null;
+      setFollowEnabled(false);
+    };
+    map.on("dragstart", stopFollowingForGesture);
+    map.on("zoomstart", stopFollowingForGesture);
+    map.on("rotatestart", stopFollowingForGesture);
+    map.on("pitchstart", stopFollowingForGesture);
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
 
@@ -891,6 +988,10 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     });
 
     return () => {
+      map.off("dragstart", stopFollowingForGesture);
+      map.off("zoomstart", stopFollowingForGesture);
+      map.off("rotatestart", stopFollowingForGesture);
+      map.off("pitchstart", stopFollowingForGesture);
       popup.remove();
       map.remove();
       mapRef.current = null;
@@ -909,7 +1010,6 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
 
     const onIdle = () => {
       map.off("idle", onIdle);
-      applyTerrainState(map, terrainEnabledRef.current);
       drawRoute(map, false);
     };
     map.on("idle", onIdle);
@@ -922,27 +1022,10 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-
-    const apply = () => {
-      applyTerrainState(map, terrainEnabled);
-    };
-
     if (map.isStyleLoaded()) {
-      apply();
+      drawRoute(map, !followEnabledRef.current);
     } else {
-      const onIdle = () => { map.off("idle", onIdle); apply(); };
-      map.on("idle", onIdle);
-      return () => { map.off("idle", onIdle); };
-    }
-  }, [terrainEnabled]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (map.isStyleLoaded()) {
-      drawRoute(map, true);
-    } else {
-      const onIdle = () => { map.off("idle", onIdle); drawRoute(map, true); };
+      const onIdle = () => { map.off("idle", onIdle); drawRoute(map, !followEnabledRef.current); };
       map.on("idle", onIdle);
       return () => { map.off("idle", onIdle); };
     }
@@ -994,20 +1077,23 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
               ))}
             </select>
           </div>
-          <button
-            type="button"
-            className={`btn-outline-secondary map-toggle-btn ${terrainEnabled ? "active" : ""}`}
-            onClick={() => setTerrainEnabled((v) => !v)}
-          >
-            {t("activityMap.terrain")} {terrainEnabled ? t("activityMap.on") : t("activityMap.off")}
-          </button>
-          <button
-            type="button"
-            className={`btn-outline-secondary map-toggle-btn ${telemetryEnabled ? "active" : ""}`}
-            onClick={() => setTelemetryEnabled((v) => !v)}
-          >
-            {t("activityMap.telemetry")} {telemetryEnabled ? t("activityMap.on") : t("activityMap.off")}
-          </button>
+          <label className="map-checkbox-control">
+            <input
+              type="checkbox"
+              checked={followEnabled}
+              disabled={preparedFollowRoute.points.length < 2}
+              onChange={(event) => changeFollowEnabled(event.target.checked)}
+            />
+            <span>{t("activityMap.follow")}</span>
+          </label>
+          <label className="map-checkbox-control">
+            <input
+              type="checkbox"
+              checked={telemetryEnabled}
+              onChange={(event) => setTelemetryEnabled(event.target.checked)}
+            />
+            <span>{t("activityMap.telemetry")}</span>
+          </label>
         </div>
       </div>
 

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": "node_modules/.cache/fit-dashboard-map-follow-tests",
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": [
+    "scripts/test-map-follow.ts",
+    "src/lib/mapFollow.ts"
+  ]
+}
