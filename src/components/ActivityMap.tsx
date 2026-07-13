@@ -423,7 +423,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     speed: t("activityMap.colorSpeed"),
     heart_rate: t("activityMap.colorHeartRate"),
     cadence: t("activityMap.colorCadence"),
-    altitude: t("activityMap.colorAltitude"),
+    altitude: t("insights.elevation"),
     power: t("activityMap.colorPower"),
     temperature: t("activityMap.colorTemperature"),
     time: t("activityMap.colorTime"),
