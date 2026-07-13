@@ -2191,6 +2191,22 @@ button:focus-visible {
   position: relative;
 }
 
+.visualisation-loading-placeholder {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.visualisation-loading-placeholder.map {
+  min-height: 380px;
+}
+
+.visualisation-loading-placeholder .btn-spinner {
+  width: 20px;
+  height: 20px;
+}
+
 .map-reset-zoom-btn {
   position: absolute;
   left: 12px;

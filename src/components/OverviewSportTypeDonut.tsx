@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import ReactECharts from "echarts-for-react";
+import ReactECharts from "./ModularECharts";
 import type { Activity } from "../types";
 import { useTranslation } from "../lib/i18n";
 import { formatActivityTypeLabel } from "../lib/activityType";
