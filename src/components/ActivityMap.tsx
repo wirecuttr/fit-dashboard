@@ -4,7 +4,7 @@ import type { RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { getRecordDataAvailability } from "../lib/recordDataAvailability";
-import { convertElevationMeters, convertSpeedKmh, elevationLabel, speedLabel } from "../lib/units";
+import { convertElevationMeters, convertSpeedKmh, elevationLabel, paceLabel, speedLabel, type DistanceUnit } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
 
 type Props = {
@@ -12,6 +12,7 @@ type Props = {
   mapStyle: MapStyle;
   setMapStyle: (style: MapStyle) => void;
   lapTimestampsUtc?: string[];
+  usePaceDisplay?: boolean;
 };
 
 type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "altitude" | "power" | "temperature" | "time";
@@ -327,6 +328,14 @@ function formatMetric(value: number | null | undefined, digits = 1): string {
   return Number(value).toFixed(digits).replace(/\.00$/, "").replace(/(\.\d*[1-9])0$/, "$1");
 }
 
+function formatPaceFromSpeed(speedPerHour: number, unit: DistanceUnit): string {
+  if (!Number.isFinite(speedPerHour) || speedPerHour <= 0) return "--";
+  const totalSeconds = Math.round(3600 / speedPerHour);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")} ${paceLabel(unit)}`;
+}
+
 function sampleRouteRecords(records: RecordPoint[], maxPoints: number): RecordPoint[] {
   if (records.length <= maxPoints) return records;
   const sampled: RecordPoint[] = [];
@@ -390,7 +399,7 @@ function buildLapMarkerGeoJson(gpsRecs: RecordPoint[], lapTimestampsUtc: string[
   return { type: "FeatureCollection", features };
 }
 
-export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc = [] }: Props) {
+export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc = [], usePaceDisplay = false }: Props) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -491,7 +500,9 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     const speedUnit = speedLabel(distanceUnit);
     return {
       time: formatElapsed(currentElapsedSeconds),
-      speed: `${speedValue.toFixed(1)} ${speedUnit}`,
+      speedOrPace: usePaceDisplay
+        ? formatPaceFromSpeed(speedValue, distanceUnit)
+        : `${speedValue.toFixed(1)} ${speedUnit}`,
       heartRate: currentPoint.heart_rate ? `${formatMetric(currentPoint.heart_rate, 0)} bpm` : "--",
       altitude: currentPoint.altitude_m != null ? `${formatMetric(convertElevationMeters(currentPoint.altitude_m, distanceUnit), 0)} ${elevationLabel(distanceUnit)}` : "--",
       cadence: currentPoint.cadence ? `${formatMetric(currentPoint.cadence, 0)} rpm` : "--",
@@ -499,7 +510,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       temp: Number.isFinite(currentPoint.temperature_c) ? `${formatMetric(currentPoint.temperature_c, 1)} C` : "--",
       point: `${timelineIndex + 1}/${Math.max(1, gpsRecords.length)}`,
     };
-  }, [currentPoint, currentElapsedSeconds, distanceUnit, gpsRecords.length, timelineIndex]);
+  }, [currentPoint, currentElapsedSeconds, distanceUnit, gpsRecords.length, timelineIndex, usePaceDisplay]);
 
   useEffect(() => { coordinatesRef.current = coordinates; }, [coordinates]);
   useEffect(() => { gpsRecordsRef.current = gpsRecords; }, [gpsRecords]);
@@ -1015,7 +1026,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
             <div className="telemetry-overlay-grid">
               <div><span>{t("activityMap.point")}</span><strong>{telemetryData.point}</strong></div>
               <div><span>{t("activityMap.time")}</span><strong>{telemetryData.time}</strong></div>
-              <div><span>{t("activityMap.speed")}</span><strong>{telemetryData.speed}</strong></div>
+              <div><span>{usePaceDisplay ? t("detail.pace") : t("activityMap.speed")}</span><strong>{telemetryData.speedOrPace}</strong></div>
               <div><span>{t("activityMap.heart")}</span><strong>{telemetryData.heartRate}</strong></div>
               <div><span>{t("activityMap.alt")}</span><strong>{telemetryData.altitude}</strong></div>
               <div><span>{t("activityMap.cadence")}</span><strong>{telemetryData.cadence}</strong></div>
