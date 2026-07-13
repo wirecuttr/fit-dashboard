@@ -2292,6 +2292,10 @@ button:focus-visible {
   text-align: right;
 }
 
+.map-playback-time-value:last-child {
+  text-align: left;
+}
+
 .telemetry-overlay {
   position: absolute;
   left: 12px;
