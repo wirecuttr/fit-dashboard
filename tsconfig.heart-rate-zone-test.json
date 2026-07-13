@@ -12,7 +12,11 @@
   },
   "include": [
     "scripts/test-heart-rate-zones.ts",
+    "src/lib/heartRateZoneTime.ts",
     "src/lib/hrZones.ts",
-    "src/lib/zones.ts"
+    "src/lib/telemetryAxis.ts",
+    "src/lib/units.ts",
+    "src/lib/zones.ts",
+    "src/types.ts"
   ]
 }

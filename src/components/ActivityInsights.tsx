@@ -2,14 +2,21 @@ import { useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { Activity, RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
-import { buildHeartRateZones, resolveHeartRateZoneIndex, type HeartRateZoneSource } from "../lib/hrZones";
+import { buildHeartRateZones, type HeartRateZoneSource } from "../lib/hrZones";
 import {
   buildPowerZones,
-  compatibleZoneSecondsToMinutes,
   resolveNumericZoneIndex,
   zoneSecondsToMinutes,
   type ActivityZones,
 } from "../lib/zones";
+import {
+  accumulateHeartRateZoneMinutes,
+  buildZoneTimeRows,
+  compatibleFitHeartRateZoneMinutes,
+  hasHeartRateZoneTimeData,
+  type ZoneDefinition,
+  type ZoneTimeRowMode,
+} from "../lib/heartRateZoneTime";
 import { applyRollingAverageSeries, getDynamicSmoothingWindow } from "../lib/chartSmoothing";
 import { getRecordDataAvailability } from "../lib/recordDataAvailability";
 import {
@@ -84,18 +91,13 @@ function isSeriesRow(row: [number | null, number | null, number, number, number 
   return typeof row[0] === "number" && Number.isFinite(row[0]);
 }
 
-type ZoneDefinition = {
-  minExclusive: number;
-  maxInclusive: number | null;
-  color: string;
-};
-
 type ZoneTimeBarsProps = {
   title: string;
   zones: ZoneDefinition[];
   minutes: number[];
   unit: string;
   totalMinutes: number;
+  rowMode?: ZoneTimeRowMode;
 };
 
 function formatDurationClock(minutes: number): string {
@@ -109,70 +111,8 @@ function formatDurationClock(minutes: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-type ZoneTimeRow = {
-  label: string;
-  range: string;
-  minutes: number;
-  color: string;
-};
-
-function buildZoneTimeRows(zones: ZoneDefinition[], minutes: number[], unit: string): ZoneTimeRow[] {
-  const lowerBounds = zones
-    .slice(0, -1)
-    .map((zone) => zone.maxInclusive)
-    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-
-  if (lowerBounds.length >= 2 && minutes.length >= lowerBounds.length) {
-    const rows: ZoneTimeRow[] = [
-      {
-        label: "<Z1",
-        range: `<${Math.round(lowerBounds[0])} ${unit}`,
-        minutes: minutes[0] ?? 0,
-        color: zones[0]?.color ?? "#94a3b8",
-      },
-    ];
-
-    for (let idx = 1; idx < lowerBounds.length - 1; idx += 1) {
-      rows.push({
-        label: `Z${idx}`,
-        range: `${Math.round(lowerBounds[idx - 1])}-${Math.round(lowerBounds[idx] - 1)} ${unit}`,
-        minutes: minutes[idx] ?? 0,
-        color: zones[idx]?.color ?? "#94a3b8",
-      });
-    }
-
-    const lastNamedZone = lowerBounds.length - 1;
-    rows.push({
-      label: `Z${lastNamedZone}`,
-      range: `>${Math.round(lowerBounds[lastNamedZone - 1] - 1)} ${unit}`,
-      minutes: minutes.slice(lastNamedZone).reduce((sum, value) => sum + value, 0),
-      color: zones[lastNamedZone]?.color ?? zones[zones.length - 1]?.color ?? "#94a3b8",
-    });
-
-    return rows;
-  }
-
-  return zones.map((zone, idx) => {
-    let range: string;
-    if (zone.maxInclusive === null) {
-      range = `>${Math.round(zone.minExclusive)} ${unit}`;
-    } else if (!Number.isFinite(zone.minExclusive)) {
-      range = `<=${Math.round(zone.maxInclusive)} ${unit}`;
-    } else {
-      range = `${Math.round(zone.minExclusive + 1)}-${Math.round(zone.maxInclusive)} ${unit}`;
-    }
-
-    return {
-      label: `Z${idx + 1}`,
-      range,
-      minutes: minutes[idx] ?? 0,
-      color: zone.color,
-    };
-  });
-}
-
-function ZoneTimeBars({ title, zones, minutes, unit, totalMinutes }: ZoneTimeBarsProps) {
-  const rows = buildZoneTimeRows(zones, minutes, unit);
+function ZoneTimeBars({ title, zones, minutes, unit, totalMinutes, rowMode }: ZoneTimeBarsProps) {
+  const rows = buildZoneTimeRows(zones, minutes, unit, rowMode);
   const chartTotalMinutes = Math.max(0, totalMinutes);
   const zoneTotalMinutes = rows.reduce((sum, row) => sum + row.minutes, 0);
 
@@ -534,30 +474,32 @@ export function ActivityInsights({
   const lapMarkers = buildLapMarkers(records, lapTimestampsUtc, t0, xAxisMode, distanceUnit, timerMetadata);
 
   const hasRealHeartRateZones = hrZones.length > 0;
-  const fitHrZoneMinutes = heartRateZoneSource === "fit" && hasRealHeartRateZones
-    ? compatibleZoneSecondsToMinutes(zones?.heart_rate?.time_in_zone_s, hrZones.length)
+  const fitHrZoneMinutes = hasRealHeartRateZones
+    ? compatibleFitHeartRateZoneMinutes(
+        heartRateZoneSource,
+        zones?.heart_rate?.time_in_zone_s,
+        hrZones.length,
+      )
     : null;
   const zoneRecords = analysisRecords.length ? analysisRecords : records;
   const zoneTelemetryPoints = hasRealHeartRateZones && !fitHrZoneMinutes
     ? buildTelemetryPoints(zoneRecords, t0, "time", distanceUnit, timerMetadata)
     : [];
-  const hasZoneHeartRateSamples = zoneTelemetryPoints.some(
-    (point) => typeof point.record.heart_rate === "number" && point.record.heart_rate > 0
+  const accumulatedHeartRateZones = accumulateHeartRateZoneMinutes(
+    zoneTelemetryPoints.map((point) => ({
+      relMs: point.relMs,
+      heartRate: point.record.heart_rate,
+    })),
+    hrZones,
   );
-  const zoneMinutes = fitHrZoneMinutes ? [...fitHrZoneMinutes] : hrZones.map(() => 0);
-  if (hasRealHeartRateZones && !fitHrZoneMinutes && hasZoneHeartRateSamples) {
-    for (let i = 0; i < zoneTelemetryPoints.length - 1; i += 1) {
-      const hr = zoneTelemetryPoints[i].record.heart_rate;
-      if (typeof hr !== "number" || hr <= 0) continue;
-      const dtMin = Math.max(0, (zoneTelemetryPoints[i + 1].relMs - zoneTelemetryPoints[i].relMs) / 60000);
-      const zoneIndex = resolveHeartRateZoneIndex(hr, hrZones);
-      if (zoneIndex !== null) {
-        zoneMinutes[zoneIndex] += dtMin;
-      }
-    }
-  }
-  const hasHeartRateZoneData = hasRealHeartRateZones
-    && (!!fitHrZoneMinutes || hasZoneHeartRateSamples);
+  const zoneMinutes = fitHrZoneMinutes
+    ? [...fitHrZoneMinutes]
+    : accumulatedHeartRateZones.minutes;
+  const hasHeartRateZoneData = hasHeartRateZoneTimeData(
+    hrZones.length,
+    fitHrZoneMinutes,
+    accumulatedHeartRateZones.hasHeartRateSamples,
+  );
 
   const fitPowerZoneMinutes = zoneSecondsToMinutes(zones?.power?.time_in_zone_s, powerZones.length);
   const powerZoneMinutes = fitPowerZoneMinutes.some((value) => value > 0) ? fitPowerZoneMinutes : powerZones.map(() => 0);
@@ -1618,7 +1560,14 @@ export function ActivityInsights({
       {hasHeartRateZoneData && (
         <article className="panel">
           <h3>{tr("insights.heartRateZoneTime")}</h3>
-          <ZoneTimeBars title={tr("insights.heartRateZoneTime")} zones={hrZones} minutes={zoneMinutes} unit="bpm" totalMinutes={zoneChartTotalMinutes} />
+          <ZoneTimeBars
+            title={tr("insights.heartRateZoneTime")}
+            zones={hrZones}
+            minutes={zoneMinutes}
+            unit="bpm"
+            totalMinutes={zoneChartTotalMinutes}
+            rowMode={heartRateZoneSource === "manual" ? "explicit-zones" : "fit-boundaries"}
+          />
         </article>
       )}
       {hasPowerZoneData && (

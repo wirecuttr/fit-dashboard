@@ -138,4 +138,80 @@ mod tests {
         assert_eq!(encoded["bounds_bpm"], serde_json::json!([75, 95, 120, 150]));
         assert_eq!(encoded["usage"], "fallback");
     }
+
+    #[test]
+    fn loads_defaults_when_preferences_are_missing() {
+        let db = Database::new(":memory:").unwrap();
+
+        assert_eq!(
+            load_heart_rate_zone_preferences(&db).unwrap(),
+            HeartRateZonePreferences::default()
+        );
+    }
+
+    #[test]
+    fn saves_and_reloads_preferences() {
+        let db = Database::new(":memory:").unwrap();
+        let preferences = HeartRateZonePreferences {
+            bounds_bpm: vec![80, 105, 135, 165],
+            usage: ManualHeartRateZoneUsage::Always,
+            ..HeartRateZonePreferences::default()
+        };
+
+        assert_eq!(
+            save_heart_rate_zone_preferences(&db, preferences.clone()).unwrap(),
+            preferences
+        );
+        assert_eq!(
+            load_heart_rate_zone_preferences(&db).unwrap(),
+            preferences
+        );
+    }
+
+    #[test]
+    fn malformed_and_unsupported_stored_preferences_use_defaults() {
+        let db = Database::new(":memory:").unwrap();
+        db.set_setting(HEART_RATE_ZONE_PREFERENCES_KEY, "not json")
+            .unwrap();
+        assert_eq!(
+            load_heart_rate_zone_preferences(&db).unwrap(),
+            HeartRateZonePreferences::default()
+        );
+
+        let unsupported = serde_json::json!({
+            "version": HEART_RATE_ZONE_PREFERENCES_VERSION + 1,
+            "bounds_bpm": [80, 105, 135, 165],
+            "usage": "always"
+        });
+        db.set_setting(
+            HEART_RATE_ZONE_PREFERENCES_KEY,
+            &unsupported.to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            load_heart_rate_zone_preferences(&db).unwrap(),
+            HeartRateZonePreferences::default()
+        );
+    }
+
+    #[test]
+    fn invalid_save_preserves_previous_preferences() {
+        let db = Database::new(":memory:").unwrap();
+        let previous = HeartRateZonePreferences {
+            bounds_bpm: vec![80, 105, 135, 165],
+            usage: ManualHeartRateZoneUsage::Always,
+            ..HeartRateZonePreferences::default()
+        };
+        save_heart_rate_zone_preferences(&db, previous.clone()).unwrap();
+
+        let invalid = HeartRateZonePreferences {
+            bounds_bpm: vec![80, 105, 135, 261],
+            ..previous.clone()
+        };
+        assert!(save_heart_rate_zone_preferences(&db, invalid).is_err());
+        assert_eq!(
+            load_heart_rate_zone_preferences(&db).unwrap(),
+            previous
+        );
+    }
 }

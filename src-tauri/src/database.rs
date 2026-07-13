@@ -12,6 +12,26 @@ pub struct Database {
 
 const WAL_LIMIT_BYTES: u64 = 25 * 1024 * 1024;
 
+fn replace_setting_transactionally<F>(
+    conn: &Connection,
+    key: &str,
+    value: &str,
+    before_insert: F,
+) -> Result<()>
+where
+    F: FnOnce() -> Result<()>,
+{
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+    before_insert()?;
+    tx.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)",
+        params![key, value],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
 impl Database {
     pub fn new(path: &str) -> Result<Self> {
         tracing::info!(db_path = %path, "opening duckdb database");
@@ -791,13 +811,7 @@ impl Database {
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
         {
             let conn = self.conn.lock().expect("db mutex poisoned");
-            let tx = conn.unchecked_transaction()?;
-            tx.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
-            tx.execute(
-                "INSERT INTO settings (key, value) VALUES (?1, ?2)",
-                params![key, value],
-            )?;
-            tx.commit()?;
+            replace_setting_transactionally(&conn, key, value, || Ok(()))?;
         }
         self.checkpoint_if_wal_exceeds_limit()?;
         Ok(())
@@ -808,5 +822,32 @@ impl Database {
         let conn = self.conn.lock().expect("db mutex poisoned");
         conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn setting_replacement_rolls_back_when_insert_is_interrupted() {
+        let db = Database::new(":memory:").unwrap();
+        db.set_setting("test_setting", "old value").unwrap();
+
+        {
+            let conn = db.conn.lock().expect("db mutex poisoned");
+            let result = replace_setting_transactionally(
+                &conn,
+                "test_setting",
+                "new value",
+                || anyhow::bail!("simulated interruption before insert"),
+            );
+            assert!(result.is_err());
+        }
+
+        assert_eq!(
+            db.get_setting("test_setting").unwrap(),
+            Some("old value".to_string())
+        );
     }
 }

@@ -98,8 +98,10 @@ export function zoneSecondsToMinutes(values: unknown, zoneCount: number): number
 
 export function compatibleZoneSecondsToMinutes(values: unknown, zoneCount: number): number[] | null {
   if (!Array.isArray(values) || values.length !== zoneCount || zoneCount <= 0) return null;
-  const seconds = values.map((value) => Number(value));
-  if (seconds.some((value) => !Number.isFinite(value) || value < 0)) return null;
+  if (values.some((value) => typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
+    return null;
+  }
+  const seconds = values as number[];
   if (!seconds.some((value) => value > 0)) return null;
   return seconds.map((value) => value / 60);
 }
