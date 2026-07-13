@@ -470,7 +470,6 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const coordinatesRef = useRef(coordinates);
   const distanceUnitRef = useRef(distanceUnit);
   const maxTimelineIndex = Math.max(0, coordinates.length - 1);
-  const playbackSpeed = PLAYBACK_SPEEDS[playbackSpeedIndex];
 
   const firstTimestampMs = useMemo(
     () => gpsRecords.find((r) => Number.isFinite(r.timestamp_ms))?.timestamp_ms ?? 0,
@@ -1055,15 +1054,18 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
                 : "0%"
           } as React.CSSProperties}
         />
-        <button
-          className="btn-outline-secondary map-playback-speed"
-          type="button"
-          onClick={() => setPlaybackSpeedIndex((i) => (i + 1) % PLAYBACK_SPEEDS.length)}
-          disabled={coordinates.length < 2}
-        >
+        <label className="map-playback-speed">
           <span>{t("activityMap.speed")}</span>
-          <span className="map-playback-speed-value">{playbackSpeed}x</span>
-        </button>
+          <select
+            value={playbackSpeedIndex}
+            onChange={(e) => setPlaybackSpeedIndex(Number(e.target.value))}
+            disabled={coordinates.length < 2}
+          >
+            {PLAYBACK_SPEEDS.map((speed, index) => (
+              <option key={speed} value={index}>{speed}x</option>
+            ))}
+          </select>
+        </label>
         <span className="map-playback-time">
           <span className="map-playback-time-value" style={{ width: elapsedTimeWidth }}>{formatElapsed(currentElapsedSeconds)}</span>
           <span>/</span>

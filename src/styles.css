@@ -2193,8 +2193,7 @@ button:focus-visible {
   align-items: center;
 }
 
-.map-playback-btn,
-.map-playback-speed {
+.map-playback-btn {
   font-size: 0.74rem;
   padding: 0.32rem 0.6rem;
   min-height: 31px;
@@ -2204,14 +2203,16 @@ button:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-size: 0.74rem;
   gap: 0.25rem;
   white-space: nowrap;
 }
 
-.map-playback-speed-value {
-  display: inline-block;
-  width: 3ch;
-  text-align: right;
+.map-playback-speed select {
+  width: 4.5rem;
+  min-height: 31px;
+  padding: 0.32rem 1.5rem 0.32rem 0.5rem;
+  font-size: 0.74rem;
   font-variant-numeric: tabular-nums;
 }
 
