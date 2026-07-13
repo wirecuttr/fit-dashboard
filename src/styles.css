@@ -2936,53 +2936,6 @@ button:focus-visible {
   background: var(--accent-glow);
 }
 
-.icon-preview-box {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0.75rem;
-  background: var(--input-bg);
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-
-.icon-preview-box strong {
-  font-size: 0.86rem;
-}
-
-.icon-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.45rem;
-}
-
-.icon-preview-item {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-width: 0;
-  padding: 0.45rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-weight: 600;
-}
-
-.icon-preview-glyph {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 20px;
-  color: var(--accent);
-}
-
-.icon-preview-glyph svg {
-  max-width: 18px;
-  max-height: 18px;
-}
-
 .storage-box {
   border: 1px solid var(--border);
   border-radius: 10px;

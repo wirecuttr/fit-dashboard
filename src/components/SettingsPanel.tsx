@@ -14,60 +14,12 @@ import {
   validateManualHeartRateZoneBounds,
 } from "../lib/hrZones";
 import {
-  IconActivity, IconAvg, IconBarChart, IconBattery, IconBug, IconChainring, IconCheck,
-  IconChevron, IconClipboard, IconClock, IconCollapse, IconCrank, IconDevice, IconDiscord,
-  IconDistance, IconLocation, IconDownload, IconEdit, IconExpand, IconFile, IconFlame, IconGauge, IconGlobe,
-  IconHeart, IconLogout, IconMail, IconMenu, IconMetronome, IconMoon, IconMountain, IconPower,
-  IconRefresh, IconSearch, IconShoe, IconSettings, IconSort, IconSortDirection, IconSport, IconSun, IconTrash, IconUser, IconVo2, IconX
+  IconBug,
+  IconDiscord,
+  IconGlobe,
+  IconHeart,
+  IconMail,
 } from "./Icons";
-
-
-const ICON_PREVIEW_ITEMS = [
-  { name: "IconActivity", icon: <IconActivity /> },
-  { name: "IconAvg", icon: <IconAvg /> },
-  { name: "IconBarChart", icon: <IconBarChart size={18} /> },
-  { name: "IconBattery", icon: <IconBattery /> },
-  { name: "IconBug", icon: <IconBug /> },
-  { name: "IconChainring", icon: <IconChainring /> },
-  { name: "IconGauge", icon: <IconGauge /> },
-  { name: "IconCheck", icon: <IconCheck /> },
-  { name: "IconChevron", icon: <IconChevron /> },
-  { name: "IconClipboard", icon: <IconClipboard /> },
-  { name: "IconClock", icon: <IconClock /> },
-  { name: "IconCollapse", icon: <IconCollapse /> },
-  { name: "IconCrank", icon: <IconCrank /> },
-  { name: "IconDevice", icon: <IconDevice /> },
-  { name: "IconDiscord", icon: <IconDiscord /> },
-  { name: "IconDistance", icon: <IconDistance /> },
-  { name: "IconLocation", icon: <IconLocation /> },
-  { name: "IconDownload", icon: <IconDownload /> },
-  { name: "IconEdit", icon: <IconEdit /> },
-  { name: "IconExpand", icon: <IconExpand /> },
-  { name: "IconFile", icon: <IconFile /> },
-  { name: "IconFlame", icon: <IconFlame /> },
-  { name: "IconGlobe", icon: <IconGlobe /> },
-  { name: "IconHeart", icon: <IconHeart /> },
-  { name: "IconLogout", icon: <IconLogout /> },
-  { name: "IconMail", icon: <IconMail /> },
-  { name: "IconMenu", icon: <IconMenu /> },
-  { name: "IconMetronome", icon: <IconMetronome /> },
-  { name: "IconMoon", icon: <IconMoon /> },
-  { name: "IconMountain", icon: <IconMountain /> },
-  { name: "IconPower", icon: <IconPower /> },
-  { name: "IconRefresh", icon: <IconRefresh /> },
-  { name: "IconSearch", icon: <IconSearch /> },
-  { name: "IconSettings", icon: <IconSettings /> },
-  { name: "IconShoe", icon: <IconShoe /> },
-  { name: "IconSort", icon: <IconSort /> },
-  { name: "IconSortDirection asc", icon: <IconSortDirection direction="asc" /> },
-  { name: "IconSortDirection desc", icon: <IconSortDirection direction="desc" /> },
-  { name: "IconSport", icon: <IconSport /> },
-  { name: "IconSun", icon: <IconSun /> },
-  { name: "IconTrash", icon: <IconTrash /> },
-  { name: "IconUser", icon: <IconUser /> },
-  { name: "IconVo2", icon: <IconVo2 /> },
-  { name: "IconX", icon: <IconX /> },
-];
 
 type StorageInfo = {
   data_dir: string;
@@ -576,20 +528,6 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
             </a>
           </div>
         </div>
-
-
-        <div className="icon-preview-box">
-          <strong>Icon Preview</strong>
-          <div className="icon-preview-grid">
-            {ICON_PREVIEW_ITEMS.map((item) => (
-              <div key={item.name} className="icon-preview-item">
-                <span className="icon-preview-glyph">{item.icon}</span>
-                <span>{item.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div className="supporter-box">
           <div style={{ flex: 1 }}>
             <strong>{t("settings.supporterBadge")}</strong>
