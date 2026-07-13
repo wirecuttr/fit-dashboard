@@ -438,6 +438,8 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const currentElapsedSeconds = currentPoint && Number.isFinite(currentPoint.timestamp_ms)
     ? Math.max(0, Math.round((currentPoint.timestamp_ms - firstTimestampMs) / 1000))
     : 0;
+  const elapsedHourDigits = Math.max(2, String(Math.floor(totalElapsedSeconds / 3600)).length);
+  const elapsedTimeWidth = `${elapsedHourDigits + 6}ch`;
 
   const telemetryData = useMemo(() => {
     if (!currentPoint) return null;
@@ -1005,9 +1007,14 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
           onClick={() => setPlaybackSpeedIndex((i) => (i + 1) % PLAYBACK_SPEEDS.length)}
           disabled={coordinates.length < 2}
         >
-          {t("activityMap.speed")} {playbackSpeed}x
+          <span>{t("activityMap.speed")}</span>
+          <span className="map-playback-speed-value">{playbackSpeed}x</span>
         </button>
-        <span className="map-playback-time">{formatElapsed(currentElapsedSeconds)} / {formatElapsed(totalElapsedSeconds)}</span>
+        <span className="map-playback-time">
+          <span className="map-playback-time-value" style={{ width: elapsedTimeWidth }}>{formatElapsed(currentElapsedSeconds)}</span>
+          <span>/</span>
+          <span className="map-playback-time-value" style={{ width: elapsedTimeWidth }}>{formatElapsed(totalElapsedSeconds)}</span>
+        </span>
       </div>
 
       {pathColorMode !== "solid" && coordinates.length > 0 && (
