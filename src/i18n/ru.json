@@ -223,5 +223,7 @@
   "settings.hrZonesClose": "Закрыть редактор зон пульса",
   "settings.hrZoneBoundaryLabel": "Верхняя граница зоны {zone}",
   "insights.scatterComparison": "Scatterplot",
-  "insights.scatterMetric": "Scatterplot metric"
+  "insights.scatterMetric": "Scatterplot metric",
+  "activityMap.follow": "Следовать",
+  "activityMap.telemetry": "Телеметрия"
 }

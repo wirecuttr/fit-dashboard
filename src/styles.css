@@ -2151,16 +2151,31 @@ button:focus-visible {
   width: auto;
 }
 
-.map-toggle-btn {
+.map-checkbox-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   font-size: 0.72rem;
-  padding: 0.32rem 0.6rem;
+  color: var(--text);
+  padding: 0.32rem 0.15rem;
   min-height: 31px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
 }
 
-.map-toggle-btn.active {
-  border-color: var(--accent);
-  color: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+.map-checkbox-control input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.map-checkbox-control:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .map-canvas {
