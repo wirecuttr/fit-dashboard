@@ -598,6 +598,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       position.bearingDeg,
       elapsedMs,
       playbackSpeedRef.current,
+      position.movementSpeedMps,
     );
     const camera = {
       center: [position.longitude, position.latitude] as [number, number],

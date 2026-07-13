@@ -115,6 +115,7 @@ function testTimestampInterpolationAndAntimeridian() {
   const midpoint = interpolateFollowPosition(route, 1_500);
   assert(midpoint, "midpoint interpolation should return a position");
   assertClose(distanceMetres(routePoint(0, 0, 0), { ...midpoint, timestampMs: 0 }), 15, 0.2, "position should interpolate by timestamp");
+  assertClose(midpoint.movementSpeedMps, 10, 0.2, "interpolation should expose segment movement speed");
 
   const duplicateTimestamp = prepareFollowRoute([
     routePoint(0, 0, 0),
@@ -135,16 +136,56 @@ function testTimestampInterpolationAndAntimeridian() {
 }
 
 function testBearingSmoothing() {
-  const acrossNorth = smoothFollowBearing(350, 10, 100, 1);
+  const acrossNorth = smoothFollowBearing(350, 10, 100, 1, 5);
   assert(acrossNorth !== null && acrossNorth > 350 && acrossNorth < 370, "smoothing should rotate across north by the short path");
 
-  const rateLimited = smoothFollowBearing(0, 180, 100, 1);
+  const rateLimited = smoothFollowBearing(0, 180, 100, 1, 5);
   assertClose(Math.abs(rateLimited ?? 0), 24, 0.001, "smoothing should enforce the 240-degree-per-second rotation cap");
 
-  const faster = smoothFollowBearing(0, 30, 100, 16);
-  const normal = smoothFollowBearing(0, 30, 100, 1);
+  const faster = smoothFollowBearing(0, 30, 100, 16, 5);
+  const normal = smoothFollowBearing(0, 30, 100, 1, 5);
   assert(faster !== null && normal !== null && Math.abs(faster) > Math.abs(normal), "higher playback speed should use a shorter smoothing time constant");
-  assertClose(smoothFollowBearing(25, 120, 0, 1), 25, 0.001, "a duplicate frame time should retain the current bearing");
+  assertClose(smoothFollowBearing(25, 120, 0, 1, 5), 25, 0.001, "a duplicate frame time should retain the current bearing");
+}
+
+function testLowSpeedBearingStabilization() {
+  assertClose(
+    smoothFollowBearing(100, 105, 100, 1, 2) ?? null,
+    100,
+    0.001,
+    "small low-speed bearing changes should remain inside the camera deadband",
+  );
+
+  const lowSpeedModerate = smoothFollowBearing(100, 115, 100, 1, 2);
+  const normalSpeedModerate = smoothFollowBearing(100, 115, 100, 1, 5);
+  assert(
+    lowSpeedModerate !== null
+      && normalSpeedModerate !== null
+      && lowSpeedModerate > 100
+      && lowSpeedModerate < normalSpeedModerate,
+    "moderate low-speed changes should be smoothed more heavily without being removed",
+  );
+
+  let lowSpeedBearing: number | null = 100;
+  for (let index = 0; index < 20; index += 1) {
+    lowSpeedBearing = smoothFollowBearing(
+      lowSpeedBearing,
+      index % 2 === 0 ? 105 : 95,
+      100,
+      1,
+      2,
+    );
+  }
+  assertClose(lowSpeedBearing, 100, 0.001, "alternating low-speed corrections inside the deadband should not wobble the camera");
+
+  let sustainedTurn: number | null = 100;
+  for (let index = 0; index < 20; index += 1) {
+    sustainedTurn = smoothFollowBearing(sustainedTurn, 160, 100, 1, 2);
+  }
+  assert(sustainedTurn !== null && sustainedTurn > 140, "a sustained low-speed turn should continue rotating the camera");
+
+  const blended = smoothFollowBearing(100, 105, 100, 1, 3.25);
+  assert(blended !== null && blended > 100, "stabilization should blend out as movement speed increases");
 }
 
 function testMaximumPreparedRouteSize() {
@@ -168,5 +209,6 @@ testBearingUnwrapAcrossNorth();
 testHairpinAndStationaryPoints();
 testTimestampInterpolationAndAntimeridian();
 testBearingSmoothing();
+testLowSpeedBearingStabilization();
 testMaximumPreparedRouteSize();
 console.log("Map Follow tests passed");

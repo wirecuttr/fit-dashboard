@@ -2,6 +2,12 @@ const EARTH_RADIUS_M = 6_371_008.8;
 const MIN_HEADING_DISPLACEMENT_M = 5;
 const CURVATURE_WINDOW_M = 30;
 const LOOKBEHIND_M = 3;
+const LOW_SPEED_FULL_STABILIZATION_MPS = 2.5;
+const LOW_SPEED_STABILIZATION_END_MPS = 4;
+const LOW_SPEED_BEARING_DEADBAND_DEG = 6;
+const LOW_SPEED_TIME_CONSTANT_MULTIPLIER = 2;
+const LOW_SPEED_MAXIMUM_ROTATION_DEG_S = 120;
+const NORMAL_MAXIMUM_ROTATION_DEG_S = 240;
 
 export type FollowRouteInputPoint = {
   longitude: number;
@@ -22,6 +28,7 @@ export type InterpolatedFollowPosition = {
   longitude: number;
   latitude: number;
   bearingDeg: number | null;
+  movementSpeedMps: number;
 };
 
 function toRadians(degrees: number): number {
@@ -207,6 +214,12 @@ function normaliseLongitude(longitude: number): number {
   return ((longitude + 540) % 360) - 180;
 }
 
+function segmentMovementSpeedMps(before: PreparedFollowPoint, after: PreparedFollowPoint): number {
+  const durationS = (after.timestampMs - before.timestampMs) / 1000;
+  if (durationS <= 0) return 0;
+  return distanceMetres(before, after) / durationS;
+}
+
 export function interpolateFollowPosition(
   route: PreparedFollowRoute,
   timestampMs: number,
@@ -214,18 +227,22 @@ export function interpolateFollowPosition(
   const { points } = route;
   if (points.length === 0) return null;
   if (timestampMs < points[0].timestampMs) {
+    const nextPoint = points[Math.min(1, points.length - 1)];
     return {
       longitude: points[0].longitude,
       latitude: points[0].latitude,
       bearingDeg: points[0].unwrappedBearingDeg,
+      movementSpeedMps: segmentMovementSpeedMps(points[0], nextPoint),
     };
   }
   const lastPoint = points[points.length - 1];
   if (timestampMs >= lastPoint.timestampMs) {
+    const previousPoint = points[Math.max(0, points.length - 2)];
     return {
       longitude: lastPoint.longitude,
       latitude: lastPoint.latitude,
       bearingDeg: lastPoint.unwrappedBearingDeg,
+      movementSpeedMps: segmentMovementSpeedMps(previousPoint, lastPoint),
     };
   }
 
@@ -253,6 +270,7 @@ export function interpolateFollowPosition(
     longitude: normaliseLongitude(before.longitude + shortestLongitudeDelta(before.longitude, after.longitude) * progress),
     latitude: before.latitude + (after.latitude - before.latitude) * progress,
     bearingDeg,
+    movementSpeedMps: segmentMovementSpeedMps(before, after),
   };
 }
 
@@ -261,16 +279,33 @@ export function smoothFollowBearing(
   targetBearingDeg: number | null,
   elapsedMs: number,
   playbackSpeed: number,
+  movementSpeedMps: number,
 ): number | null {
   if (targetBearingDeg === null) return currentBearingDeg;
   if (currentBearingDeg === null) return targetBearingDeg;
   if (elapsedMs <= 0) return currentBearingDeg;
 
   const boundedElapsedMs = Math.min(elapsedMs, 250);
-  const timeConstantMs = Math.max(80, 300 / Math.sqrt(Math.max(1, playbackSpeed)));
+  const stabilizationBlend = Number.isFinite(movementSpeedMps)
+    ? 1 - clamp(
+      (Math.max(0, movementSpeedMps) - LOW_SPEED_FULL_STABILIZATION_MPS)
+        / (LOW_SPEED_STABILIZATION_END_MPS - LOW_SPEED_FULL_STABILIZATION_MPS),
+      0,
+      1,
+    )
+    : 0;
+  const timeConstantMultiplier = 1
+    + stabilizationBlend * (LOW_SPEED_TIME_CONSTANT_MULTIPLIER - 1);
+  const timeConstantMs = Math.max(80, 300 / Math.sqrt(Math.max(1, playbackSpeed)))
+    * timeConstantMultiplier;
   const alpha = 1 - Math.exp(-boundedElapsedMs / timeConstantMs);
   const target = unwrapBearingNear(currentBearingDeg, targetBearingDeg);
-  const desiredChange = (target - currentBearingDeg) * alpha;
-  const maximumChange = 240 * boundedElapsedMs / 1000;
+  const targetDelta = target - currentBearingDeg;
+  const deadbandDeg = LOW_SPEED_BEARING_DEADBAND_DEG * stabilizationBlend;
+  const stabilizedDelta = Math.sign(targetDelta) * Math.max(0, Math.abs(targetDelta) - deadbandDeg);
+  const desiredChange = stabilizedDelta * alpha;
+  const maximumRotationDegS = NORMAL_MAXIMUM_ROTATION_DEG_S
+    - stabilizationBlend * (NORMAL_MAXIMUM_ROTATION_DEG_S - LOW_SPEED_MAXIMUM_ROTATION_DEG_S);
+  const maximumChange = maximumRotationDegS * boundedElapsedMs / 1000;
   return currentBearingDeg + clamp(desiredChange, -maximumChange, maximumChange);
 }
