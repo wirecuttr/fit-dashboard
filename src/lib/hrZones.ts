@@ -5,7 +5,10 @@ export type HeartRateZone = {
   color: string;
 };
 
-const HR_ZONE_COLORS = ["#3b82f6", "#22c55e", "#eab308", "#f97316", "#ef4444", "#a855f7", "#06b6d4"];
+export const HR_ZONE_COLORS = ["#3b82f6", "#22c55e", "#eab308", "#f97316", "#ef4444", "#a855f7", "#06b6d4"];
+
+/** The 4 upper-bound values that separate the 5 default zones. */
+export const DEFAULT_HR_ZONE_BOUNDS: number[] = [75, 95, 120, 150];
 
 export function buildHeartRateZones(zoneUpperBoundsBpm?: number[] | null): HeartRateZone[] {
   if (!Array.isArray(zoneUpperBoundsBpm) || zoneUpperBoundsBpm.length === 0) {
@@ -16,7 +19,7 @@ export function buildHeartRateZones(zoneUpperBoundsBpm?: number[] | null): Heart
     new Set(
       zoneUpperBoundsBpm
         .map((value) => Math.round(Number(value)))
-        .filter((value) => Number.isFinite(value) && value > 0 && value < 260)
+        .filter((value) => Number.isFinite(value) && value > 0 && value <= 260)
     )
   ).sort((a, b) => a - b);
 
