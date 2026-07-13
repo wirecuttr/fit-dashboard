@@ -96,6 +96,14 @@ export function zoneSecondsToMinutes(values: unknown, zoneCount: number): number
   return Array.from({ length: zoneCount }, (_, idx) => minutes[idx] ?? 0);
 }
 
+export function compatibleZoneSecondsToMinutes(values: unknown, zoneCount: number): number[] | null {
+  if (!Array.isArray(values) || values.length !== zoneCount || zoneCount <= 0) return null;
+  const seconds = values.map((value) => Number(value));
+  if (seconds.some((value) => !Number.isFinite(value) || value < 0)) return null;
+  if (!seconds.some((value) => value > 0)) return null;
+  return seconds.map((value) => value / 60);
+}
+
 export function parseMetadataZones(raw?: string | null): ActivityZones | null {
   if (!raw) return null;
   try {

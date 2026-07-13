@@ -16,7 +16,15 @@ export function App() {
   const refresh = useActivityStore((s) => s.refresh);
   const theme = useSettingsStore((s) => s.theme);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
+  const loadHeartRateZonePreferences = useSettingsStore((s) => s.loadHeartRateZonePreferences);
   const { t } = useTranslation();
+
+  async function loadDashboardData() {
+    await Promise.all([
+      refresh(),
+      loadHeartRateZonePreferences(),
+    ]);
+  }
 
   async function resolveStartScreen() {
     try {
@@ -31,7 +39,7 @@ export function App() {
       if (storedToken) {
         try {
           api.setSession(storedToken);
-          await refresh();
+          await loadDashboardData();
           setScreen("dashboard");
           return;
         } catch {
@@ -60,7 +68,7 @@ export function App() {
 
   async function enterDashboard(token: string) {
     api.setSession(token);
-    await refresh();
+    await loadDashboardData();
     setScreen("dashboard");
   }
 

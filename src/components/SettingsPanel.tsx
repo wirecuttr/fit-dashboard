@@ -1,8 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettingsStore } from "../stores/settingsStore";
 import { api } from "../lib/api";
 import { openExternalLink } from "../lib/links";
 import { useTranslation, LANGUAGES } from "../lib/i18n";
+import {
+  DEFAULT_HR_ZONE_BOUNDS,
+  HR_ZONE_COLORS,
+  MANUAL_HR_BOUND_MAX_BPM,
+  MANUAL_HR_BOUND_MIN_BPM,
+  MANUAL_HR_BOUND_MIN_GAP_BPM,
+  MANUAL_HR_SLIDER_MAX_BPM,
+  MANUAL_HR_SLIDER_MIN_BPM,
+  validateManualHeartRateZoneBounds,
+} from "../lib/hrZones";
 import {
   IconActivity, IconAvg, IconBarChart, IconBattery, IconBug, IconChainring, IconCheck,
   IconChevron, IconClipboard, IconClock, IconCollapse, IconCrank, IconDevice, IconDiscord,
@@ -75,6 +85,254 @@ type Props = {
   versionBadgeStatus: VersionBadgeStatus;
 };
 
+type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+function HeartRateZoneDialog({
+  bounds,
+  saving,
+  saveError,
+  onSave,
+  onClose,
+  t,
+}: {
+  bounds: number[];
+  saving: boolean;
+  saveError: boolean;
+  onSave: (boundsBpm: number[]) => Promise<boolean>;
+  onClose: () => void;
+  t: Translate;
+}) {
+  const [draft, setDraft] = useState(() => [...bounds]);
+  const [dragging, setDragging] = useState<number | null>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  const pct = (value: number) => (
+    (value - MANUAL_HR_SLIDER_MIN_BPM)
+    / (MANUAL_HR_SLIDER_MAX_BPM - MANUAL_HR_SLIDER_MIN_BPM)
+  ) * 100;
+
+  const boundaryLimits = useCallback((index: number, values: number[]) => ({
+    min: index === 0
+      ? MANUAL_HR_BOUND_MIN_BPM
+      : values[index - 1] + MANUAL_HR_BOUND_MIN_GAP_BPM,
+    max: index === values.length - 1
+      ? MANUAL_HR_BOUND_MAX_BPM
+      : values[index + 1] - MANUAL_HR_BOUND_MIN_GAP_BPM,
+  }), []);
+
+  const updateDraftValue = useCallback((index: number, value: number) => {
+    setDraft((previous) => {
+      const { min, max } = boundaryLimits(index, previous);
+      const next = [...previous];
+      next[index] = Math.max(min, Math.min(max, Math.round(value)));
+      return next;
+    });
+  }, [boundaryLimits]);
+
+  const updateDraftFromPointer = useCallback((index: number, clientX: number) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const value = MANUAL_HR_SLIDER_MIN_BPM
+      + ratio * (MANUAL_HR_SLIDER_MAX_BPM - MANUAL_HR_SLIDER_MIN_BPM);
+    updateDraftValue(index, value);
+  }, [updateDraftValue]);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving) onClose();
+      if (event.key !== "Tab") return;
+
+      const focusable = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), [role="slider"][tabindex="0"]'
+        ) ?? []
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, saving]);
+
+  useEffect(() => {
+    if (dragging === null) return;
+    const onMove = (event: PointerEvent) => updateDraftFromPointer(dragging, event.clientX);
+    const onUp = () => setDragging(null);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [dragging, updateDraftFromPointer]);
+
+  const segmentEdges = [MANUAL_HR_SLIDER_MIN_BPM, ...draft, MANUAL_HR_SLIDER_MAX_BPM];
+  const zoneColours = HR_ZONE_COLORS.slice(0, 5);
+  const zoneLabels = zoneColours.map((colour, index) => {
+    const low = index === 0 ? null : draft[index - 1] + 1;
+    const high = index === 4 ? null : draft[index];
+    const range = low === null
+      ? `≤${high} bpm`
+      : high === null ? `>${draft[3]} bpm` : `${low}–${high} bpm`;
+    return { name: `Z${index + 1}`, range, colour };
+  });
+
+  return (
+    <div className="hr-zone-dialog-overlay">
+      <div
+        className="hr-zone-dialog-backdrop"
+        onClick={() => { if (!saving) onClose(); }}
+      />
+      <div
+        ref={dialogRef}
+        className="hr-zone-dialog"
+        role="dialog"
+        tabIndex={-1}
+        aria-modal="true"
+        aria-labelledby="hr-zone-dialog-title"
+        aria-describedby="hr-zone-dialog-description"
+      >
+        <div className="hr-zone-dialog-header">
+          <h3 id="hr-zone-dialog-title">{t("settings.hrZonesTitle")}</h3>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            className="icon-btn"
+            onClick={onClose}
+            disabled={saving}
+            aria-label={t("settings.hrZonesClose")}
+          >
+            &times;
+          </button>
+        </div>
+        <p id="hr-zone-dialog-description" className="hr-zone-dialog-desc">
+          {t("settings.hrZonesDescription")}
+        </p>
+
+        <div className="hr-zone-slider-container">
+          <div className="hr-zone-slider" ref={trackRef}>
+            <div className="hr-zone-track" aria-hidden="true">
+              {zoneColours.map((colour, index) => {
+                const left = pct(segmentEdges[index]);
+                const right = pct(segmentEdges[index + 1]);
+                return (
+                  <span
+                    key={colour}
+                    className="hr-zone-segment"
+                    style={{
+                      left: `${left}%`,
+                      width: `${right - left}%`,
+                      background: colour,
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            {draft.map((value, index) => {
+              const limits = boundaryLimits(index, draft);
+              return (
+                <div
+                  key={index}
+                  className={`hr-zone-handle${dragging === index ? " dragging" : ""}`}
+                  style={{
+                    left: `${pct(value)}%`,
+                    color: zoneColours[index + 1] ?? zoneColours[index],
+                  }}
+                  role="slider"
+                  tabIndex={saving ? -1 : 0}
+                  aria-label={t("settings.hrZoneBoundaryLabel", { zone: index + 1 })}
+                  aria-valuemin={limits.min}
+                  aria-valuemax={limits.max}
+                  aria-valuenow={value}
+                  aria-valuetext={`${value} bpm`}
+                  onPointerDown={(event) => {
+                    if (saving) return;
+                    event.preventDefault();
+                    event.currentTarget.focus();
+                    setDragging(index);
+                    updateDraftFromPointer(index, event.clientX);
+                  }}
+                  onKeyDown={(event) => {
+                    if (saving) return;
+                    let next: number | null = null;
+                    if (event.key === "ArrowLeft" || event.key === "ArrowDown") next = value - 1;
+                    if (event.key === "ArrowRight" || event.key === "ArrowUp") next = value + 1;
+                    if (event.key === "PageDown") next = value - 5;
+                    if (event.key === "PageUp") next = value + 5;
+                    if (event.key === "Home") next = limits.min;
+                    if (event.key === "End") next = limits.max;
+                    if (next !== null) {
+                      event.preventDefault();
+                      updateDraftValue(index, next);
+                    }
+                  }}
+                >
+                  <span className="hr-zone-handle-value">{value}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hr-zone-labels">
+            {zoneLabels.map((zone) => (
+              <div key={zone.name} className="hr-zone-label-item">
+                <span className="hr-zone-label-name" style={{ color: zone.colour }}>{zone.name}</span>
+                <span className="hr-zone-label-range">{zone.range}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {saveError && (
+          <p className="hr-zone-status error" role="alert">{t("settings.hrZonesSaveFailed")}</p>
+        )}
+        <div className="hr-zone-dialog-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setDraft([...DEFAULT_HR_ZONE_BOUNDS])}
+            disabled={saving}
+          >
+            {t("settings.hrZonesReset")}
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void onSave(draft).then((saved) => { if (saved) onClose(); })}
+            disabled={saving || !validateManualHeartRateZoneBounds(draft)}
+          >
+            {saving ? t("settings.hrZonesSaving") : t("settings.hrZonesSave")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 
 export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
@@ -86,14 +344,22 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
     mapStyle,
     smoothGraphs,
     supporterBadge,
+    manualHeartRateZoneBoundsBpm,
+    manualHeartRateZoneUsage,
+    heartRateZonePreferenceStatus,
+    heartRateZonePreferenceSaving,
+    heartRateZonePreferenceError,
     setTheme,
     setDistanceUnit,
     setTimeFormat,
     setMapStyle,
     setSmoothGraphs,
+    loadHeartRateZonePreferences,
+    saveManualHeartRateZoneBounds,
+    setManualHeartRateZoneUsage,
     verifySupporterCode,
     removeSupporterBadge,
-    toggleSettings
+    toggleSettings,
   } = useSettingsStore();
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const language = useSettingsStore((s) => s.language);
@@ -106,6 +372,7 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
   const [clearingBlacklist, setClearingBlacklist] = useState(false);
   const [blacklistMsg, setBlacklistMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [blacklistCount, setBlacklistCount] = useState<number | null>(null);
+  const [showHrZoneDialog, setShowHrZoneDialog] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +393,10 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
     return () => {
       cancelled = true;
     };
+  }, [showSettings]);
+
+  useEffect(() => {
+    if (!showSettings) setShowHrZoneDialog(false);
   }, [showSettings]);
 
   if (!showSettings) {
@@ -215,6 +486,78 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
             />
           </label>
         </div>
+
+        <section className="hr-zone-settings" aria-labelledby="manual-hr-zone-settings-title">
+          <div className="hr-zone-settings-header">
+            <div>
+              <strong id="manual-hr-zone-settings-title">{t("settings.hrZonesManualTitle")}</strong>
+              <p className="small">{t("settings.hrZonesManualDescription")}</p>
+            </div>
+            <IconHeart />
+          </div>
+
+          {(heartRateZonePreferenceStatus === "idle" || heartRateZonePreferenceStatus === "loading") && (
+            <p className="hr-zone-status" role="status">{t("settings.hrZonesLoading")}</p>
+          )}
+          {heartRateZonePreferenceStatus === "error" && (
+            <div className="hr-zone-load-error" role="alert">
+              <span>{t("settings.hrZonesLoadFailed")}</span>
+              <button type="button" className="btn-secondary" onClick={() => void loadHeartRateZonePreferences()}>
+                {t("app.retry")}
+              </button>
+            </div>
+          )}
+          {heartRateZonePreferenceStatus === "ready" && (
+            <>
+              <button
+                type="button"
+                className="hr-zone-btn-customize"
+                onClick={() => setShowHrZoneDialog(true)}
+                disabled={heartRateZonePreferenceSaving}
+              >
+                <IconHeart />
+                {t("settings.customizeHrZones")}
+              </button>
+
+              <fieldset className="hr-zone-policy" disabled={heartRateZonePreferenceSaving}>
+                <legend>{t("settings.hrZonesUsage")}</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="heart-rate-zone-usage"
+                    value="fallback"
+                    checked={manualHeartRateZoneUsage === "fallback"}
+                    onChange={() => void setManualHeartRateZoneUsage("fallback")}
+                  />
+                  <span>
+                    <strong>{t("settings.hrZonesFallback")}</strong>
+                    <small>{t("settings.hrZonesFallbackHelp")}</small>
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="heart-rate-zone-usage"
+                    value="always"
+                    checked={manualHeartRateZoneUsage === "always"}
+                    onChange={() => void setManualHeartRateZoneUsage("always")}
+                  />
+                  <span>
+                    <strong>{t("settings.hrZonesAlways")}</strong>
+                    <small>{t("settings.hrZonesAlwaysHelp")}</small>
+                  </span>
+                </label>
+              </fieldset>
+
+              {heartRateZonePreferenceSaving && (
+                <p className="hr-zone-status" role="status">{t("settings.hrZonesSaving")}</p>
+              )}
+              {heartRateZonePreferenceError && !showHrZoneDialog && (
+                <p className="hr-zone-status error" role="alert">{t("settings.hrZonesSaveFailed")}</p>
+              )}
+            </>
+          )}
+        </section>
 
         <div className="links-box">
           <strong>{t("settings.linksAndContact")}</strong>
@@ -352,6 +695,16 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
           </div>
         </div>
       </div>
+      {showHrZoneDialog && (
+        <HeartRateZoneDialog
+          bounds={manualHeartRateZoneBoundsBpm}
+          saving={heartRateZonePreferenceSaving}
+          saveError={!!heartRateZonePreferenceError}
+          onSave={saveManualHeartRateZoneBounds}
+          onClose={() => setShowHrZoneDialog(false)}
+          t={t}
+        />
+      )}
     </div>
   );
 }

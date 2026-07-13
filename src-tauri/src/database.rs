@@ -791,12 +791,13 @@ impl Database {
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
         {
             let conn = self.conn.lock().expect("db mutex poisoned");
-            // DuckDB doesn't support INSERT OR REPLACE; delete then insert
-            conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
-            conn.execute(
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+            tx.execute(
                 "INSERT INTO settings (key, value) VALUES (?1, ?2)",
                 params![key, value],
             )?;
+            tx.commit()?;
         }
         self.checkpoint_if_wal_exceeds_limit()?;
         Ok(())

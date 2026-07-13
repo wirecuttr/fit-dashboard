@@ -1,11 +1,19 @@
 import { create } from "zustand";
 import { api } from "../lib/api";
+import {
+  DEFAULT_HR_ZONE_BOUNDS,
+  HEART_RATE_ZONE_PREFERENCES_VERSION,
+  normalizeHeartRateZonePreferences,
+  validateManualHeartRateZoneBounds,
+  type ManualHeartRateZoneUsage,
+} from "../lib/hrZones";
 
 type Theme = "light" | "dark";
 type DistanceUnit = "km" | "mi";
 type TimeFormat = "12h" | "24h";
 export type MapStyle = "default" | "light" | "dark" | "openstreet" | "topo" | "satellite";
 export type Language = string;
+export type HeartRateZonePreferenceStatus = "idle" | "loading" | "ready" | "error";
 
 type SettingsState = {
   theme: Theme;
@@ -17,6 +25,13 @@ type SettingsState = {
   overviewTableDays: number;
   supporterBadge: boolean;
   donationDismissed: boolean;
+  manualHeartRateZoneBoundsBpm: number[];
+  manualHeartRateZoneUsage: ManualHeartRateZoneUsage;
+  confirmedManualHeartRateZoneBoundsBpm: number[];
+  confirmedManualHeartRateZoneUsage: ManualHeartRateZoneUsage;
+  heartRateZonePreferenceStatus: HeartRateZonePreferenceStatus;
+  heartRateZonePreferenceSaving: boolean;
+  heartRateZonePreferenceError: string | null;
   showSettings: boolean;
   hydrate: () => void;
   toggleSettings: () => void;
@@ -28,6 +43,9 @@ type SettingsState = {
   setSmoothGraphs: (smoothGraphs: boolean) => void;
   setOverviewTableDays: (days: number) => void;
   loadSupporterStatus: () => Promise<void>;
+  loadHeartRateZonePreferences: () => Promise<boolean>;
+  saveManualHeartRateZoneBounds: (boundsBpm: number[]) => Promise<boolean>;
+  setManualHeartRateZoneUsage: (usage: ManualHeartRateZoneUsage) => Promise<boolean>;
   verifySupporterCode: (code: string) => Promise<boolean>;
   removeSupporterBadge: () => Promise<void>;
   dismissDonationBanner: () => void;
@@ -45,6 +63,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   overviewTableDays: 7,
   supporterBadge: false,
   donationDismissed: false,
+  manualHeartRateZoneBoundsBpm: [...DEFAULT_HR_ZONE_BOUNDS],
+  manualHeartRateZoneUsage: "fallback",
+  confirmedManualHeartRateZoneBoundsBpm: [...DEFAULT_HR_ZONE_BOUNDS],
+  confirmedManualHeartRateZoneUsage: "fallback",
+  heartRateZonePreferenceStatus: "idle",
+  heartRateZonePreferenceSaving: false,
+  heartRateZonePreferenceError: null,
   showSettings: false,
 
   hydrate: () => {
@@ -116,6 +141,114 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
+  loadHeartRateZonePreferences: async () => {
+    set({
+      heartRateZonePreferenceStatus: "loading",
+      heartRateZonePreferenceError: null,
+    });
+    try {
+      const preferences = normalizeHeartRateZonePreferences(
+        await api.getHeartRateZonePreferences()
+      );
+      set({
+        manualHeartRateZoneBoundsBpm: [...preferences.bounds_bpm],
+        manualHeartRateZoneUsage: preferences.usage,
+        confirmedManualHeartRateZoneBoundsBpm: [...preferences.bounds_bpm],
+        confirmedManualHeartRateZoneUsage: preferences.usage,
+        heartRateZonePreferenceStatus: "ready",
+        heartRateZonePreferenceError: null,
+      });
+      return true;
+    } catch (err) {
+      console.warn("Failed to load heart-rate-zone preferences:", err);
+      set({
+        heartRateZonePreferenceStatus: "error",
+        heartRateZonePreferenceError: errorMessage(err),
+      });
+      return false;
+    }
+  },
+
+  saveManualHeartRateZoneBounds: async (boundsBpm) => {
+    const state = get();
+    if (state.heartRateZonePreferenceStatus !== "ready"
+      || state.heartRateZonePreferenceSaving
+      || !validateManualHeartRateZoneBounds(boundsBpm)) {
+      return false;
+    }
+
+    set({
+      heartRateZonePreferenceSaving: true,
+      heartRateZonePreferenceError: null,
+    });
+    try {
+      const preferences = normalizeHeartRateZonePreferences(
+        await api.setHeartRateZonePreferences({
+          version: HEART_RATE_ZONE_PREFERENCES_VERSION,
+          bounds_bpm: [...boundsBpm],
+          usage: state.confirmedManualHeartRateZoneUsage,
+        })
+      );
+      set({
+        manualHeartRateZoneBoundsBpm: [...preferences.bounds_bpm],
+        manualHeartRateZoneUsage: preferences.usage,
+        confirmedManualHeartRateZoneBoundsBpm: [...preferences.bounds_bpm],
+        confirmedManualHeartRateZoneUsage: preferences.usage,
+        heartRateZonePreferenceStatus: "ready",
+        heartRateZonePreferenceError: null,
+      });
+      return true;
+    } catch (err) {
+      console.warn("Failed to save heart-rate-zone boundaries:", err);
+      set({ heartRateZonePreferenceError: errorMessage(err) });
+      return false;
+    } finally {
+      set({ heartRateZonePreferenceSaving: false });
+    }
+  },
+
+  setManualHeartRateZoneUsage: async (usage) => {
+    const state = get();
+    if (state.heartRateZonePreferenceStatus !== "ready"
+      || state.heartRateZonePreferenceSaving
+      || usage === state.manualHeartRateZoneUsage) {
+      return false;
+    }
+
+    set({
+      manualHeartRateZoneUsage: usage,
+      heartRateZonePreferenceSaving: true,
+      heartRateZonePreferenceError: null,
+    });
+    try {
+      const preferences = normalizeHeartRateZonePreferences(
+        await api.setHeartRateZonePreferences({
+          version: HEART_RATE_ZONE_PREFERENCES_VERSION,
+          bounds_bpm: [...state.confirmedManualHeartRateZoneBoundsBpm],
+          usage,
+        })
+      );
+      set({
+        manualHeartRateZoneBoundsBpm: [...preferences.bounds_bpm],
+        manualHeartRateZoneUsage: preferences.usage,
+        confirmedManualHeartRateZoneBoundsBpm: [...preferences.bounds_bpm],
+        confirmedManualHeartRateZoneUsage: preferences.usage,
+        heartRateZonePreferenceStatus: "ready",
+        heartRateZonePreferenceError: null,
+      });
+      return true;
+    } catch (err) {
+      console.warn("Failed to save heart-rate-zone usage policy:", err);
+      set({
+        manualHeartRateZoneUsage: state.confirmedManualHeartRateZoneUsage,
+        heartRateZonePreferenceError: errorMessage(err),
+      });
+      return false;
+    } finally {
+      set({ heartRateZonePreferenceSaving: false });
+    }
+  },
+
   verifySupporterCode: async (code: string) => {
     try {
       const valid = await api.verifySupporterCode(code);
@@ -162,4 +295,8 @@ function persist(state: SettingsState) {
       overviewTableDays: state.overviewTableDays,
     })
   );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

@@ -54,6 +54,7 @@ import {
 } from "../lib/deviceMetadata";
 import { hasUsableDistanceAxis, type TelemetryXAxisMode } from "../lib/telemetryAxis";
 import { getHeartRateZoneBounds } from "../lib/zones";
+import { resolveHeartRateZoneSelection } from "../lib/hrZones";
 
 type Props = { onLogout: () => Promise<void> };
 
@@ -334,7 +335,8 @@ export function Dashboard({ onLogout }: Props) {
   const {
     distanceUnit, timeFormat, supporterBadge,
     toggleSettings, setTheme, mapStyle, setMapStyle, smoothGraphs,
-    loadSupporterStatus, theme,
+    loadSupporterStatus, theme, manualHeartRateZoneBoundsBpm,
+    manualHeartRateZoneUsage, heartRateZonePreferenceStatus,
   } = useSettingsStore();
   const { t } = useTranslation();
 
@@ -1086,9 +1088,24 @@ export function Dashboard({ onLogout }: Props) {
       .filter((ts) => !!ts),
     [selectedMetadata]
   );
-  const heartRateZoneBoundsBpm = useMemo(
+  const fitHeartRateZoneBoundsBpm = useMemo(
     () => getHeartRateZoneBounds(selectedMetadata),
     [selectedMetadata]
+  );
+  const heartRateZoneSelection = useMemo(
+    () => heartRateZonePreferenceStatus === "ready"
+      ? resolveHeartRateZoneSelection(
+          fitHeartRateZoneBoundsBpm,
+          manualHeartRateZoneBoundsBpm,
+          manualHeartRateZoneUsage,
+        )
+      : undefined,
+    [
+      fitHeartRateZoneBoundsBpm,
+      heartRateZonePreferenceStatus,
+      manualHeartRateZoneBoundsBpm,
+      manualHeartRateZoneUsage,
+    ]
   );
   const hasPlannedWorkoutIntervals = useMemo(() => {
     const steps = selectedMetadata?.workout_steps ?? [];
@@ -1888,7 +1905,7 @@ export function Dashboard({ onLogout }: Props) {
               </div>
               <section className="activity-visual-grid">
                 {hasDetailRoute && <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />}
-                <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} zones={selectedMetadata?.zones ?? null} heartRateZoneBoundsBpm={heartRateZoneBoundsBpm} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
+                <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} zones={selectedMetadata?.zones ?? null} heartRateZoneBoundsBpm={heartRateZoneSelection?.boundsBpm} heartRateZoneSource={heartRateZoneSelection?.source} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
               </section>
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">

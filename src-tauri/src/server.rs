@@ -14,6 +14,10 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, TraceLayer};
 use crate::{
     auth::{create_session, hash_password, verify_password},
     fit_parser::{is_non_activity_fit_error, parse_activity_bytes},
+    heart_rate_zones::{
+        load_heart_rate_zone_preferences, save_heart_rate_zone_preferences,
+        HeartRateZonePreferences,
+    },
     models::{Credentials, RenameActivityPayload, TokenResponse, UnlockPayload},
     state::AppState,
 };
@@ -56,6 +60,10 @@ pub fn app(state: AppState) -> Router {
         .route("/api/supporter/verify", post(verify_supporter_code))
         .route("/api/supporter/status", get(get_supporter_status).post(set_supporter_status))
         .route("/api/supporter/donation", get(get_donation_dismissed).post(set_donation_dismissed))
+        .route(
+            "/api/settings/heart-rate-zones",
+            get(get_heart_rate_zone_preferences).post(set_heart_rate_zone_preferences),
+        )
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .layer(
             TraceLayer::new_for_http()
@@ -872,6 +880,30 @@ async fn set_donation_dismissed(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     tracing::info!(dismissed = payload.dismissed, "set_donation_dismissed completed");
     Ok(Json(payload.dismissed))
+}
+
+async fn get_heart_rate_zone_preferences(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<HeartRateZonePreferences>, StatusCode> {
+    ensure_session(&state, &headers)?;
+    let preferences = load_heart_rate_zone_preferences(&state.db)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(preferences))
+}
+
+async fn set_heart_rate_zone_preferences(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(preferences): Json<HeartRateZonePreferences>,
+) -> Result<Json<HeartRateZonePreferences>, StatusCode> {
+    ensure_session(&state, &headers)?;
+    preferences
+        .validate()
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let saved = save_heart_rate_zone_preferences(&state.db, preferences)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(saved))
 }
 
 fn get_unlock_block_until(state: &AppState) -> Result<Option<chrono::DateTime<chrono::Utc>>, StatusCode> {

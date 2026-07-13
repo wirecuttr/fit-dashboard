@@ -2,8 +2,14 @@ import { useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { Activity, RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
-import { buildHeartRateZones, resolveHeartRateZoneIndex } from "../lib/hrZones";
-import { buildPowerZones, resolveNumericZoneIndex, zoneSecondsToMinutes, type ActivityZones } from "../lib/zones";
+import { buildHeartRateZones, resolveHeartRateZoneIndex, type HeartRateZoneSource } from "../lib/hrZones";
+import {
+  buildPowerZones,
+  compatibleZoneSecondsToMinutes,
+  resolveNumericZoneIndex,
+  zoneSecondsToMinutes,
+  type ActivityZones,
+} from "../lib/zones";
 import { applyRollingAverageSeries, getDynamicSmoothingWindow } from "../lib/chartSmoothing";
 import { getRecordDataAvailability } from "../lib/recordDataAvailability";
 import {
@@ -47,6 +53,7 @@ type Props = {
   xAxisMode?: TelemetryXAxisMode;
   zones?: ActivityZones | null;
   heartRateZoneBoundsBpm?: number[];
+  heartRateZoneSource?: HeartRateZoneSource;
   zoomRange?: { start: number; end: number } | null;
   onZoomChange?: (range: { start: number; end: number }) => void;
   lapTimestampsUtc?: string[];
@@ -363,6 +370,7 @@ export function ActivityInsights({
   xAxisMode = "time",
   zones,
   heartRateZoneBoundsBpm,
+  heartRateZoneSource,
   zoomRange,
   onZoomChange,
   lapTimestampsUtc = [],
@@ -525,24 +533,31 @@ export function ActivityInsights({
 
   const lapMarkers = buildLapMarkers(records, lapTimestampsUtc, t0, xAxisMode, distanceUnit, timerMetadata);
 
-  const hrValues = timeline
-    .map((d) => d.heartRate)
-    .filter((n): n is number => typeof n === "number" && n > 0);
   const hasRealHeartRateZones = hrZones.length > 0;
-  const fitHrZoneMinutes = hasRealHeartRateZones ? zoneSecondsToMinutes(zones?.heart_rate?.time_in_zone_s, hrZones.length) : [];
-  const zoneMinutes = fitHrZoneMinutes.some((value) => value > 0) ? fitHrZoneMinutes : hrZones.map(() => 0);
-  if (hasRealHeartRateZones && !fitHrZoneMinutes.some((value) => value > 0) && hrValues.length > 0) {
-    for (let i = 0; i < timeline.length - 1; i += 1) {
-      const hr = timeline[i].heartRate;
+  const fitHrZoneMinutes = heartRateZoneSource === "fit" && hasRealHeartRateZones
+    ? compatibleZoneSecondsToMinutes(zones?.heart_rate?.time_in_zone_s, hrZones.length)
+    : null;
+  const zoneRecords = analysisRecords.length ? analysisRecords : records;
+  const zoneTelemetryPoints = hasRealHeartRateZones && !fitHrZoneMinutes
+    ? buildTelemetryPoints(zoneRecords, t0, "time", distanceUnit, timerMetadata)
+    : [];
+  const hasZoneHeartRateSamples = zoneTelemetryPoints.some(
+    (point) => typeof point.record.heart_rate === "number" && point.record.heart_rate > 0
+  );
+  const zoneMinutes = fitHrZoneMinutes ? [...fitHrZoneMinutes] : hrZones.map(() => 0);
+  if (hasRealHeartRateZones && !fitHrZoneMinutes && hasZoneHeartRateSamples) {
+    for (let i = 0; i < zoneTelemetryPoints.length - 1; i += 1) {
+      const hr = zoneTelemetryPoints[i].record.heart_rate;
       if (typeof hr !== "number" || hr <= 0) continue;
-      const dtMin = Math.max(0, (timeline[i + 1].relMs - timeline[i].relMs) / 60000);
+      const dtMin = Math.max(0, (zoneTelemetryPoints[i + 1].relMs - zoneTelemetryPoints[i].relMs) / 60000);
       const zoneIndex = resolveHeartRateZoneIndex(hr, hrZones);
       if (zoneIndex !== null) {
         zoneMinutes[zoneIndex] += dtMin;
       }
     }
   }
-  const hasHeartRateZoneData = hasRealHeartRateZones && (hasHeartRateData || zoneMinutes.some((value) => value > 0));
+  const hasHeartRateZoneData = hasRealHeartRateZones
+    && (!!fitHrZoneMinutes || hasZoneHeartRateSamples);
 
   const fitPowerZoneMinutes = zoneSecondsToMinutes(zones?.power?.time_in_zone_s, powerZones.length);
   const powerZoneMinutes = fitPowerZoneMinutes.some((value) => value > 0) ? fitPowerZoneMinutes : powerZones.map(() => 0);

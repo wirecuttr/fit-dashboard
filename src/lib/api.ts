@@ -1,6 +1,7 @@
 import axios from "axios";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { Activity, OverviewStats, RecordPoint } from "../types";
+import type { HeartRateZonePreferences } from "./hrZones";
 
 type StorageInfo = {
   data_dir: string;
@@ -269,6 +270,24 @@ export const api = {
       return invoke<boolean>("set_donation_dismissed", { dismissed });
     }
     const res = await webClient.post("/supporter/donation", { dismissed });
+    return res.data;
+  },
+
+  async getHeartRateZonePreferences(): Promise<HeartRateZonePreferences> {
+    if (isTauriRuntime()) {
+      return invoke<HeartRateZonePreferences>("get_heart_rate_zone_preferences");
+    }
+    const res = await webClient.get("/settings/heart-rate-zones");
+    return res.data;
+  },
+
+  async setHeartRateZonePreferences(
+    preferences: HeartRateZonePreferences,
+  ): Promise<HeartRateZonePreferences> {
+    if (isTauriRuntime()) {
+      return invoke<HeartRateZonePreferences>("set_heart_rate_zone_preferences", { preferences });
+    }
+    const res = await webClient.post("/settings/heart-rate-zones", preferences);
     return res.data;
   }
 };

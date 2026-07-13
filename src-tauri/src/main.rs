@@ -4,6 +4,7 @@ mod auth;
 mod database;
 mod device_metadata;
 mod fit_parser;
+mod heart_rate_zones;
 mod models;
 #[cfg(all(feature = "web", not(feature = "tauri-app")))]
 mod server;

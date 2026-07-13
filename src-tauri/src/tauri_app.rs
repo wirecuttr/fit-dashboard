@@ -6,6 +6,10 @@ use tauri::{Emitter, Manager, State};
 use crate::{
     auth::{create_session, hash_password, verify_password},
     fit_parser::{is_non_activity_fit_error, parse_activity_bytes},
+    heart_rate_zones::{
+        load_heart_rate_zone_preferences, save_heart_rate_zone_preferences,
+        HeartRateZonePreferences,
+    },
     models::{Activity, OverviewStats, RecordPoint, TokenResponse},
     state::{AppState, StorageInfo},
 };
@@ -101,6 +105,8 @@ pub fn run(state: AppState) -> anyhow::Result<()> {
             set_supporter_status,
             get_donation_dismissed,
             set_donation_dismissed,
+            get_heart_rate_zone_preferences,
+            set_heart_rate_zone_preferences,
         ])
         .build(tauri::generate_context!())
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
@@ -889,6 +895,21 @@ fn set_donation_dismissed(state: State<'_, AppState>, dismissed: bool) -> Result
         .set_setting("donation_dismissed", if dismissed { "true" } else { "false" })
         .map_err(|e| e.to_string())?;
     Ok(dismissed)
+}
+
+#[tauri::command]
+fn get_heart_rate_zone_preferences(
+    state: State<'_, AppState>,
+) -> Result<HeartRateZonePreferences, String> {
+    load_heart_rate_zone_preferences(&state.db).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_heart_rate_zone_preferences(
+    state: State<'_, AppState>,
+    preferences: HeartRateZonePreferences,
+) -> Result<HeartRateZonePreferences, String> {
+    save_heart_rate_zone_preferences(&state.db, preferences).map_err(|e| e.to_string())
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
