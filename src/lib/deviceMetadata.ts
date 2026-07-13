@@ -1,6 +1,6 @@
 import productLookup from "../data/deviceProductLookup.json";
 import type { Activity } from "../types";
-import type { TelemetryTimerMetadata } from "./telemetryAxis";
+import type { ActivityTimerMetadata } from "./activityTime";
 import type { ActivityZones } from "./zones";
 
 export type CodeNameLabel = {
@@ -104,6 +104,10 @@ export type LeftRightBalanceMetadata = {
 };
 
 export type ActivityMetadata = {
+  duration_source?: string | null;
+  record_span_duration_s?: number | null;
+  total_elapsed_time_s?: number | null;
+  total_timer_time_s?: number | null;
   heart_rate_zone_bounds_bpm?: number[];
   zones?: ActivityZones | null;
   file_id?: {
@@ -111,7 +115,7 @@ export type ActivityMetadata = {
     serial_number?: number | null;
   };
   device_info?: DeviceInfoMetadata | null;
-  timer?: TelemetryTimerMetadata | null;
+  timer?: ActivityTimerMetadata | null;
   workout?: WorkoutMetadata | null;
   workout_steps?: WorkoutStepMetadata[];
   training_file?: {
@@ -146,6 +150,7 @@ export type ActivityMetadata = {
     avg_heart_rate?: number | null;
     max_cadence?: number | null;
     avg_cadence?: number | null;
+    total_timer_time_s?: number | null;
     total_elapsed_time_s?: number | null;
     total_distance_m?: number | null;
     total_calories?: number | null;

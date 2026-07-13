@@ -10,6 +10,15 @@ import {
   prepareFollowRoute,
   smoothFollowBearing,
 } from "../lib/mapFollow";
+import {
+  basisElapsedMsAtTimestamp,
+  getBasisDurationMs,
+  isTimestampStopped,
+  sourceTimestampAtBasisElapsed,
+  stoppedIntervalAtTimestamp,
+  type ActivityTimeBasis,
+  type ActivityTimeResolution,
+} from "../lib/activityTime";
 import { convertElevationMeters, convertSpeedKmh, elevationLabel, paceLabel, speedLabel, type DistanceUnit } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
 
@@ -19,6 +28,8 @@ type Props = {
   setMapStyle: (style: MapStyle) => void;
   lapTimestampsUtc?: string[];
   usePaceDisplay?: boolean;
+  timeBasis: ActivityTimeBasis;
+  timeResolution: ActivityTimeResolution;
 };
 
 type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "altitude" | "power" | "temperature" | "time";
@@ -27,6 +38,18 @@ const FOLLOW_CAMERA_ZOOM = 15.5;
 const FOLLOW_CAMERA_PITCH = 45;
 const FOLLOW_CAMERA_MAX_PITCH = 60;
 const FOLLOW_CAMERA_FRAME_INTERVAL_MS = 1000 / 30;
+
+function indexAtOrBeforeTimestamp(records: RecordPoint[], targetTimestampMs: number): number {
+  if (!records.length) return 0;
+  let lo = 0;
+  let hi = records.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (records[mid].timestamp_ms <= targetTimestampMs) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
 
 const IconPlay = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -407,7 +430,15 @@ function buildLapMarkerGeoJson(gpsRecs: RecordPoint[], lapTimestampsUtc: string[
   return { type: "FeatureCollection", features };
 }
 
-export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc = [], usePaceDisplay = false }: Props) {
+export function ActivityMap({
+  records,
+  mapStyle,
+  setMapStyle,
+  lapTimestampsUtc = [],
+  usePaceDisplay = false,
+  timeBasis,
+  timeResolution,
+}: Props) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -454,6 +485,8 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const [followEnabled, setFollowEnabled] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
   const [timelineIndex, setTimelineIndex] = useState(0);
+  const [playbackElapsedSeconds, setPlaybackElapsedSeconds] = useState(0);
+  const [playbackPaused, setPlaybackPaused] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeedIndex, setPlaybackSpeedIndex] = useState(0);
   const pathColorModeRef = useRef(pathColorMode);
@@ -462,16 +495,23 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const timelineIndexRef = useRef(timelineIndex);
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number | null>(null);
-  const playheadFloatRef = useRef(0);
   const playheadElapsedMsRef = useRef(0);
+  const playbackElapsedSecondsRef = useRef(0);
+  const playbackPausedRef = useRef(false);
+  const timeBasisRef = useRef(timeBasis);
+  const timeResolutionRef = useRef(timeResolution);
   const followBearingRef = useRef<number | null>(null);
   const lastFollowCameraTimeRef = useRef<number | null>(null);
   const playbackSpeedRef = useRef<number>(PLAYBACK_SPEEDS[playbackSpeedIndex]);
 
   const gpsRecords = useMemo(() => {
-    const rows = records.filter((r) => typeof r.latitude === "number" && typeof r.longitude === "number");
+    const rows = records.filter((record) => (
+      typeof record.latitude === "number"
+      && typeof record.longitude === "number"
+      && !isTimestampStopped(record.timestamp_ms, timeResolution.stoppedIntervals)
+    ));
     return sampleRouteRecords(rows, 6000);
-  }, [records]);
+  }, [records, timeResolution.stoppedIntervals]);
 
   const coordinates = useMemo(
     () => gpsRecords.map((r) => [r.longitude as number, r.latitude as number]),
@@ -488,25 +528,11 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const coordinatesRef = useRef(coordinates);
   const preparedFollowRouteRef = useRef(preparedFollowRoute);
   const distanceUnitRef = useRef(distanceUnit);
-  const maxTimelineIndex = Math.max(0, coordinates.length - 1);
-
-  const firstTimestampMs = useMemo(
-    () => gpsRecords.find((r) => Number.isFinite(r.timestamp_ms))?.timestamp_ms ?? 0,
-    [gpsRecords]
-  );
-
-  const totalElapsedSeconds = useMemo(() => {
-    if (!gpsRecords.length) return 0;
-    const lastTsMs = gpsRecords[gpsRecords.length - 1].timestamp_ms;
-    if (!Number.isFinite(lastTsMs) || !Number.isFinite(firstTimestampMs)) return 0;
-    return Math.max(0, Math.round((lastTsMs - firstTimestampMs) / 1000));
-  }, [gpsRecords, firstTimestampMs]);
-  const totalElapsedMs = Math.max(0, totalElapsedSeconds * 1000);
+  const playbackDurationMs = getBasisDurationMs(timeResolution, timeBasis);
+  const totalElapsedSeconds = Math.max(0, Math.round(playbackDurationMs / 1000));
+  const playbackSliderMaxSeconds = totalElapsedSeconds;
 
   const currentPoint = gpsRecords[Math.min(Math.max(timelineIndex, 0), Math.max(0, gpsRecords.length - 1))];
-  const currentElapsedSeconds = currentPoint && Number.isFinite(currentPoint.timestamp_ms)
-    ? Math.max(0, Math.round((currentPoint.timestamp_ms - firstTimestampMs) / 1000))
-    : 0;
   const elapsedHourDigits = Math.max(2, String(Math.floor(totalElapsedSeconds / 3600)).length);
   const elapsedTimeWidth = `${elapsedHourDigits + 6}ch`;
 
@@ -549,12 +575,36 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   }, [telemetryEnabled]);
   useEffect(() => {
     timelineIndexRef.current = timelineIndex;
-    playheadFloatRef.current = timelineIndex;
-    const point = gpsRecords[Math.min(Math.max(timelineIndex, 0), Math.max(0, gpsRecords.length - 1))];
-    if (point && Number.isFinite(point.timestamp_ms)) {
-      playheadElapsedMsRef.current = Math.max(0, point.timestamp_ms - firstTimestampMs);
+  }, [timelineIndex]);
+
+  function updatePlayhead(elapsedMs: number, render = true) {
+    const resolution = timeResolutionRef.current;
+    const basis = timeBasisRef.current;
+    const durationMs = getBasisDurationMs(resolution, basis);
+    const nextElapsedMs = Math.max(0, Math.min(elapsedMs, durationMs));
+    const sourceTimestampMs = sourceTimestampAtBasisElapsed(nextElapsedMs, resolution, basis);
+    const pause = basis === "total"
+      ? stoppedIntervalAtTimestamp(sourceTimestampMs, resolution.stoppedIntervals)
+      : null;
+    const markerTimestampMs = pause?.startMs ?? sourceTimestampMs;
+    const nextIndex = indexAtOrBeforeTimestamp(gpsRecordsRef.current, markerTimestampMs);
+    const nextSecond = nextElapsedMs >= durationMs
+      ? Math.round(durationMs / 1000)
+      : Math.floor(nextElapsedMs / 1000);
+
+    playheadElapsedMsRef.current = nextElapsedMs;
+    if (render && nextIndex !== timelineIndexRef.current) setTimelineIndex(nextIndex);
+    timelineIndexRef.current = nextIndex;
+    if (render && nextSecond !== playbackElapsedSecondsRef.current) {
+      playbackElapsedSecondsRef.current = nextSecond;
+      setPlaybackElapsedSeconds(nextSecond);
     }
-  }, [timelineIndex, gpsRecords, firstTimestampMs]);
+    const nextPaused = pause !== null;
+    if (render && nextPaused !== playbackPausedRef.current) {
+      playbackPausedRef.current = nextPaused;
+      setPlaybackPaused(nextPaused);
+    }
+  }
 
   useEffect(() => {
     const endIndex = Math.max(0, coordinates.length - 1);
@@ -569,11 +619,32 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       map.setMaxPitch(0);
     }
     timelineIndexRef.current = endIndex;
-    playheadFloatRef.current = endIndex;
-    playheadElapsedMsRef.current = totalElapsedMs;
+    timeBasisRef.current = timeBasis;
+    timeResolutionRef.current = timeResolution;
+    playheadElapsedMsRef.current = playbackDurationMs;
+    playbackElapsedSecondsRef.current = totalElapsedSeconds;
+    playbackPausedRef.current = false;
     setTimelineIndex(endIndex);
+    setPlaybackElapsedSeconds(totalElapsedSeconds);
+    setPlaybackPaused(false);
     setIsPlaying(false);
-  }, [coordinates, totalElapsedMs]);
+  }, [coordinates, timeResolution.timelineStartMs, timeResolution.timelineEndMs]);
+
+  useEffect(() => {
+    const previousBasis = timeBasisRef.current;
+    const previousResolution = timeResolutionRef.current;
+    if (previousBasis === timeBasis && previousResolution === timeResolution) return;
+
+    const sourceTimestampMs = sourceTimestampAtBasisElapsed(
+      playheadElapsedMsRef.current,
+      previousResolution,
+      previousBasis,
+    );
+    timeBasisRef.current = timeBasis;
+    timeResolutionRef.current = timeResolution;
+    const nextElapsedMs = basisElapsedMsAtTimestamp(sourceTimestampMs, timeResolution, timeBasis);
+    updatePlayhead(nextElapsedMs);
+  }, [timeBasis, timeResolution]);
 
   function moveFollowCamera(frameTimeMs: number, force = false, animate = false) {
     if (!followEnabledRef.current) return;
@@ -586,7 +657,17 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       return;
     }
 
-    const targetTimestampMs = route.points[0].timestampMs + playheadElapsedMsRef.current;
+    const resolution = timeResolutionRef.current;
+    const basis = timeBasisRef.current;
+    const sourceTimestampMs = sourceTimestampAtBasisElapsed(
+      playheadElapsedMsRef.current,
+      resolution,
+      basis,
+    );
+    const pause = basis === "total"
+      ? stoppedIntervalAtTimestamp(sourceTimestampMs, resolution.stoppedIntervals)
+      : null;
+    const targetTimestampMs = pause?.startMs ?? sourceTimestampMs;
     const position = interpolateFollowPosition(route, targetTimestampMs);
     if (!position) return;
 
@@ -627,24 +708,6 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       return;
     }
 
-    const getIndexForElapsedMs = (elapsedMs: number): number => {
-      const points = gpsRecordsRef.current;
-      if (!points.length) return 0;
-      const targetTs = firstTimestampMs + Math.max(0, elapsedMs);
-      let lo = 0;
-      let hi = points.length - 1;
-
-      while (lo < hi) {
-        const mid = Math.ceil((lo + hi) / 2);
-        if (points[mid].timestamp_ms <= targetTs) {
-          lo = mid;
-        } else {
-          hi = mid - 1;
-        }
-      }
-      return lo;
-    };
-
     const tick = (time: number) => {
       if (lastFrameTimeRef.current === null) {
         lastFrameTimeRef.current = time;
@@ -652,26 +715,17 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       const deltaSeconds = (time - (lastFrameTimeRef.current ?? time)) / 1000;
       lastFrameTimeRef.current = time;
 
-      const maxIndex = Math.max(0, coordinatesRef.current.length - 1);
       const nextElapsedMs = playheadElapsedMsRef.current + (deltaSeconds * 1000 * PLAYBACK_SPEEDS[playbackSpeedIndex]);
+      const durationMs = getBasisDurationMs(timeResolutionRef.current, timeBasisRef.current);
 
-      if (nextElapsedMs >= totalElapsedMs) {
-        playheadElapsedMsRef.current = totalElapsedMs;
-        playheadFloatRef.current = maxIndex;
-        timelineIndexRef.current = maxIndex;
+      if (nextElapsedMs >= durationMs) {
+        updatePlayhead(durationMs);
         moveFollowCamera(time, true);
-        setTimelineIndex(maxIndex);
         setIsPlaying(false);
         return;
       }
 
-      playheadElapsedMsRef.current = Math.max(0, nextElapsedMs);
-      const rounded = getIndexForElapsedMs(playheadElapsedMsRef.current);
-      playheadFloatRef.current = rounded;
-      if (rounded !== timelineIndexRef.current) {
-        timelineIndexRef.current = rounded;
-        setTimelineIndex(rounded);
-      }
+      updatePlayhead(nextElapsedMs);
       moveFollowCamera(time);
 
       animationFrameRef.current = requestAnimationFrame(tick);
@@ -686,13 +740,13 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       }
       lastFrameTimeRef.current = null;
     };
-  }, [isPlaying, playbackSpeedIndex, coordinates.length, firstTimestampMs, totalElapsedMs]);
+  }, [isPlaying, playbackSpeedIndex, coordinates.length, timeBasis, timeResolution]);
 
   useEffect(() => {
     if (!isPlaying && followEnabledRef.current) {
       moveFollowCamera(performance.now(), true);
     }
-  }, [timelineIndex]);
+  }, [timelineIndex, playbackElapsedSeconds]);
 
   /* ── Draw route ─────────────────────────────────────────────── */
 
@@ -918,11 +972,8 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       setIsPlaying(false);
       return;
     }
-    if (timelineIndexRef.current >= maxTimelineIndex) {
-      timelineIndexRef.current = 0;
-      playheadFloatRef.current = 0;
-      playheadElapsedMsRef.current = 0;
-      setTimelineIndex(0);
+    if (playheadElapsedMsRef.current >= playbackDurationMs) {
+      updatePlayhead(0);
     }
     setIsPlaying(true);
   }
@@ -1126,18 +1177,18 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
           className="map-playback-range"
           type="range"
           min={0}
-          max={Math.max(0, coordinates.length - 1)}
+          max={playbackSliderMaxSeconds}
           step={1}
-          value={Math.min(timelineIndex, Math.max(0, coordinates.length - 1))}
-          disabled={coordinates.length < 2}
+          value={Math.min(playbackElapsedSeconds, playbackSliderMaxSeconds)}
+          disabled={coordinates.length < 2 || playbackSliderMaxSeconds <= 0}
           onChange={(e) => {
             const next = Number(e.target.value);
             setIsPlaying(false);
-            setTimelineIndex(next);
+            updatePlayhead(next * 1000);
           }}
           style={{
-            "--progress": coordinates.length > 1 
-                ? `${(Math.min(timelineIndex, Math.max(0, coordinates.length - 1)) / Math.max(1, coordinates.length - 1)) * 100}%` 
+            "--progress": playbackSliderMaxSeconds > 0
+                ? `${(Math.min(playbackElapsedSeconds, playbackSliderMaxSeconds) / playbackSliderMaxSeconds) * 100}%`
                 : "0%"
           } as React.CSSProperties}
         />
@@ -1153,8 +1204,11 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
             ))}
           </select>
         </label>
+        <span className={`map-playback-paused${playbackPaused ? " active" : ""}`} aria-hidden={!playbackPaused}>
+          {t("activityMap.paused")}
+        </span>
         <span className="map-playback-time">
-          <span className="map-playback-time-value" style={{ width: elapsedTimeWidth }}>{formatElapsed(currentElapsedSeconds)}</span>
+          <span className="map-playback-time-value" style={{ width: elapsedTimeWidth }}>{formatElapsed(playbackElapsedSeconds)}</span>
           <span>/</span>
           <span className="map-playback-time-value" style={{ width: elapsedTimeWidth }}>{formatElapsed(totalElapsedSeconds)}</span>
         </span>

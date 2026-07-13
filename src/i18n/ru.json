@@ -92,6 +92,8 @@
   "overview.avgPerActivity": "Ср. / активность",
   "overview.devices": "Устройства",
   "detail.duration": "Длительность",
+  "detail.movingTime": "Время в движении",
+  "detail.totalTime": "Общее время",
   "detail.distance": "Дистанция",
   "detail.avgSpeed": "Средняя скорость",
   "detail.maxSpeed": "Макс. скорость",
@@ -126,6 +128,14 @@
   "detail.stepActive": "Активно",
   "detail.smoothGraphs": "Сглаживание графиков",
   "detail.chartXAxis": "Ось X графика",
+  "detail.xAxis": "Ось X",
+  "detail.timeBasis": "Основа времени",
+  "detail.moving": "В движении",
+  "detail.total": "Общее",
+  "detail.chartZoom": "Масштаб графика",
+  "detail.timeAxisUnavailable": "Ось времени недоступна для этой активности",
+  "detail.movingTimeUnavailable": "Время в движении недоступно, так как невозможно определить записанные паузы",
+  "detail.totalTimeEquivalent": "Общее время совпадает со временем в движении для этой активности",
   "detail.distanceAxisUnavailable": "Ось дистанции недоступна для этой активности",
   "detail.resetZoom": "Сбросить масштаб",
   "detail.heartRateAndPace": "Пульс и темп",
@@ -225,5 +235,6 @@
   "insights.scatterComparison": "Scatterplot",
   "insights.scatterMetric": "Scatterplot metric",
   "activityMap.follow": "Следовать",
-  "activityMap.telemetry": "Телеметрия"
+  "activityMap.telemetry": "Телеметрия",
+  "activityMap.paused": "Пауза"
 }

@@ -39,6 +39,12 @@ import {
 } from "../lib/telemetryAxis";
 import { useTranslation } from "../lib/i18n";
 import {
+  getBasisDurationMs,
+  type ActivityTimeBasis,
+  type ActivityTimeResolution,
+  type StoppedIntervalMs,
+} from "../lib/activityTime";
+import {
   buildHeartRateDriftChartData,
   calculateCardiacDecoupling,
   describeCardiacDecouplingBand,
@@ -58,6 +64,8 @@ type Props = {
   theme: "light" | "dark";
   distanceUnit: DistanceUnit;
   xAxisMode?: TelemetryXAxisMode;
+  timeBasis: ActivityTimeBasis;
+  timeResolution: ActivityTimeResolution;
   zones?: ActivityZones | null;
   heartRateZoneBoundsBpm?: number[];
   heartRateZoneSource?: HeartRateZoneSource;
@@ -89,6 +97,63 @@ const SCATTER_PRESETS: ScatterPreset[] = [
 
 function isSeriesRow(row: [number | null, number | null, number, number, number | null]): row is SeriesRow {
   return typeof row[0] === "number" && Number.isFinite(row[0]);
+}
+
+function insertMissingPauseGaps(
+  rows: SeriesRow[],
+  intervals: StoppedIntervalMs[],
+  timelineStartMs: number,
+  enabled: boolean,
+): SeriesRow[] {
+  if (!enabled || !intervals.length || !rows.length) return rows;
+
+  const gapRows: SeriesRow[] = [];
+  for (const interval of intervals) {
+    const hasSamples = rows.some((row) => row[3] >= interval.startMs && row[3] < interval.endMs);
+    if (hasSamples) continue;
+    const startElapsedMs = Math.max(0, interval.startMs - timelineStartMs);
+    const endElapsedMs = Math.max(startElapsedMs, interval.endMs - timelineStartMs);
+    gapRows.push(
+      [startElapsedMs, null, startElapsedMs, interval.startMs, null],
+      [endElapsedMs, null, endElapsedMs, interval.endMs, null],
+    );
+  }
+  if (!gapRows.length) return rows;
+  return [...rows, ...gapRows].sort((a, b) => a[0] - b[0] || a[3] - b[3]);
+}
+
+function pauseSegmentIndex(timestampMs: number, intervals: StoppedIntervalMs[]): number {
+  let segmentIndex = 0;
+  for (const interval of intervals) {
+    if (timestampMs < interval.startMs) return segmentIndex;
+    if (timestampMs < interval.endMs) return segmentIndex + 1;
+    segmentIndex += 2;
+  }
+  return segmentIndex;
+}
+
+function prepareTelemetrySeries(
+  rows: SeriesRow[],
+  smooth: boolean,
+  smoothingWindow: number,
+  intervals: StoppedIntervalMs[],
+  timelineStartMs: number,
+  isolatePauses: boolean,
+): SeriesRow[] {
+  let prepared = rows;
+  if (smooth) {
+    if (isolatePauses && intervals.length) {
+      const segments: SeriesRow[][] = [];
+      for (const row of rows) {
+        const segmentIndex = pauseSegmentIndex(row[3], intervals);
+        (segments[segmentIndex] ??= []).push(row);
+      }
+      prepared = segments.flatMap((segment) => applyRollingAverageSeries(segment, 1, smoothingWindow));
+    } else {
+      prepared = applyRollingAverageSeries(rows, 1, smoothingWindow);
+    }
+  }
+  return insertMissingPauseGaps(prepared, intervals, timelineStartMs, isolatePauses);
 }
 
 type ZoneTimeBarsProps = {
@@ -308,6 +373,8 @@ export function ActivityInsights({
   theme,
   distanceUnit,
   xAxisMode = "time",
+  timeBasis,
+  timeResolution,
   zones,
   heartRateZoneBoundsBpm,
   heartRateZoneSource,
@@ -346,11 +413,24 @@ export function ActivityInsights({
     );
   }
 
-  const t0 = records[0]?.timestamp_ms ?? 0;
-  const telemetryPoints = buildTelemetryPoints(records, t0, xAxisMode, distanceUnit, timerMetadata);
-  const totalDurationMs = Math.max(0, telemetryPoints[telemetryPoints.length - 1]?.relMs ?? ((records[records.length - 1]?.timestamp_ms ?? t0) - t0));
-  const smoothWindow = smoothGraphs ? getDynamicSmoothingWindow(telemetryPoints.length || records.length, totalDurationMs, zoomRange) : 1;
-  const xAxisBounds = buildTelemetryXAxisBounds(telemetryPoints);
+  const t0 = timeResolution.timelineStartMs || records[0]?.timestamp_ms || 0;
+  const telemetryPoints = buildTelemetryPoints(records, t0, xAxisMode, distanceUnit, timerMetadata, timeBasis);
+  const activeTelemetryPoints = buildTelemetryPoints(records, t0, "time", distanceUnit, timerMetadata, "moving");
+  const activeTimestampSet = new Set(activeTelemetryPoints.map((point) => point.timestampMs));
+  const displayDurationMs = xAxisMode === "time"
+    ? getBasisDurationMs(timeResolution, timeBasis)
+    : Math.max(0, telemetryPoints[telemetryPoints.length - 1]?.relMs ?? 0);
+  const analysisDurationMs = Math.max(
+    0,
+    timeResolution.movingDurationMs
+      ?? activeTelemetryPoints[activeTelemetryPoints.length - 1]?.relMs
+      ?? displayDurationMs,
+  );
+  const smoothWindow = smoothGraphs ? getDynamicSmoothingWindow(telemetryPoints.length || records.length, displayDurationMs, zoomRange) : 1;
+  const xAxisBounds = buildTelemetryXAxisBounds(
+    telemetryPoints,
+    xAxisMode === "time" ? displayDurationMs : undefined,
+  );
   const formatTooltipHeader = (relMs: number, distanceMeters: number | null, mode: TelemetryXAxisMode = xAxisMode, timestampMs?: number) =>
     formatTelemetryTooltipHeader(mode, t0, relMs, distanceMeters, distanceUnit, timestampMs);
 
@@ -397,16 +477,26 @@ export function ActivityInsights({
   const potentialStaminaLineData = timeline.map((d) => [d.x, d.potentialStaminaPct, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
   const performanceConditionLineData = timeline.map((d) => [d.x, d.performanceCondition, d.relMs, d.timestampMs, d.distanceMeters] as [number | null, number | null, number, number, number | null]).filter(isSeriesRow);
 
-  const heartRateLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(heartRateLineData, 1, smoothWindow) : heartRateLineData;
-  const paceLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(paceLineData, 1, smoothWindow) : paceLineData;
-  const speedLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(speedLineData, 1, smoothWindow) : speedLineData;
-  const elevationLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(elevationLineData, 1, smoothWindow) : elevationLineData;
-  const cadenceLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(cadenceLineData, 1, smoothWindow) : cadenceLineData;
-  const powerLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(powerLineData, 1, smoothWindow) : powerLineData;
-  const temperatureLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(temperatureLineData, 1, smoothWindow) : temperatureLineData;
-  const respirationLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(respirationLineData, 1, smoothWindow) : respirationLineData;
-  const currentStaminaLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(currentStaminaLineData, 1, smoothWindow) : currentStaminaLineData;
-  const potentialStaminaLineDataSmoothed = smoothGraphs ? applyRollingAverageSeries(potentialStaminaLineData, 1, smoothWindow) : potentialStaminaLineData;
+  const includeTotalPauseGaps = xAxisMode === "time" && timeBasis === "total";
+  const prepareSeries = (rows: SeriesRow[], smooth = smoothGraphs) => prepareTelemetrySeries(
+    rows,
+    smooth,
+    smoothWindow,
+    timeResolution.stoppedIntervals,
+    t0,
+    includeTotalPauseGaps,
+  );
+  const heartRateLineDataSmoothed = prepareSeries(heartRateLineData);
+  const paceLineDataSmoothed = prepareSeries(paceLineData);
+  const speedLineDataSmoothed = prepareSeries(speedLineData);
+  const elevationLineDataSmoothed = prepareSeries(elevationLineData);
+  const cadenceLineDataSmoothed = prepareSeries(cadenceLineData);
+  const powerLineDataSmoothed = prepareSeries(powerLineData);
+  const temperatureLineDataSmoothed = prepareSeries(temperatureLineData);
+  const respirationLineDataSmoothed = prepareSeries(respirationLineData);
+  const currentStaminaLineDataSmoothed = prepareSeries(currentStaminaLineData);
+  const potentialStaminaLineDataSmoothed = prepareSeries(potentialStaminaLineData);
+  const performanceConditionLineDataWithGaps = prepareSeries(performanceConditionLineData, false);
 
   const hasPowerData = availability.hasPower;
   const hasHeartRateData = availability.hasHeartRate;
@@ -471,7 +561,7 @@ export function ActivityInsights({
       )
     : undefined;
 
-  const lapMarkers = buildLapMarkers(records, lapTimestampsUtc, t0, xAxisMode, distanceUnit, timerMetadata);
+  const lapMarkers = buildLapMarkers(records, lapTimestampsUtc, t0, xAxisMode, distanceUnit, timerMetadata, timeBasis);
 
   const hasRealHeartRateZones = hrZones.length > 0;
   const fitHrZoneMinutes = hasRealHeartRateZones
@@ -483,7 +573,7 @@ export function ActivityInsights({
     : null;
   const zoneRecords = analysisRecords.length ? analysisRecords : records;
   const zoneTelemetryPoints = hasRealHeartRateZones && !fitHrZoneMinutes
-    ? buildTelemetryPoints(zoneRecords, t0, "time", distanceUnit, timerMetadata)
+    ? buildTelemetryPoints(zoneRecords, t0, "time", distanceUnit, timerMetadata, "moving")
     : [];
   const accumulatedHeartRateZones = accumulateHeartRateZoneMinutes(
     zoneTelemetryPoints.map((point) => ({
@@ -504,16 +594,16 @@ export function ActivityInsights({
   const fitPowerZoneMinutes = zoneSecondsToMinutes(zones?.power?.time_in_zone_s, powerZones.length);
   const powerZoneMinutes = fitPowerZoneMinutes.some((value) => value > 0) ? fitPowerZoneMinutes : powerZones.map(() => 0);
   if (!fitPowerZoneMinutes.some((value) => value > 0) && powerZones.length > 0 && hasPowerData) {
-    for (let i = 0; i < timeline.length - 1; i += 1) {
-      const power = timeline[i].power;
+    for (let i = 0; i < activeTelemetryPoints.length - 1; i += 1) {
+      const power = activeTelemetryPoints[i].record.power;
       if (typeof power !== "number" || power < 0) continue;
-      const dtMin = Math.max(0, (timeline[i + 1].relMs - timeline[i].relMs) / 60000);
+      const dtMin = Math.max(0, (activeTelemetryPoints[i + 1].relMs - activeTelemetryPoints[i].relMs) / 60000);
       const zoneIndex = resolveNumericZoneIndex(power, powerZones);
       powerZoneMinutes[zoneIndex] += dtMin;
     }
   }
   const hasPowerZoneData = powerZones.length > 0 && (hasPowerData || powerZoneMinutes.some((value) => value > 0));
-  const zoneChartTotalMinutes = totalDurationMs > 0 ? totalDurationMs / 60000 : 0;
+  const zoneChartTotalMinutes = analysisDurationMs > 0 ? analysisDurationMs / 60000 : 0;
 
   const sharedXAxis = {
     type: "value",
@@ -522,6 +612,21 @@ export function ActivityInsights({
     axisLine: { lineStyle: { color: gridLine } },
     splitLine: { show: false },
   };
+
+  const pauseMarkArea = includeTotalPauseGaps && timeResolution.stoppedIntervals.length ? {
+    silent: true,
+    itemStyle: {
+      color: isDark ? "rgba(245, 158, 11, 0.10)" : "rgba(217, 119, 6, 0.08)",
+    },
+    label: { show: false },
+    data: timeResolution.stoppedIntervals.flatMap((interval) => {
+      const startMs = Math.max(0, interval.startMs - t0);
+      const endMs = Math.min(displayDurationMs, Math.max(startMs, interval.endMs - t0));
+      return endMs > startMs
+        ? [[{ name: tr("activityMap.paused"), xAxis: startMs }, { xAxis: endMs }]]
+        : [];
+    }),
+  } : undefined;
 
   const hrVisualMap = hrZones.length > 0 ? {
     show: false,
@@ -1091,7 +1196,7 @@ export function ActivityInsights({
         name: tr("insights.performanceCondition"), type: "line", smooth: false, showSymbol: false,
         lineStyle: { width: 2, color: "#059669" },
         step: "middle",
-        data: performanceConditionLineData,
+        data: performanceConditionLineDataWithGaps,
         markLine: lapMarkers.length ? {
           animation: false,
           symbol: ["none", "none"],
@@ -1102,6 +1207,24 @@ export function ActivityInsights({
       },
     ],
   };
+
+  if (pauseMarkArea) {
+    for (const option of [
+      heartRateOption,
+      paceOption,
+      timelineOption,
+      elevationOption,
+      cadenceOption,
+      powerOption,
+      temperatureOption,
+      respirationOption,
+      staminaOption,
+      performanceConditionOption,
+    ]) {
+      const firstSeries = (option as { series?: Array<Record<string, unknown>> }).series?.[0];
+      if (firstSeries) firstSeries.markArea = pauseMarkArea;
+    }
+  }
 
   type TimelinePoint = (typeof timeline)[number];
   const scatterMetrics: Record<ScatterMetricKey, {
@@ -1173,6 +1296,7 @@ export function ActivityInsights({
     const xMetric = scatterMetrics[preset.xMetric];
     const yMetric = scatterMetrics[preset.yMetric];
     return timeline.some((point) => {
+      if (includeTotalPauseGaps && !activeTimestampSet.has(point.timestampMs)) return false;
       const x = xMetric.getValue(point);
       const y = yMetric.getValue(point);
       return typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y);
@@ -1184,6 +1308,7 @@ export function ActivityInsights({
   const scatterTitle = tr("insights.scatterComparison");
   const scatterData = selectedScatterPreset && selectedScatterXMetric && selectedScatterYMetric
     ? timeline
+        .filter((point) => !includeTotalPauseGaps || activeTimestampSet.has(point.timestampMs))
         .map((point) => {
           const x = selectedScatterXMetric.getValue(point);
           const y = selectedScatterYMetric.getValue(point);

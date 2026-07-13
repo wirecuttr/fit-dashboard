@@ -47,6 +47,11 @@ import {
   type WorkoutStepMetadata,
 } from "../lib/deviceMetadata";
 import { hasUsableDistanceAxis, type TelemetryXAxisMode } from "../lib/telemetryAxis";
+import {
+  resolveActivityTime,
+  resolveEffectiveTimeBasis,
+  type ActivityTimeBasis,
+} from "../lib/activityTime";
 import { getHeartRateZoneBounds } from "../lib/zones";
 import { resolveHeartRateZoneSelection } from "../lib/hrZones";
 
@@ -333,6 +338,7 @@ export function Dashboard({ onLogout }: Props) {
   } | null>(null);
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
   const [telemetryXAxisMode, setTelemetryXAxisMode] = useState<TelemetryXAxisMode>("time");
+  const [activityTimeBasis, setActivityTimeBasis] = useState<ActivityTimeBasis>("moving");
   const [appVersion, setAppVersion] = useState("unknown");
   const [versionBadgeStatus, setVersionBadgeStatus] = useState<VersionBadgeStatus>({ state: "hidden", latestVersion: null });
 
@@ -1089,6 +1095,11 @@ export function Dashboard({ onLogout }: Props) {
     () => parseActivityMetadata(selectedActivity?.metadata_json),
     [selectedActivity?.metadata_json]
   );
+  const activityTimeResolution = useMemo(
+    () => resolveActivityTime(selectedActivity, records, selectedMetadata),
+    [selectedActivity, records, selectedMetadata],
+  );
+  const effectiveActivityTimeBasis = resolveEffectiveTimeBasis(activityTimeBasis, activityTimeResolution);
   const isSelectedCycling = isCyclingSport(selectedActivity?.sport);
   const rawSessionNormalizedPower = selectedMetadata?.session?.normalized_power;
   const sessionNormalizedPower = isSelectedCycling
@@ -1127,10 +1138,18 @@ export function Dashboard({ onLogout }: Props) {
     return (selectedMetadata?.laps ?? []).some((lap) => isNumber(lap.wkt_step_index));
   }, [selectedMetadata]);
   useEffect(() => {
-    if (selectedActivity && records.length > 0 && !hasTelemetryDistanceAxis && telemetryXAxisMode === "distance") {
+    if (!selectedActivity) return;
+    if (telemetryXAxisMode === "distance" && !hasTelemetryDistanceAxis && activityTimeResolution.hasPositiveTimeRange) {
       setTelemetryXAxisMode("time");
+    } else if (telemetryXAxisMode === "time" && !activityTimeResolution.hasPositiveTimeRange && hasTelemetryDistanceAxis) {
+      setTelemetryXAxisMode("distance");
     }
-  }, [selectedActivity, records.length, hasTelemetryDistanceAxis, telemetryXAxisMode]);
+  }, [
+    selectedActivity,
+    hasTelemetryDistanceAxis,
+    telemetryXAxisMode,
+    activityTimeResolution.hasPositiveTimeRange,
+  ]);
   const deviceBadgeLabel = selectedActivity
     ? getPrimaryDeviceLabel(selectedMetadata, selectedActivity)
     : "";
@@ -1151,7 +1170,17 @@ export function Dashboard({ onLogout }: Props) {
       out.push({ key, label, value, secondary, icon });
     };
 
-    push("duration", t("detail.duration"), formatDuration(selectedActivity.duration_s), "clock");
+    if (activityTimeResolution.movingLabelSupported && activityTimeResolution.movingDurationMs !== null) {
+      push("moving_time", t("detail.movingTime"), formatDuration(activityTimeResolution.movingDurationMs / 1000), "clock");
+      if (activityTimeResolution.totalLabelSupported && activityTimeResolution.totalDurationMs !== null) {
+        push("total_time", t("detail.totalTime"), formatDuration(activityTimeResolution.totalDurationMs / 1000), "clock");
+      }
+    } else {
+      const durationSeconds = activityTimeResolution.totalDurationMs !== null
+        ? activityTimeResolution.totalDurationMs / 1000
+        : selectedActivity.duration_s;
+      push("duration", t("detail.duration"), formatDuration(durationSeconds), "clock");
+    }
     push("distance", t("detail.distance"), `${(selectedActivity.distance_m / distanceDivisorValue).toFixed(2)} ${distanceSuffix}`, "distance");
 
     const showPaceStats = activityUsesPaceDisplay(selectedActivity);
@@ -1247,11 +1276,11 @@ export function Dashboard({ onLogout }: Props) {
     if (typeof restingHr === "number" && restingHr > 0) push("resting_hr", t("detail.restingHr"), `${Math.round(restingHr)} bpm`, "user");
     if (typeof session.total_calories === "number" && session.total_calories > 0) push("total_calories", t("detail.calories"), `${Math.round(session.total_calories)} kcal`, "flame");
     return out;
-  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, sessionNormalizedPower, t]);
+  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, sessionNormalizedPower, activityTimeResolution, t]);
 
   const detailStatGroups = useMemo(() => {
     const groupDefinitions: Array<{ key: string; label: string; icon: Icon; keys: string[] }> = [
-      { key: "activity", label: t("detail.summary"), icon: "clock", keys: ["duration", "distance", "total_calories"] },
+      { key: "activity", label: t("detail.summary"), icon: "clock", keys: ["moving_time", "total_time", "duration", "distance", "total_calories"] },
       { key: "speed", label: activityUsesPaceDisplay(selectedActivity) ? t("detail.pace") : t("insights.speed"), icon: "speed", keys: ["avg_speed", "max_speed"] },
       { key: "heart", label: "Heart Rate", icon: "heart", keys: ["avg_hr", "max_hr"] },
       { key: "elevation", label: t("insights.elevation"), icon: "mountain", keys: ["min_alt", "max_alt", "total_ascent", "total_descent"] },
@@ -1849,48 +1878,97 @@ export function Dashboard({ onLogout }: Props) {
             <>
               <div className="detail-header">
                 <div className="detail-title-row">
-                  <h2>{selectedActivity.activity_name || selectedActivity.file_name}</h2>
-                  <div className="detail-badges">
-                    <span className="badge">{formatDate(selectedActivity.start_ts_utc)}</span>
-                    {selectedActivity.sport && <span className="badge sport">{formatActivityTypeLabel(selectedActivity)}</span>}
-                    {deviceBadgeLabel && (
-                      <span
-                        className={`badge device${accessoryDevices.length > 0 ? " has-accessories" : ""}`}
-                        tabIndex={accessoryDevices.length > 0 ? 0 : undefined}
-                      >
-                        {deviceBadgeLabel}
-                        {accessoryDevices.length > 0 && (
-                          <span className="device-accessory-popover">
-                            {accessoryDevices.map((device, index) => (
-                              <span key={`${formatDeviceLabel(device)}-${index}`} className="device-accessory-row">
-                                <span>{formatDeviceLabel(device)}</span>
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                    <div className="detail-axis-toggle" aria-label={t("detail.chartXAxis")}>
+                  <div className="detail-identity">
+                    <h2>{selectedActivity.activity_name || selectedActivity.file_name}</h2>
+                    <div className="detail-badges">
+                      <span className="badge">{formatDate(selectedActivity.start_ts_utc)}</span>
+                      {selectedActivity.sport && <span className="badge sport">{formatActivityTypeLabel(selectedActivity)}</span>}
+                      {deviceBadgeLabel && (
+                        <span
+                          className={`badge device${accessoryDevices.length > 0 ? " has-accessories" : ""}`}
+                          tabIndex={accessoryDevices.length > 0 ? 0 : undefined}
+                        >
+                          {deviceBadgeLabel}
+                          {accessoryDevices.length > 0 && (
+                            <span className="device-accessory-popover">
+                              {accessoryDevices.map((device, index) => (
+                                <span key={`${formatDeviceLabel(device)}-${index}`} className="device-accessory-row">
+                                  <span>{formatDeviceLabel(device)}</span>
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="detail-control-panel">
+                    <div className="detail-control-row" role="group" aria-label={t("detail.xAxis")}>
+                      <span className="detail-control-label">{t("detail.xAxis")}</span>
+                      <div className="detail-axis-toggle">
                       <button
                         type="button"
                         className={telemetryXAxisMode === "time" ? "active" : ""}
-                        onClick={() => setTelemetryXAxisMode("time")}
+                        aria-pressed={telemetryXAxisMode === "time"}
+                        onClick={() => activityTimeResolution.hasPositiveTimeRange && setTelemetryXAxisMode("time")}
+                        disabled={!activityTimeResolution.hasPositiveTimeRange}
+                        title={!activityTimeResolution.hasPositiveTimeRange ? t("detail.timeAxisUnavailable") : undefined}
                       >
                         {t("detail.time")}
                       </button>
                       <button
                         type="button"
                         className={telemetryXAxisMode === "distance" ? "active" : ""}
+                        aria-pressed={telemetryXAxisMode === "distance"}
                         onClick={() => hasTelemetryDistanceAxis && setTelemetryXAxisMode("distance")}
                         disabled={!hasTelemetryDistanceAxis}
                         title={!hasTelemetryDistanceAxis ? t("detail.distanceAxisUnavailable") : undefined}
                       >
                         {t("detail.distance")}
                       </button>
+                      </div>
                     </div>
-                    <button className="btn-secondary" style={{ padding: "0.25rem 0.55rem", fontSize: "0.74rem" }} onClick={() => setTelemetryZoom(null)}>
-                      {t("detail.resetZoom")}
-                    </button>
+                    <div className="detail-control-row" role="group" aria-label={t("detail.timeBasis")}>
+                      <span className="detail-control-label">{t("detail.timeBasis")}</span>
+                      {!activityTimeResolution.movingLabelSupported ? (
+                        <span className="detail-control-static">{t("detail.duration")}</span>
+                      ) : (
+                        <div className="detail-axis-toggle">
+                          <button
+                            type="button"
+                            className={effectiveActivityTimeBasis === "moving" ? "active" : ""}
+                            aria-pressed={effectiveActivityTimeBasis === "moving"}
+                            disabled={!activityTimeResolution.hasPositiveTimeRange || (!activityTimeResolution.selectable && effectiveActivityTimeBasis !== "moving")}
+                            title={!activityTimeResolution.intervalsReliable && effectiveActivityTimeBasis !== "moving" ? t("detail.movingTimeUnavailable") : undefined}
+                            onClick={() => {
+                              setActivityTimeBasis("moving");
+                              setTelemetryZoom(null);
+                            }}
+                          >
+                            {t("detail.moving")}
+                          </button>
+                          <button
+                            type="button"
+                            className={effectiveActivityTimeBasis === "total" ? "active" : ""}
+                            aria-pressed={effectiveActivityTimeBasis === "total"}
+                            disabled={!activityTimeResolution.hasPositiveTimeRange || (!activityTimeResolution.selectable && effectiveActivityTimeBasis !== "total")}
+                            title={activityTimeResolution.intervalsReliable && !activityTimeResolution.hasDistinctTotalTime ? t("detail.totalTimeEquivalent") : undefined}
+                            onClick={() => {
+                              setActivityTimeBasis("total");
+                              setTelemetryZoom(null);
+                            }}
+                          >
+                            {t("detail.total")}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="detail-control-row">
+                      <span className="detail-control-label">{t("detail.chartZoom")}</span>
+                      <button className="btn-secondary detail-reset-zoom" disabled={!telemetryZoom} onClick={() => setTelemetryZoom(null)}>
+                        {t("sidebar.reset")}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="detail-stats-strip grouped">
@@ -1928,11 +2006,11 @@ export function Dashboard({ onLogout }: Props) {
               <section className="activity-visual-grid">
                 {hasDetailRoute && (
                   <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} map />}>
-                    <ActivityMap records={selectedRecords} mapStyle={activityMapStyle} setMapStyle={setActivityMapStyle} lapTimestampsUtc={lapTimestampsUtc} usePaceDisplay={activityUsesPaceDisplay(selectedActivity)} />
+                    <ActivityMap records={selectedRecords} mapStyle={activityMapStyle} setMapStyle={setActivityMapStyle} lapTimestampsUtc={lapTimestampsUtc} usePaceDisplay={activityUsesPaceDisplay(selectedActivity)} timeBasis={effectiveActivityTimeBasis} timeResolution={activityTimeResolution} />
                   </Suspense>
                 )}
                 <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} />}>
-                  <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} zones={selectedMetadata?.zones ?? null} heartRateZoneBoundsBpm={heartRateZoneSelection?.boundsBpm} heartRateZoneSource={heartRateZoneSelection?.source} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
+                  <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} timeBasis={effectiveActivityTimeBasis} timeResolution={activityTimeResolution} zones={selectedMetadata?.zones ?? null} heartRateZoneBoundsBpm={heartRateZoneSelection?.boundsBpm} heartRateZoneSource={heartRateZoneSelection?.source} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
                 </Suspense>
               </section>
               {lapRows.length > 0 && (
