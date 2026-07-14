@@ -14,6 +14,7 @@
     "test:power-zones": "node scripts/run-power-zone-tests.mjs",
     "test:map-follow": "node scripts/run-map-follow-tests.mjs",
     "test:activity-time": "node scripts/run-activity-time-tests.mjs",
+    "test:map-route-color": "node scripts/run-map-route-color-tests.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
