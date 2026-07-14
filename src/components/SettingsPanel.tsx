@@ -774,7 +774,7 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
                     disabled={heartRateZonePreferenceSaving}
                   >
                     <IconHeart />
-                    {t("settings.customizeHrZones")}
+                    {t("settings.hrZonesButton")}
                   </button>
                   {heartRateZonePreferenceSaving && (
                     <p className="hr-zone-status" role="status">{t("settings.hrZonesSaving")}</p>
@@ -807,7 +807,7 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
                     disabled={powerZonePreferenceSaving}
                   >
                     <IconPower />
-                    {t("settings.customizePowerZones")}
+                    {t("settings.powerZonesButton")}
                   </button>
                   {powerZonePreferenceSaving && (
                     <p className="hr-zone-status" role="status">{t("settings.powerZonesSaving")}</p>

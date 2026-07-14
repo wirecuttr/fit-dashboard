@@ -368,7 +368,7 @@ heart-rate drift, scatter plots, and other sample-dependent insights.
 Keep every existing Settings control and add a Manual heart-rate zones section
 containing:
 
-- a `Customise HR Zones` button; and
+- a `Heart Rate Zones` button; and
 - no separate usage-policy controls.
 
 The manual-zone editor remains available in fallback mode because its values are

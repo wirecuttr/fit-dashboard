@@ -253,8 +253,7 @@ if persistence fails.
 
 Use one `Heart Rate and Power Zones` Settings section for both zone editors.
 The section has no panel-level icon; each action button retains its own icon.
-The section contains the `Customise HR Zones` and `Customise Power Zones`
-buttons. It does not repeat editor instructions at panel level. The power editor
+The section contains the `Heart Rate Zones` and `Power Zones` buttons. It does not repeat editor instructions at panel level. The power editor
 contains no fallback/always zone policy and no FTP input.
 
 Adapt the accessible heart-rate-zone dialog into a reusable zone editor or a
