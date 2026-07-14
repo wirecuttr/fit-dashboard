@@ -96,7 +96,10 @@ Sync:
 When Sync is enabled, immediately publish the map's current playhead. A newly
 selected activity initialises the playhead using the map's existing end-of-route
 behaviour and then publishes that new activity timestamp. Never carry the prior
-activity's timestamp into the new activity.
+activity's timestamp into the new activity. During controller replacement, a
+checked Sync control may be temporarily disabled at a zero registered-chart
+count; the first eligible chart registration re-enables it without another user
+action.
 
 Turning Sync off must remove all programmatic cursors and tooltips and restore
 the charts' ordinary hover tooltip behaviour.
@@ -282,6 +285,9 @@ export type ActivitySyncController = {
   publish(position: ActivitySyncPosition, options?: { immediate?: boolean }): void;
   getCurrent(): ActivitySyncPosition | null;
   subscribe(listener: (position: ActivitySyncPosition | null) => void): () => void;
+  registerChart(chartKey: string): () => void;
+  getRegisteredChartCount(): number;
+  subscribeRegisteredChartCount(listener: (count: number) => void): () => void;
   clear(): void;
   dispose(): void;
 };
@@ -300,8 +306,18 @@ The exact API can vary, but it must provide these properties:
   updates per second with a trailing update;
 - chart clicks, Sync activation, exact playback endpoints, and map-slider
   pointer-up or keyboard completion publish immediately;
+- charts register and unregister themselves without exposing chart types or
+  mappings to the controller;
+- chart-count subscribers are notified only when registration changes, not on
+  playback updates;
 - `clear()` notifies registered views with `null` so they hide stale UI; and
 - `dispose()` cancels pending throttled work before listeners are released.
+
+Registration stores only opaque stable instance keys and a distinct mounted
+count; it never stores ECharts instances or mapping adapters. The unregister
+function must be idempotent. `clear()` clears the position without changing
+registration, while `dispose()` cancels pending work, notifies count subscribers
+of zero, and releases both listener sets.
 
 The `telemetrySyncEnabled` checkbox remains ordinary Dashboard React state. Do
 not call it `isSyncing`, because Dashboard already uses that name for import
@@ -345,8 +361,9 @@ GPS matching: nearby switchback legs can represent very different times.
 - dispose the old controller, including pending trailing work, when the selected
   activity changes;
 - render the Sync checkbox and help entry;
+- subscribe to the controller's registered-chart count;
 - determine control availability from `hasDetailRoute`, a positive time range,
-  and eligible telemetry availability; and
+  and `controller.getRegisteredChartCount() > 0`; and
 - pass the controller, enabled state, and selected activity ID to ActivityMap
   and ActivityInsights.
 
@@ -387,7 +404,8 @@ instance lifecycle code for every chart. It should:
 
 - compose the current `enableChartWheelPageScroll` ready callback;
 - retain the ECharts instance without putting it in render state;
-- register and unregister a controller subscription;
+- register an opaque chart key on mount and unregister it on unmount;
+- register and unregister a controller position subscription;
 - attach and remove one ZRender click handler;
 - verify clicks with `containPixel({ gridIndex: 0 }, point)`;
 - convert clicks through `convertFromPixel`;
@@ -405,6 +423,13 @@ instance lifecycle code for every chart. It should:
   `getZr().off("click", handler)`, unsubscribe, and guard `chart.isDisposed()`;
   and
 - clean up listeners even when chart availability or ordering changes.
+
+The controller must not contain a chart-ID switch, metric list, ECharts option,
+or axis-mapping rule. Each wrapper receives its own timestamp-to-x and
+x-to-timestamp adapter. Consequently, adding, removing, reordering, or
+conditionally hiding a chart automatically changes the registered count and
+requires no Dashboard or controller edit. A newly registered chart immediately
+applies `controller.getCurrent()` when Sync is already active.
 
 The installed ECharts 6.1 implementation supports the required public APIs.
 For an exact cursor plus a nearest-sample tooltip:
@@ -463,6 +488,9 @@ The current code provides most of the required data but not a shared playhead:
   playback frequency unnecessarily expensive.
 - `onChartReady` currently installs only wheel pass-through behaviour. The sync
   work needs a composed ready callback and explicit ZRender/controller cleanup.
+- Visible chart arrays already change with activity data. Wrapper-owned
+  registration lets that existing conditional rendering determine Sync
+  availability without duplicating the metric list in Dashboard.
 - Scatterplot points happen to retain timestamps, but the plot axes do not
   represent activity position. They are deliberately excluded from the first
   interaction model rather than providing inconsistent point-only seeking.
@@ -483,6 +511,8 @@ No backend, database, Rust, Tauri, or FIT parser change is required.
 ### Slice 2: Control and Shared Wiring
 
 - Add Dashboard state, availability, control, and help content.
+- Drive Sync availability from the controller's registered-chart count rather
+  than a hardcoded metric list.
 - Add translations to every locale.
 - Pass the controller and activity context to map and insights components.
 - Dispose old activity controllers and disable cleanly when no route is
@@ -538,6 +568,8 @@ Add pure tests covering:
 - pending trailing work being cancelled on activity change and controller
   disposal;
 - subscriber updates not republishing recursively;
+- chart registration count changes, unregistration, and duplicate-cleanup
+  behaviour without position-event notifications;
 - a same-timestamp chart click still stopping playback;
 - throttled playback and slider input plus immediate completion/endpoints;
 - finite and null axis-row tooltip acceptance, median-cadence limits, and known
@@ -643,5 +675,7 @@ non-monotonic input. Never infer time from geographic proximity.
 - Scatterplots, zone bars, and other non-position charts remain unchanged.
 - Sync off restores existing chart hover behaviour and adds no playback work.
 - Playback remains responsive with all eligible charts visible.
+- Adding or removing a synchronised chart requires only its local adapter and
+  wrapper usage; Dashboard and controller logic remain unchanged.
 - All new pure tests pass, the frontend builds, and the integrated Docker app
   starts successfully on local `main`.
