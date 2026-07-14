@@ -4,7 +4,7 @@
 
 - Status: design reviewed; implementation investigation complete
 - Working branch: `feat/map-chart-sync`
-- Branch base: local `main` at `42308a0`
+- Branch base: local `main` at `18976ca`
 - Intended destination: local/private `main`
 - Upstream pull request: not planned as part of this feature
 - Implementation: not started
