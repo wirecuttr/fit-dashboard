@@ -69,11 +69,11 @@ function testBoundaryValidationAndDefaults() {
     [55, 75, 90, 105, 120, 150, 200],
     "reset defaults should preserve the current percentage model",
   );
-  assert(validatePowerZoneBoundPercents([1, 3, 5, 7, 9, 11, 300]), "inclusive limits and two-point gaps should be valid");
+  assert(validatePowerZoneBoundPercents([1, 6, 11, 16, 21, 26, 300]), "inclusive limits and five-point gaps should be valid");
   assert(!validatePowerZoneBoundPercents([0, 75, 90, 105, 120, 150, 200]), "values below one percent should be rejected");
   assert(!validatePowerZoneBoundPercents([55, 75, 90, 105, 120, 150, 301]), "values above 300 percent should be rejected");
   assert(!validatePowerZoneBoundPercents([55, 75, 90, 105, 120, 150]), "exactly seven boundaries should be required");
-  assert(!validatePowerZoneBoundPercents([55, 75, 90, 105, 120, 150, 151]), "two-point gaps should be required");
+  assert(!validatePowerZoneBoundPercents([55, 75, 90, 105, 120, 150, 154]), "five-point gaps should be required");
   assert(!validatePowerZoneBoundPercents([55, 75, 90, 105.5, 120, 150, 200]), "fractional percentages should be rejected");
 
   let rejected = false;
@@ -91,8 +91,8 @@ function testBoundaryValidationAndDefaults() {
 
 function testConfiguredBoundsConversion() {
   assertArrayEqual(
-    configuredPowerZoneBoundsWatts(50, [1, 3, 5, 7, 9, 11, 300]),
-    [1, 2, 3, 4, 5, 6, 150],
+    configuredPowerZoneBoundsWatts(50, [1, 6, 11, 16, 21, 26, 300]),
+    [1, 3, 6, 8, 11, 13, 150],
     "minimum accepted FTP should still produce strictly increasing watt boundaries",
   );
   assertArrayEqual(

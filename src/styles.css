@@ -3131,45 +3131,22 @@ button:focus-visible {
   overflow-y: auto;
 }
 
-.power-zone-preview {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  height: 12px;
-  overflow: hidden;
-  border-radius: 999px;
+.power-zone-slider-container {
+  padding-top: 3rem;
 }
 
-.power-zone-boundary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
-  gap: 0.65rem;
+.power-zone-handle {
+  z-index: 3;
 }
 
-.power-zone-boundary-grid > label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-weight: 700;
+.power-zone-handle:hover,
+.power-zone-handle:focus-visible,
+.power-zone-handle.dragging {
+  z-index: 5;
 }
 
-.power-zone-number-input {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.power-zone-number-input input {
-  width: 80px;
-  min-width: 0;
-}
-
-.power-zone-number-input > span {
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-  white-space: nowrap;
+.power-zone-handle.alternate .hr-zone-handle-value {
+  top: -48px;
 }
 
 .power-zone-labels {

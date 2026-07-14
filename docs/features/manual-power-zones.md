@@ -135,7 +135,7 @@ Configured boundaries must:
 - contain integers only;
 - be between 1% and 300% FTP inclusive;
 - be strictly increasing; and
-- have a minimum gap of 2 percentage points.
+- have a minimum gap of 5 percentage points.
 
 Use the same limits in TypeScript and Rust. Add pure helpers:
 

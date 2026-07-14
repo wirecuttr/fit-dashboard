@@ -8,7 +8,7 @@ pub const POWER_ZONE_PREFERENCES_VERSION: u8 = 1;
 pub const POWER_ZONE_BOUND_COUNT: usize = 7;
 pub const POWER_ZONE_BOUND_MIN_PERCENT: i32 = 1;
 pub const POWER_ZONE_BOUND_MAX_PERCENT: i32 = 300;
-pub const POWER_ZONE_BOUND_MIN_GAP_PERCENT: i32 = 2;
+pub const POWER_ZONE_BOUND_MIN_GAP_PERCENT: i32 = 5;
 
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -123,6 +123,7 @@ mod tests {
             vec![55, 75, 90, 105, 120, 150],
             vec![55, 75, 90, 105, 120, 150, 150],
             vec![55, 75, 90, 105, 120, 150, 151],
+            vec![55, 75, 90, 105, 120, 150, 154],
         ] {
             let invalid = PowerZonePreferences {
                 bounds_percent_ftp,

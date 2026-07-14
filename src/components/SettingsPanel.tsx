@@ -309,8 +309,43 @@ function PowerZoneDialog({
   t: Translate;
 }) {
   const [draft, setDraft] = useState(() => [...bounds]);
+  const [dragging, setDragging] = useState<number | null>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  const pct = (value: number) => (
+    (value - POWER_ZONE_BOUND_MIN_PERCENT)
+    / (POWER_ZONE_BOUND_MAX_PERCENT - POWER_ZONE_BOUND_MIN_PERCENT)
+  ) * 100;
+
+  const boundaryLimits = useCallback((index: number, values: number[]) => ({
+    min: index === 0
+      ? POWER_ZONE_BOUND_MIN_PERCENT
+      : values[index - 1] + POWER_ZONE_BOUND_MIN_GAP_PERCENT,
+    max: index === values.length - 1
+      ? POWER_ZONE_BOUND_MAX_PERCENT
+      : values[index + 1] - POWER_ZONE_BOUND_MIN_GAP_PERCENT,
+  }), []);
+
+  const updateDraftValue = useCallback((index: number, value: number) => {
+    setDraft((previous) => {
+      const { min, max } = boundaryLimits(index, previous);
+      const next = [...previous];
+      next[index] = Math.max(min, Math.min(max, Math.round(value)));
+      return next;
+    });
+  }, [boundaryLimits]);
+
+  const updateDraftFromPointer = useCallback((index: number, clientX: number) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const value = POWER_ZONE_BOUND_MIN_PERCENT
+      + ratio * (POWER_ZONE_BOUND_MAX_PERCENT - POWER_ZONE_BOUND_MIN_PERCENT);
+    updateDraftValue(index, value);
+  }, [updateDraftValue]);
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -324,7 +359,7 @@ function PowerZoneDialog({
       if (event.key !== "Tab") return;
       const focusable = Array.from(
         dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled)'
+          'button:not(:disabled), [role="slider"][tabindex="0"]'
         ) ?? []
       );
       if (focusable.length === 0) return;
@@ -342,7 +377,21 @@ function PowerZoneDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose, saving]);
 
-  const zoneLabels = POWER_ZONE_COLORS.slice(0, 8).map((colour, index) => {
+  useEffect(() => {
+    if (dragging === null) return;
+    const onMove = (event: PointerEvent) => updateDraftFromPointer(dragging, event.clientX);
+    const onUp = () => setDragging(null);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [dragging, updateDraftFromPointer]);
+
+  const zoneColours = POWER_ZONE_COLORS.slice(0, 8);
+  const segmentEdges = [POWER_ZONE_BOUND_MIN_PERCENT, ...draft, POWER_ZONE_BOUND_MAX_PERCENT];
+  const zoneLabels = zoneColours.map((colour, index) => {
     const low = index === 0 ? null : draft[index - 1] + 1;
     const high = index === 7 ? null : draft[index];
     const range = low === null
@@ -385,43 +434,70 @@ function PowerZoneDialog({
           {t("settings.powerZonesDescription")}
         </p>
 
-        <div className="power-zone-preview" aria-hidden="true">
-          {zoneLabels.map((zone) => (
-            <span key={zone.name} style={{ background: zone.colour }} />
-          ))}
-        </div>
-        <div className="power-zone-boundary-grid">
-          {draft.map((value, index) => {
-            const min = index === 0
-              ? POWER_ZONE_BOUND_MIN_PERCENT
-              : draft[index - 1] + POWER_ZONE_BOUND_MIN_GAP_PERCENT;
-            const max = index === draft.length - 1
-              ? POWER_ZONE_BOUND_MAX_PERCENT
-              : draft[index + 1] - POWER_ZONE_BOUND_MIN_GAP_PERCENT;
-            return (
-              <label key={index}>
-                <span>{t("settings.powerZoneBoundaryLabel", { zone: index + 1 })}</span>
-                <span className="power-zone-number-input">
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={min}
-                    max={max}
-                    step={1}
-                    value={value}
-                    disabled={saving}
-                    aria-valuetext={t("settings.powerZoneValuePercentFtp", { value })}
-                    onChange={(event) => {
-                      const next = [...draft];
-                      next[index] = Math.max(min, Math.min(max, Math.round(Number(event.target.value))));
-                      setDraft(next);
+        <div className="hr-zone-slider-container power-zone-slider-container">
+          <div className="hr-zone-slider" ref={trackRef}>
+            <div className="hr-zone-track" aria-hidden="true">
+              {zoneColours.map((colour, index) => {
+                const left = pct(segmentEdges[index]);
+                const right = pct(segmentEdges[index + 1]);
+                return (
+                  <span
+                    key={`${colour}-${index}`}
+                    className="hr-zone-segment"
+                    style={{
+                      left: `${left}%`,
+                      width: `${right - left}%`,
+                      background: colour,
                     }}
                   />
-                  <span>{t("settings.powerZonePercentFtpUnit")}</span>
-                </span>
-              </label>
-            );
-          })}
+                );
+              })}
+            </div>
+
+            {draft.map((value, index) => {
+              const limits = boundaryLimits(index, draft);
+              return (
+                <div
+                  key={index}
+                  className={`hr-zone-handle power-zone-handle${index % 2 ? " alternate" : ""}${dragging === index ? " dragging" : ""}`}
+                  style={{
+                    left: `${pct(value)}%`,
+                    color: zoneColours[index + 1] ?? zoneColours[index],
+                  }}
+                  role="slider"
+                  tabIndex={saving ? -1 : 0}
+                  aria-label={t("settings.powerZoneBoundaryLabel", { zone: index + 1 })}
+                  aria-valuemin={limits.min}
+                  aria-valuemax={limits.max}
+                  aria-valuenow={value}
+                  aria-valuetext={t("settings.powerZoneValuePercentFtp", { value })}
+                  onPointerDown={(event) => {
+                    if (saving) return;
+                    event.preventDefault();
+                    event.currentTarget.focus();
+                    setDragging(index);
+                    updateDraftFromPointer(index, event.clientX);
+                  }}
+                  onKeyDown={(event) => {
+                    if (saving) return;
+                    let next: number | null = null;
+                    if (event.key === "ArrowLeft" || event.key === "ArrowDown") next = value - 1;
+                    if (event.key === "ArrowRight" || event.key === "ArrowUp") next = value + 1;
+                    if (event.key === "PageDown") next = value - 5;
+                    if (event.key === "PageUp") next = value + 5;
+                    if (event.key === "Home") next = limits.min;
+                    if (event.key === "End") next = limits.max;
+                    if (next !== null) {
+                      event.preventDefault();
+                      updateDraftValue(index, next);
+                    }
+                  }}
+                >
+                  <span className="hr-zone-handle-value">{value}%</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
         <div className="power-zone-labels">
           {zoneLabels.map((zone) => (
