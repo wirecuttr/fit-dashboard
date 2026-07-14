@@ -4,6 +4,8 @@ export type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "alti
 
 export const MISSING_ROUTE_METRIC_COLOR = "#9ca3af";
 
+export type RouteLineGradient = string | unknown[];
+
 function finiteNumber(value: number | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -66,4 +68,82 @@ export function buildRouteSegmentColors(
       ? missingColor
       : valueToColor((value - min) / range)
   ));
+}
+
+function coordinateDistanceMeters(start: number[], end: number[]): number {
+  const startLng = start[0];
+  const startLat = start[1];
+  const endLng = end[0];
+  const endLat = end[1];
+  if (![startLng, startLat, endLng, endLat].every(Number.isFinite)) return 0;
+
+  const toRadians = Math.PI / 180;
+  const lat1 = startLat * toRadians;
+  const lat2 = endLat * toRadians;
+  const deltaLat = (endLat - startLat) * toRadians;
+  const deltaLng = (endLng - startLng) * toRadians;
+  const sinLat = Math.sin(deltaLat / 2);
+  const sinLng = Math.sin(deltaLng / 2);
+  const a = (sinLat * sinLat) + (Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng);
+  return 6_371_008.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+}
+
+export function buildRouteDisplayGeoJson(
+  coordinates: number[][],
+): GeoJSON.FeatureCollection<GeoJSON.LineString> {
+  if (coordinates.length < 2) {
+    return { type: "FeatureCollection", features: [] };
+  }
+  return {
+    type: "FeatureCollection",
+    features: [{
+      type: "Feature",
+      geometry: { type: "LineString", coordinates },
+      properties: {},
+    }],
+  };
+}
+
+/**
+ * Build a stepped MapLibre line gradient for one continuous route feature.
+ * Stops use geographic distance because MapLibre's line-progress is
+ * distance-based rather than record-index-based.
+ */
+export function buildRouteLineGradient(
+  coordinates: number[][],
+  segmentColors: string[],
+  fallbackColor: string,
+): RouteLineGradient {
+  if (coordinates.length < 2) return fallbackColor;
+
+  const segments: Array<{ startDistance: number; color: string }> = [];
+  let totalDistance = 0;
+  for (let index = 0; index < coordinates.length - 1; index += 1) {
+    const distance = coordinateDistanceMeters(coordinates[index], coordinates[index + 1]);
+    if (distance > 0) {
+      segments.push({
+        startDistance: totalDistance,
+        color: segmentColors[index] ?? fallbackColor,
+      });
+    }
+    totalDistance += distance;
+  }
+
+  if (!segments.length || totalDistance <= 0) return fallbackColor;
+
+  const firstColor = segments[0].color;
+  const gradient: unknown[] = ["step", ["line-progress"], firstColor];
+  let previousColor = firstColor;
+  let previousStop = 0;
+
+  for (let index = 1; index < segments.length; index += 1) {
+    const segment = segments[index];
+    const stop = segment.startDistance / totalDistance;
+    if (stop <= previousStop || stop >= 1 || segment.color === previousColor) continue;
+    gradient.push(stop, segment.color);
+    previousStop = stop;
+    previousColor = segment.color;
+  }
+
+  return gradient.length > 3 ? gradient : firstColor;
 }
