@@ -1386,23 +1386,10 @@ button:focus-visible {
 .detail-control-panel {
   display: flex;
   flex: 0 0 auto;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.detail-control-row {
-  display: grid;
-  grid-template-columns: 5.25rem auto;
   align-items: center;
-  gap: 0.5rem;
-  min-height: 30px;
-}
-
-.detail-control-label {
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  white-space: nowrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-wrap: wrap;
 }
 
 .detail-control-static {
@@ -1416,7 +1403,6 @@ button:focus-visible {
 }
 
 .detail-reset-zoom {
-  justify-self: start;
   min-height: 29px;
   padding: 0.25rem 0.65rem;
   font-size: 0.72rem;
@@ -3986,7 +3972,7 @@ button:focus-visible {
   .settings-grid { grid-template-columns: 1fr; }
   .supporter-box { flex-direction: column; align-items: flex-start; }
   .detail-title-row { flex-direction: column; align-items: flex-start; }
-  .detail-control-panel { width: 100%; }
+  .detail-control-panel { width: 100%; justify-content: flex-start; }
   .detail-stats-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .detail-stats-strip.grouped { display: flex; }
 }

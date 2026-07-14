@@ -1903,33 +1903,31 @@ export function Dashboard({ onLogout }: Props) {
                     </div>
                   </div>
                   <div className="detail-control-panel">
-                    <div className="detail-control-row" role="group" aria-label={t("detail.xAxis")}>
-                      <span className="detail-control-label">{t("detail.xAxis")}</span>
+                    <div role="group" aria-label={t("detail.xAxis")}>
                       <div className="detail-axis-toggle">
-                      <button
-                        type="button"
-                        className={telemetryXAxisMode === "time" ? "active" : ""}
-                        aria-pressed={telemetryXAxisMode === "time"}
-                        onClick={() => activityTimeResolution.hasPositiveTimeRange && setTelemetryXAxisMode("time")}
-                        disabled={!activityTimeResolution.hasPositiveTimeRange}
-                        title={!activityTimeResolution.hasPositiveTimeRange ? t("detail.timeAxisUnavailable") : undefined}
-                      >
-                        {t("detail.time")}
-                      </button>
-                      <button
-                        type="button"
-                        className={telemetryXAxisMode === "distance" ? "active" : ""}
-                        aria-pressed={telemetryXAxisMode === "distance"}
-                        onClick={() => hasTelemetryDistanceAxis && setTelemetryXAxisMode("distance")}
-                        disabled={!hasTelemetryDistanceAxis}
-                        title={!hasTelemetryDistanceAxis ? t("detail.distanceAxisUnavailable") : undefined}
-                      >
-                        {t("detail.distance")}
-                      </button>
+                        <button
+                          type="button"
+                          className={telemetryXAxisMode === "time" ? "active" : ""}
+                          aria-pressed={telemetryXAxisMode === "time"}
+                          onClick={() => activityTimeResolution.hasPositiveTimeRange && setTelemetryXAxisMode("time")}
+                          disabled={!activityTimeResolution.hasPositiveTimeRange}
+                          title={!activityTimeResolution.hasPositiveTimeRange ? t("detail.timeAxisUnavailable") : undefined}
+                        >
+                          {t("detail.time")}
+                        </button>
+                        <button
+                          type="button"
+                          className={telemetryXAxisMode === "distance" ? "active" : ""}
+                          aria-pressed={telemetryXAxisMode === "distance"}
+                          onClick={() => hasTelemetryDistanceAxis && setTelemetryXAxisMode("distance")}
+                          disabled={!hasTelemetryDistanceAxis}
+                          title={!hasTelemetryDistanceAxis ? t("detail.distanceAxisUnavailable") : undefined}
+                        >
+                          {t("detail.distance")}
+                        </button>
                       </div>
                     </div>
-                    <div className="detail-control-row" role="group" aria-label={t("detail.timeBasis")}>
-                      <span className="detail-control-label">{t("detail.timeBasis")}</span>
+                    <div role="group" aria-label={t("detail.timeBasis")}>
                       {!activityTimeResolution.movingLabelSupported ? (
                         <span className="detail-control-static">{t("detail.duration")}</span>
                       ) : (
@@ -1963,12 +1961,9 @@ export function Dashboard({ onLogout }: Props) {
                         </div>
                       )}
                     </div>
-                    <div className="detail-control-row">
-                      <span className="detail-control-label">{t("detail.chartZoom")}</span>
-                      <button className="btn-secondary detail-reset-zoom" disabled={!telemetryZoom} onClick={() => setTelemetryZoom(null)}>
-                        {t("sidebar.reset")}
-                      </button>
-                    </div>
+                    <button className="btn-secondary detail-reset-zoom" disabled={!telemetryZoom} onClick={() => setTelemetryZoom(null)}>
+                      {t("detail.resetZoom")}
+                    </button>
                   </div>
                 </div>
                 <div className="detail-stats-strip grouped">
