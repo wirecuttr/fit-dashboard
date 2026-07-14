@@ -1,7 +1,9 @@
 import {
+  HIDDEN_ROUTE_COLOR,
   MISSING_ROUTE_METRIC_COLOR,
   buildRouteDisplayGeoJson,
   buildRouteLineGradient,
+  buildRouteRevealGradient,
   buildRouteSegmentColors,
   type PathColorMode,
 } from "../src/lib/mapRouteColor";
@@ -64,20 +66,20 @@ function testSolidColourIsUnchanged() {
   assertEqual(colours[1], "#d65252", "solid mode should retain its configured colour throughout");
 }
 
-function testVisibleRouteUsesOneContinuousFeature() {
+function testDisplayRouteUsesOneCompleteContinuousFeature() {
   const coordinates = [[-114.0, 51.0], [-114.001, 51.001], [-114.002, 51.0]];
   const route = buildRouteDisplayGeoJson(coordinates);
 
-  assertEqual(route.features.length, 1, "the visible route should use one feature");
-  assertEqual(route.features[0].geometry.type, "LineString", "the visible route should be a LineString");
+  assertEqual(route.features.length, 1, "the display route should use one feature");
+  assertEqual(route.features[0].geometry.type, "LineString", "the display route should be a LineString");
   assertEqual(
     route.features[0].geometry.coordinates.length,
     coordinates.length,
-    "the visible LineString should contain every revealed coordinate",
+    "the display LineString should retain the complete route",
   );
 }
 
-function testGradientStopsFollowRouteDistance() {
+function testGradientStopsFollowMapLibreRouteDistance() {
   const coordinates = [[0, 0], [0.001, 0], [0.003, 0]];
   const gradient = buildRouteLineGradient(
     coordinates,
@@ -91,21 +93,37 @@ function testGradientStopsFollowRouteDistance() {
   const secondSegmentStop = Number(gradient[3]);
   assert(
     secondSegmentStop > 0.32 && secondSegmentStop < 0.34,
-    "gradient stops should be based on route distance rather than record index",
+    "gradient stops should follow MapLibre's projected route distance",
   );
   assertEqual(gradient[4], "#222222", "the second segment colour should follow its distance stop");
 }
 
-function testGradientColoursRemainStableForPlaybackPrefix() {
+function testPlaybackCutoffKeepsTheFullGradientDomain() {
   const coordinates = [[0, 0], [0.001, 0], [0.002, 0], [0.003, 0]];
   const colours = ["#111111", "#222222", "#333333", "#444444"];
   const fullGradient = buildRouteLineGradient(coordinates, colours, "#d65252");
-  const prefixGradient = buildRouteLineGradient(coordinates.slice(0, 3), colours, "#d65252");
+  const partialGradient = buildRouteLineGradient(coordinates, colours, "#d65252", 2);
 
   assert(Array.isArray(fullGradient), "the full route should produce a gradient expression");
-  assert(Array.isArray(prefixGradient), "the playback prefix should produce a gradient expression");
-  assertEqual(prefixGradient[2], fullGradient[2], "the first revealed segment colour should remain stable");
-  assertEqual(prefixGradient[4], fullGradient[4], "the next revealed segment colour should remain stable");
+  assert(Array.isArray(partialGradient), "the partial route should produce a cutoff expression");
+  assertEqual(partialGradient[2], fullGradient[2], "the first revealed colour should remain stable");
+  assertEqual(partialGradient[3], fullGradient[3], "the first colour stop should retain full-route progress");
+  assertEqual(partialGradient[4], fullGradient[4], "the next revealed colour should remain stable");
+  assertEqual(partialGradient[5], fullGradient[5], "the cutoff should retain full-route progress");
+  assertEqual(partialGradient[6], HIDDEN_ROUTE_COLOR, "the unplayed tail should be transparent");
+}
+
+function testOutlineUsesTheSamePlaybackCutoff() {
+  const gradient = buildRouteRevealGradient(
+    [[0, 0], [0.001, 0], [0.002, 0]],
+    1,
+    "#000000",
+  );
+
+  assert(Array.isArray(gradient), "a partial outline should produce a cutoff expression");
+  assertEqual(gradient[2], "#000000", "the revealed outline should remain black");
+  assertEqual(gradient[3], 0.5, "the outline cutoff should use full-route progress");
+  assertEqual(gradient[4], HIDDEN_ROUTE_COLOR, "the unplayed outline should be transparent");
 }
 
 function testSolidRouteUsesOneConstantGradientColour() {
@@ -114,15 +132,16 @@ function testSolidRouteUsesOneConstantGradientColour() {
     ["#d65252", "#d65252", "#d65252"],
     "#d65252",
   );
-  assertEqual(gradient, "#d65252", "solid mode should use one continuous constant-colour stroke");
+  assertEqual(gradient, "#d65252", "a fully revealed solid route should use one constant-colour stroke");
 }
 
 testColoursRemainStableAsRouteIsRevealed();
 testMissingValuesDoNotChangeTheScale();
 testSolidColourIsUnchanged();
-testVisibleRouteUsesOneContinuousFeature();
-testGradientStopsFollowRouteDistance();
-testGradientColoursRemainStableForPlaybackPrefix();
+testDisplayRouteUsesOneCompleteContinuousFeature();
+testGradientStopsFollowMapLibreRouteDistance();
+testPlaybackCutoffKeepsTheFullGradientDomain();
+testOutlineUsesTheSamePlaybackCutoff();
 testSolidRouteUsesOneConstantGradientColour();
 
 console.log("Map route colour tests passed");
