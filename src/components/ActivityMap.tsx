@@ -22,6 +22,7 @@ import {
 import {
   buildRouteDisplayGeoJson,
   buildRouteLineGradient,
+  buildRouteRevealGradient,
   buildRouteSegmentColors,
   type PathColorMode,
 } from "../lib/mapRouteColor";
@@ -655,7 +656,7 @@ export function ActivityMap({
 
   /* ── Draw route ─────────────────────────────────────────────── */
 
-  function drawRoute(map: maplibregl.Map, fitToRoute: boolean) {
+  function drawRoute(map: maplibregl.Map, fitToRoute: boolean, replaceDisplayGeometry = false) {
     const coords = coordinatesRef.current;
     const gpsRecs = gpsRecordsRef.current;
     const routeColors = routeSegmentColorsRef.current;
@@ -680,8 +681,9 @@ export function ActivityMap({
     const visibleGpsRecs = gpsRecs.slice(0, endIndex + 1);
 
     const hitGeojson = buildColoredGeoJson(visibleGpsRecs, visibleCoords, routeColors, SOLID_PATH_COLOR);
-    const displayGeojson = buildRouteDisplayGeoJson(visibleCoords);
-    const displayGradient = buildRouteLineGradient(visibleCoords, routeColors, SOLID_PATH_COLOR);
+    const displayGeojson = buildRouteDisplayGeoJson(coords);
+    const displayGradient = buildRouteLineGradient(coords, routeColors, SOLID_PATH_COLOR, endIndex);
+    const outlineGradient = buildRouteRevealGradient(coords, endIndex, "#000000");
     const markerGeojson = buildMarkerGeoJson(visibleCoords);
     const lapMarkerGeojson = buildLapMarkerGeoJson(visibleGpsRecs, lapTimestampsUtc);
     const existingDisplay = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
@@ -690,7 +692,7 @@ export function ActivityMap({
     const existingLapMarkers = map.getSource(LAP_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
 
     if (existingDisplay) {
-      existingDisplay.setData(displayGeojson);
+      if (replaceDisplayGeometry) existingDisplay.setData(displayGeojson);
     } else {
       map.addSource(SOURCE_ID, { type: "geojson", data: displayGeojson, lineMetrics: true });
     }
@@ -704,12 +706,13 @@ export function ActivityMap({
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
           "line-width": 8,
-          "line-color": "#000000",
+          "line-gradient": outlineGradient as any,
           "line-opacity": 0.62,
           "line-blur": 2.2,
         }
       });
     }
+    map.setPaintProperty(OUTLINE_LAYER_ID, "line-gradient", outlineGradient as any);
 
     if (existingHit) {
       existingHit.setData(hitGeojson);
@@ -978,9 +981,9 @@ export function ActivityMap({
     const map = mapRef.current;
     if (!map) return;
     if (map.isStyleLoaded()) {
-      drawRoute(map, !followEnabledRef.current);
+      drawRoute(map, !followEnabledRef.current, true);
     } else {
-      const onIdle = () => { map.off("idle", onIdle); drawRoute(map, !followEnabledRef.current); };
+      const onIdle = () => { map.off("idle", onIdle); drawRoute(map, !followEnabledRef.current, true); };
       map.on("idle", onIdle);
       return () => { map.off("idle", onIdle); };
     }

@@ -57,25 +57,31 @@ layer.
 ## Colour and Playback Stability
 
 Metric colours are calculated once against all sampled GPS records. Playback
-continues to provide only the revealed coordinate prefix to the display source.
+does not replace or shorten the display source: it remains the complete route
+for the activity.
 
 For each redraw:
 
-1. Calculate cumulative geographic distance along the revealed prefix.
+1. Calculate cumulative Web Mercator distance along the complete route, using
+   the same projection as MapLibre's GeoJSON tiler.
 2. Assign each non-zero-length segment its previously calculated full-activity
    colour.
-3. Normalize each segment boundary by the revealed prefix distance.
-4. Build a stepped `line-gradient` from those normalized boundaries.
-5. Update the single display `LineString` and gradient together.
+3. Normalize each segment boundary by the complete route distance.
+4. Build a stepped `line-gradient` from those fixed boundaries.
+5. Add a transparent stop at the current full-route playback progress to hide
+   the unrevealed tail.
+6. Apply the same cutoff to the outline while the hit-test route, markers, and
+   lap markers continue to use the revealed prefix.
 
 MapLibre's `line-progress` is distance-based, so distance-normalized stops keep
-colour changes aligned with their geographic segments. Although the normalized
-stop values change as the prefix grows, the colour assigned to an already
-revealed segment does not.
+colour changes aligned with their geographic segments. Because both the source
+geometry and the gradient domain remain fixed, previously revealed colours and
+their stop positions do not move while the user scrubs or plays the route.
 
 Adjacent segments with the same colour share one gradient interval. Duplicate
 coordinates do not introduce zero-length stops. If all segments have the same
-colour, including Solid mode, the gradient collapses to a constant colour.
+colour and the route is fully revealed, including Solid mode, the gradient
+collapses to a constant colour.
 
 ## Missing Data
 
@@ -91,16 +97,19 @@ Solid does not inspect telemetry values.
 - `src/lib/mapRouteColor.ts`
   - retains full-activity metric scaling;
   - builds the single-feature display GeoJSON;
-  - calculates distance-normalized stepped gradients.
+  - calculates full-route, Web Mercator distance-normalized stepped gradients;
+  - adds a transparent playback cutoff without changing earlier stops.
 - `src/components/ActivityMap.tsx`
   - enables `lineMetrics` on the display source;
-  - renders the visible colour layer from the display source;
-  - retains segmented geometry exclusively for hit-testing.
+  - keeps the complete display geometry fixed while scrubbing;
+  - reveals the coloured route and outline through matching gradient cutoffs;
+  - retains revealed-prefix segmented geometry exclusively for hit-testing.
 - `scripts/test-map-route-color.ts`
   - verifies stable full-activity colour calculation;
-  - verifies one continuous visible feature;
-  - verifies distance-based gradient stops;
-  - verifies stable playback-prefix colours;
+  - verifies one complete continuous display feature;
+  - verifies MapLibre-compatible distance stops;
+  - verifies stable full-domain playback colours and cutoff positions;
+  - verifies a matching outline cutoff;
   - verifies constant-colour Solid rendering.
 
 ## Validation
@@ -125,6 +134,8 @@ Manual or browser rendering validation should cover:
 - Solid has no grey or black gaps within its red route stroke.
 - Metric modes have no outline-coloured seams between GPS samples.
 - Previously revealed route colours do not shift as playback advances.
+- Previously revealed route gradient stops do not shift while scrubbing.
 - Missing metric segments remain neutral grey.
 - Hover telemetry still resolves the corresponding segment.
-- The route remains a single continuous visible `LineString`.
+- The display source remains one complete continuous `LineString` throughout
+  playback and scrubbing.

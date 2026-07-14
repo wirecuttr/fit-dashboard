@@ -3,6 +3,7 @@ import type { RecordPoint } from "../types";
 export type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "altitude" | "power" | "temperature" | "time";
 
 export const MISSING_ROUTE_METRIC_COLOR = "#9ca3af";
+export const HIDDEN_ROUTE_COLOR = "rgba(0,0,0,0)";
 
 export type RouteLineGradient = string | unknown[];
 
@@ -70,22 +71,25 @@ export function buildRouteSegmentColors(
   ));
 }
 
-function coordinateDistanceMeters(start: number[], end: number[]): number {
-  const startLng = start[0];
-  const startLat = start[1];
-  const endLng = end[0];
-  const endLat = end[1];
-  if (![startLng, startLat, endLng, endLat].every(Number.isFinite)) return 0;
+function projectCoordinate(coordinate: number[]): [number, number] | null {
+  const longitude = coordinate[0];
+  const latitude = coordinate[1];
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
 
-  const toRadians = Math.PI / 180;
-  const lat1 = startLat * toRadians;
-  const lat2 = endLat * toRadians;
-  const deltaLat = (endLat - startLat) * toRadians;
-  const deltaLng = (endLng - startLng) * toRadians;
-  const sinLat = Math.sin(deltaLat / 2);
-  const sinLng = Math.sin(deltaLng / 2);
-  const a = (sinLat * sinLat) + (Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng);
-  return 6_371_008.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+  const sinLatitude = Math.sin(latitude * Math.PI / 180);
+  const x = longitude / 360 + 0.5;
+  const rawY = 0.5 - 0.25 * Math.log((1 + sinLatitude) / (1 - sinLatitude)) / Math.PI;
+  return [x, Math.max(0, Math.min(1, rawY))];
+}
+
+function coordinateDistance(start: number[], end: number[]): number {
+  const projectedStart = projectCoordinate(start);
+  const projectedEnd = projectCoordinate(end);
+  if (!projectedStart || !projectedEnd) return 0;
+  return Math.hypot(
+    projectedEnd[0] - projectedStart[0],
+    projectedEnd[1] - projectedStart[1],
+  );
 }
 
 export function buildRouteDisplayGeoJson(
@@ -104,40 +108,46 @@ export function buildRouteDisplayGeoJson(
   };
 }
 
-/**
- * Build a stepped MapLibre line gradient for one continuous route feature.
- * Stops use geographic distance because MapLibre's line-progress is
- * distance-based rather than record-index-based.
- */
-export function buildRouteLineGradient(
+function buildSteppedRouteGradient(
   coordinates: number[][],
-  segmentColors: string[],
-  fallbackColor: string,
+  colorForSegment: (index: number) => string,
+  revealedEndIndex: number,
+  hiddenColor: string,
 ): RouteLineGradient {
-  if (coordinates.length < 2) return fallbackColor;
+  if (coordinates.length < 2) return hiddenColor;
 
-  const segments: Array<{ startDistance: number; color: string }> = [];
+  const segments: Array<{ index: number; startDistance: number; color: string }> = [];
+  const cumulativeDistances = [0];
   let totalDistance = 0;
   for (let index = 0; index < coordinates.length - 1; index += 1) {
-    const distance = coordinateDistanceMeters(coordinates[index], coordinates[index + 1]);
+    const distance = coordinateDistance(coordinates[index], coordinates[index + 1]);
     if (distance > 0) {
       segments.push({
+        index,
         startDistance: totalDistance,
-        color: segmentColors[index] ?? fallbackColor,
+        color: colorForSegment(index),
       });
     }
     totalDistance += distance;
+    cumulativeDistances.push(totalDistance);
   }
 
-  if (!segments.length || totalDistance <= 0) return fallbackColor;
+  if (!segments.length || totalDistance <= 0) return hiddenColor;
 
-  const firstColor = segments[0].color;
+  const clampedEndIndex = Math.max(0, Math.min(coordinates.length - 1, revealedEndIndex));
+  const revealedDistance = cumulativeDistances[clampedEndIndex] ?? 0;
+  if (revealedDistance <= 0) return hiddenColor;
+
+  const visibleSegments = segments.filter((segment) => segment.index < clampedEndIndex);
+  if (!visibleSegments.length) return hiddenColor;
+
+  const firstColor = visibleSegments[0].color;
   const gradient: unknown[] = ["step", ["line-progress"], firstColor];
   let previousColor = firstColor;
   let previousStop = 0;
 
-  for (let index = 1; index < segments.length; index += 1) {
-    const segment = segments[index];
+  for (let index = 1; index < visibleSegments.length; index += 1) {
+    const segment = visibleSegments[index];
     const stop = segment.startDistance / totalDistance;
     if (stop <= previousStop || stop >= 1 || segment.color === previousColor) continue;
     gradient.push(stop, segment.color);
@@ -145,5 +155,45 @@ export function buildRouteLineGradient(
     previousColor = segment.color;
   }
 
+  if (revealedDistance < totalDistance) {
+    const cutoff = revealedDistance / totalDistance;
+    if (cutoff > previousStop && cutoff < 1) gradient.push(cutoff, hiddenColor);
+  }
+
   return gradient.length > 3 ? gradient : firstColor;
+}
+
+/**
+ * Build a stepped MapLibre line gradient for one continuous route feature.
+ * Stops use the same Web Mercator distance calculation as MapLibre's GeoJSON
+ * tiler. The complete route remains the gradient domain while playback hides
+ * the unrevealed tail with a transparent cutoff.
+ */
+export function buildRouteLineGradient(
+  coordinates: number[][],
+  segmentColors: string[],
+  fallbackColor: string,
+  revealedEndIndex = coordinates.length - 1,
+  hiddenColor = HIDDEN_ROUTE_COLOR,
+): RouteLineGradient {
+  return buildSteppedRouteGradient(
+    coordinates,
+    (index) => segmentColors[index] ?? fallbackColor,
+    revealedEndIndex,
+    hiddenColor,
+  );
+}
+
+export function buildRouteRevealGradient(
+  coordinates: number[][],
+  revealedEndIndex: number,
+  visibleColor: string,
+  hiddenColor = HIDDEN_ROUTE_COLOR,
+): RouteLineGradient {
+  return buildSteppedRouteGradient(
+    coordinates,
+    () => visibleColor,
+    revealedEndIndex,
+    hiddenColor,
+  );
 }
