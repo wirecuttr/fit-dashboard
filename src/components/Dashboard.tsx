@@ -1998,11 +1998,11 @@ export function Dashboard({ onLogout }: Props) {
                       {detailControlHelpOpen && (
                         <div className="detail-control-help-popover" role="dialog" aria-label={t("detail.controlsHelp")}>
                           <div>
-                            <strong>{t("detail.xAxis")}</strong>
+                            <strong>{t("detail.time")}/{t("detail.distance")}</strong>
                             <span>{t("detail.xAxisHelp")}</span>
                           </div>
                           <div>
-                            <strong>{t("detail.timeBasis")}</strong>
+                            <strong>{t("detail.moving")}/{t("detail.total")}</strong>
                             <span>{t("detail.timeBasisHelp")}</span>
                           </div>
                           <div>
