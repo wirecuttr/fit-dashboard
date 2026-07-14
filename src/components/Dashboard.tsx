@@ -339,6 +339,7 @@ export function Dashboard({ onLogout }: Props) {
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
   const [telemetryXAxisMode, setTelemetryXAxisMode] = useState<TelemetryXAxisMode>("time");
   const [activityTimeBasis, setActivityTimeBasis] = useState<ActivityTimeBasis>("moving");
+  const [detailControlHelpOpen, setDetailControlHelpOpen] = useState(false);
   const [appVersion, setAppVersion] = useState("unknown");
   const [versionBadgeStatus, setVersionBadgeStatus] = useState<VersionBadgeStatus>({ state: "hidden", latestVersion: null });
 
@@ -347,6 +348,7 @@ export function Dashboard({ onLogout }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const detailControlHelpRef = useRef<HTMLDivElement | null>(null);
   const {
     activities, selectedActivity, records, analysisRecords, overview,
     filterSport, setFilterSport, selectActivity, refresh
@@ -365,6 +367,25 @@ export function Dashboard({ onLogout }: Props) {
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, []);
+
+  useEffect(() => {
+    if (!detailControlHelpOpen) return;
+
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!detailControlHelpRef.current?.contains(event.target as Node)) {
+        setDetailControlHelpOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDetailControlHelpOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [detailControlHelpOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1962,8 +1983,35 @@ export function Dashboard({ onLogout }: Props) {
                       )}
                     </div>
                     <button className="btn-secondary detail-reset-zoom" disabled={!telemetryZoom} onClick={() => setTelemetryZoom(null)}>
-                      {t("detail.resetZoom")}
+                      {t("detail.resetCharts")}
                     </button>
+                    <div className="detail-control-help" ref={detailControlHelpRef}>
+                      <button
+                        type="button"
+                        className="detail-control-help-button"
+                        aria-label={t("detail.controlsHelp")}
+                        aria-expanded={detailControlHelpOpen}
+                        onClick={() => setDetailControlHelpOpen((open) => !open)}
+                      >
+                        ?
+                      </button>
+                      {detailControlHelpOpen && (
+                        <div className="detail-control-help-popover" role="dialog" aria-label={t("detail.controlsHelp")}>
+                          <div>
+                            <strong>{t("detail.xAxis")}</strong>
+                            <span>{t("detail.xAxisHelp")}</span>
+                          </div>
+                          <div>
+                            <strong>{t("detail.timeBasis")}</strong>
+                            <span>{t("detail.timeBasisHelp")}</span>
+                          </div>
+                          <div>
+                            <strong>{t("detail.resetCharts")}</strong>
+                            <span>{t("detail.resetChartsHelp")}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="detail-stats-strip grouped">

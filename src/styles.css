@@ -1384,6 +1384,7 @@ button:focus-visible {
 }
 
 .detail-control-panel {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -1406,6 +1407,64 @@ button:focus-visible {
   min-height: 29px;
   padding: 0.25rem 0.65rem;
   font-size: 0.72rem;
+}
+
+.detail-control-help {
+  display: inline-flex;
+}
+
+.detail-control-help-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--input-bg);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.detail-control-help-button:hover,
+.detail-control-help-button[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.detail-control-help-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  width: min(310px, calc(100vw - 2rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-solid);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+}
+
+.detail-control-help-popover > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.detail-control-help-popover strong {
+  color: var(--text);
+  font-size: 0.74rem;
+}
+
+.detail-control-help-popover span {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .detail-badges {
