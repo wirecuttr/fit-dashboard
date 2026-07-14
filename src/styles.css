@@ -1474,6 +1474,12 @@ button:focus-visible {
   flex-wrap: wrap;
 }
 
+.detail-datetime {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
 .detail-axis-toggle {
   display: inline-flex;
   align-items: center;
@@ -2857,9 +2863,17 @@ button:focus-visible {
   margin: 0.15rem 0 0;
 }
 
-.hr-zone-settings-header > svg {
-  flex: 0 0 auto;
-  color: var(--accent);
+.zone-settings-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.zone-settings-control {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
 }
 
 .hr-zone-btn-customize {

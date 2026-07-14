@@ -66,20 +66,29 @@ async function withoutExpectedWarnings<T>(action: () => Promise<T>): Promise<T> 
 function testBoundaryValidationAndDefaults() {
   assertArrayEqual(
     [...DEFAULT_POWER_ZONE_BOUND_PERCENTS],
-    [55, 75, 90, 105, 120, 150, 200],
-    "reset defaults should preserve the current percentage model",
+    [55, 75, 90, 105, 120, 150],
+    "reset defaults should define seven power zones",
   );
-  assert(validatePowerZoneBoundPercents([1, 6, 11, 16, 21, 26, 300]), "inclusive limits and five-point gaps should be valid");
-  assert(!validatePowerZoneBoundPercents([0, 75, 90, 105, 120, 150, 200]), "values below one percent should be rejected");
-  assert(!validatePowerZoneBoundPercents([55, 75, 90, 105, 120, 150, 301]), "values above 300 percent should be rejected");
-  assert(!validatePowerZoneBoundPercents([55, 75, 90, 105, 120, 150]), "exactly seven boundaries should be required");
-  assert(!validatePowerZoneBoundPercents([55, 75, 90, 105, 120, 150, 154]), "five-point gaps should be required");
-  assert(!validatePowerZoneBoundPercents([55, 75, 90, 105.5, 120, 150, 200]), "fractional percentages should be rejected");
+  assert(validatePowerZoneBoundPercents([1, 6, 11, 16, 21, 300]), "inclusive limits and five-point gaps should be valid");
+  assert(!validatePowerZoneBoundPercents([0, 75, 90, 105, 120, 150]), "values below one percent should be rejected");
+  assert(!validatePowerZoneBoundPercents([55, 75, 90, 105, 120, 301]), "values above 300 percent should be rejected");
+  assert(!validatePowerZoneBoundPercents([55, 75, 90, 105, 120, 150, 200]), "exactly six boundaries should be required");
+  assert(!validatePowerZoneBoundPercents([55, 75, 90, 105, 120, 124]), "five-point gaps should be required");
+  assert(!validatePowerZoneBoundPercents([55, 75, 90, 105.5, 120, 150]), "fractional percentages should be rejected");
+
+  const migrated = normalizePowerZonePreferences({
+    version: 1,
+    bounds_percent_ftp: [50, 70, 85, 100, 115, 140, 190],
+    zone_time_source: "calculated",
+  });
+  assertEqual(migrated.version, 2, "version-one preferences should migrate to version two");
+  assertArrayEqual(migrated.bounds_percent_ftp, [50, 70, 85, 100, 115, 140], "migration should remove the obsolete seventh boundary");
+  assertEqual(migrated.zone_time_source, "calculated", "migration should preserve the chart source");
 
   let rejected = false;
   try {
     normalizePowerZonePreferences({
-      version: 2,
+      version: 3,
       bounds_percent_ftp: [...DEFAULT_POWER_ZONE_BOUND_PERCENTS],
       zone_time_source: "fit",
     });
@@ -91,15 +100,17 @@ function testBoundaryValidationAndDefaults() {
 
 function testConfiguredBoundsConversion() {
   assertArrayEqual(
-    configuredPowerZoneBoundsWatts(50, [1, 6, 11, 16, 21, 26, 300]),
-    [1, 3, 6, 8, 11, 13, 150],
+    configuredPowerZoneBoundsWatts(50, [1, 6, 11, 16, 21, 300]),
+    [1, 3, 6, 8, 11, 150],
     "minimum accepted FTP should still produce strictly increasing watt boundaries",
   );
+  const defaultWatts = configuredPowerZoneBoundsWatts(251, [...DEFAULT_POWER_ZONE_BOUND_PERCENTS]);
   assertArrayEqual(
-    configuredPowerZoneBoundsWatts(251, [...DEFAULT_POWER_ZONE_BOUND_PERCENTS]),
-    [138, 188, 226, 264, 301, 377, 502],
+    defaultWatts,
+    [138, 188, 226, 264, 301, 377],
     "configured percentages should use nearest-watt rounding",
   );
+  assertEqual(buildPowerZones(defaultWatts).length, 7, "six configured boundaries should build exactly seven zones");
   assertEqual(configuredPowerZoneBoundsWatts(49, [...DEFAULT_POWER_ZONE_BOUND_PERCENTS]), undefined, "FTP below 50 W should be rejected");
   assertEqual(configuredPowerZoneBoundsWatts(2001, [...DEFAULT_POWER_ZONE_BOUND_PERCENTS]), undefined, "FTP above 2000 W should be rejected");
   assertEqual(configuredPowerZoneBoundsWatts(Number.NaN, [...DEFAULT_POWER_ZONE_BOUND_PERCENTS]), undefined, "non-finite FTP should be rejected");
@@ -170,8 +181,8 @@ function testCalculatedZoneTimeUsesMovingTimeline() {
 
 async function testPreferenceStoreLoadsAndSaves() {
   let stored: PowerZonePreferences = {
-    version: 1,
-    bounds_percent_ftp: [50, 70, 85, 100, 115, 140, 190],
+    version: 2,
+    bounds_percent_ftp: [50, 70, 85, 100, 115, 140],
     zone_time_source: "fit",
   };
   const writes: PowerZonePreferences[] = [];
@@ -193,7 +204,7 @@ async function testPreferenceStoreLoadsAndSaves() {
   assertEqual(await sourceSave, true, "valid source should save");
   assertEqual(store.getState().confirmedPowerZoneTimeSource, "calculated", "source save should update confirmation");
 
-  const nextBounds = [52, 72, 87, 102, 117, 145, 195];
+  const nextBounds = [52, 72, 87, 102, 117, 145];
   assertEqual(await store.getState().savePowerZoneBoundPercents(nextBounds), true, "valid boundaries should save");
   assertArrayEqual(writes[1].bounds_percent_ftp, nextBounds, "boundary save should send the draft bounds");
   assertEqual(writes[1].zone_time_source, "calculated", "boundary save should preserve the confirmed source");
@@ -205,7 +216,7 @@ async function testPreferenceStoreRollsBackAndSerialisesWrites() {
   let saveCalls = 0;
   const store = createPreferenceStore({
     getPowerZonePreferences: async () => ({
-      version: 1,
+      version: 2,
       bounds_percent_ftp: [...DEFAULT_POWER_ZONE_BOUND_PERCENTS],
       zone_time_source: "fit",
     }),
@@ -219,7 +230,7 @@ async function testPreferenceStoreRollsBackAndSerialisesWrites() {
   const sourceSave = withoutExpectedWarnings(() => store.getState().setPowerZoneTimeSource("calculated"));
   assertEqual(store.getState().powerZoneTimeSource, "calculated", "pending source save should apply immediately");
   assertEqual(
-    await store.getState().savePowerZoneBoundPercents([50, 70, 85, 100, 115, 140, 190]),
+    await store.getState().savePowerZoneBoundPercents([50, 70, 85, 100, 115, 140]),
     false,
     "boundary saves should be blocked while a source write is pending",
   );
@@ -238,7 +249,7 @@ async function testPreferenceStorePreservesBoundsAfterFailure() {
   const originalBounds = [...DEFAULT_POWER_ZONE_BOUND_PERCENTS];
   const store = createPreferenceStore({
     getPowerZonePreferences: async () => ({
-      version: 1,
+      version: 2,
       bounds_percent_ftp: originalBounds,
       zone_time_source: "calculated",
     }),
@@ -249,7 +260,7 @@ async function testPreferenceStorePreservesBoundsAfterFailure() {
   await store.getState().loadPowerZonePreferences();
 
   const saved = await withoutExpectedWarnings(
-    () => store.getState().savePowerZoneBoundPercents([50, 70, 85, 100, 115, 140, 190]),
+    () => store.getState().savePowerZoneBoundPercents([50, 70, 85, 100, 115, 140]),
   );
   assertEqual(saved, false, "failed boundary save should report failure");
   assertArrayEqual(store.getState().configuredPowerZoneBoundPercents, originalBounds, "failed save should preserve active bounds");

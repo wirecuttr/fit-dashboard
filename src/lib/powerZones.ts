@@ -1,6 +1,6 @@
-export const POWER_ZONE_PREFERENCES_VERSION = 1 as const;
-export const DEFAULT_POWER_ZONE_BOUND_PERCENTS = [55, 75, 90, 105, 120, 150, 200] as const;
-export const POWER_ZONE_BOUND_COUNT = 7;
+export const POWER_ZONE_PREFERENCES_VERSION = 2 as const;
+export const DEFAULT_POWER_ZONE_BOUND_PERCENTS = [55, 75, 90, 105, 120, 150] as const;
+export const POWER_ZONE_BOUND_COUNT = 6;
 export const POWER_ZONE_BOUND_MIN_PERCENT = 1;
 export const POWER_ZONE_BOUND_MAX_PERCENT = 300;
 export const POWER_ZONE_BOUND_MIN_GAP_PERCENT = 5;
@@ -15,8 +15,11 @@ export type PowerZonePreferences = {
   zone_time_source: PowerZoneTimeSource;
 };
 
-export function validatePowerZoneBoundPercents(bounds: unknown): bounds is number[] {
-  if (!Array.isArray(bounds) || bounds.length !== POWER_ZONE_BOUND_COUNT) return false;
+const LEGACY_POWER_ZONE_PREFERENCES_VERSION = 1;
+const LEGACY_POWER_ZONE_BOUND_COUNT = 7;
+
+function validatePowerZoneBounds(bounds: unknown, expectedCount: number): bounds is number[] {
+  if (!Array.isArray(bounds) || bounds.length !== expectedCount) return false;
   if (bounds.some((value) => !Number.isInteger(value)
     || value < POWER_ZONE_BOUND_MIN_PERCENT
     || value > POWER_ZONE_BOUND_MAX_PERCENT)) {
@@ -26,13 +29,33 @@ export function validatePowerZoneBoundPercents(bounds: unknown): bounds is numbe
     || value - bounds[index - 1] >= POWER_ZONE_BOUND_MIN_GAP_PERCENT);
 }
 
+export function validatePowerZoneBoundPercents(bounds: unknown): bounds is number[] {
+  return validatePowerZoneBounds(bounds, POWER_ZONE_BOUND_COUNT);
+}
+
 export function normalizePowerZonePreferences(value: unknown): PowerZonePreferences {
   if (!value || typeof value !== "object") {
     throw new Error("Invalid power-zone preferences");
   }
-  const candidate = value as Partial<PowerZonePreferences>;
+  const candidate = value as {
+    version?: number;
+    bounds_percent_ftp?: unknown;
+    zone_time_source?: unknown;
+  };
+  if (candidate.zone_time_source !== "fit" && candidate.zone_time_source !== "calculated") {
+    throw new Error("Invalid power-zone preferences");
+  }
+
+  if (candidate.version === LEGACY_POWER_ZONE_PREFERENCES_VERSION
+    && validatePowerZoneBounds(candidate.bounds_percent_ftp, LEGACY_POWER_ZONE_BOUND_COUNT)) {
+    return {
+      version: POWER_ZONE_PREFERENCES_VERSION,
+      bounds_percent_ftp: candidate.bounds_percent_ftp.slice(0, POWER_ZONE_BOUND_COUNT),
+      zone_time_source: candidate.zone_time_source,
+    };
+  }
+
   if (candidate.version !== POWER_ZONE_PREFERENCES_VERSION
-    || (candidate.zone_time_source !== "fit" && candidate.zone_time_source !== "calculated")
     || !validatePowerZoneBoundPercents(candidate.bounds_percent_ftp)) {
     throw new Error("Invalid power-zone preferences");
   }

@@ -1284,10 +1284,10 @@ export function Dashboard({ onLogout }: Props) {
           : null);
     if (typeof ftp === "number") push("ftp", t("detail.ftp"), `${formatStatNumber(Math.round(ftp))} W`, "user");
     if (typeof session.training_stress_score === "number" && session.training_stress_score > 0) {
-      push("tss", t("detail.tss"), formatStatNumber(session.training_stress_score, 1), "power");
+      push("tss", t("detail.tss"), formatStatNumber(session.training_stress_score, 1), "clock");
     }
     if (typeof session.intensity_factor === "number" && session.intensity_factor > 0) {
-      push("intensity_factor", t("detail.intensityFactorShort"), session.intensity_factor.toFixed(2), "power");
+      push("intensity_factor", t("detail.intensityFactorShort"), session.intensity_factor.toFixed(2), "clock");
     }
     const leftRightBalance = formatLeftRightBalance(session.left_right_balance);
     if (leftRightBalance) push("left_right_balance", t("detail.leftRightBalance"), leftRightBalance, "power");
@@ -1320,11 +1320,11 @@ export function Dashboard({ onLogout }: Props) {
 
   const detailStatGroups = useMemo(() => {
     const groupDefinitions: Array<{ key: string; label: string; icon: Icon; keys: string[] }> = [
-      { key: "activity", label: t("detail.summary"), icon: "clock", keys: ["moving_time", "total_time", "duration", "distance", "total_calories"] },
+      { key: "activity", label: t("detail.summary"), icon: "clock", keys: ["moving_time", "total_time", "duration", "distance", "tss", "intensity_factor", "total_calories"] },
       { key: "speed", label: activityUsesPaceDisplay(selectedActivity) ? t("detail.pace") : t("insights.speed"), icon: "speed", keys: ["avg_speed", "max_speed"] },
       { key: "heart", label: "Heart Rate", icon: "heart", keys: ["avg_hr", "max_hr"] },
       { key: "elevation", label: t("insights.elevation"), icon: "mountain", keys: ["min_alt", "max_alt", "total_ascent", "total_descent"] },
-      { key: "power", label: t("insights.power"), icon: "power", keys: ["avg_power", "max_power", "normalized_power", "tss", "intensity_factor", "left_right_balance"] },
+      { key: "power", label: t("insights.power"), icon: "power", keys: ["avg_power", "max_power", "normalized_power", "left_right_balance"] },
       { key: "cadence", label: t("insights.cadence"), icon: cadenceIconForActivity(selectedActivity), keys: ["avg_cadence", "max_cadence"] },
       { key: "user", label: t("detail.user"), icon: "user", keys: ["ftp", "vo2_max", "user_height", "user_weight", "resting_hr", "bb_change"] },
     ];
@@ -1920,8 +1920,10 @@ export function Dashboard({ onLogout }: Props) {
                 <div className="detail-title-row">
                   <div className="detail-identity">
                     <h2>{selectedActivity.activity_name || selectedActivity.file_name}</h2>
+                    <div className="detail-datetime">
+                      {formatDate(selectedActivity.start_ts_utc)} &bull; {formatTimeShort(selectedActivity.start_ts_utc)}
+                    </div>
                     <div className="detail-badges">
-                      <span className="badge">{formatDate(selectedActivity.start_ts_utc)}</span>
                       {selectedActivity.sport && <span className="badge sport">{formatActivityTypeLabel(selectedActivity)}</span>}
                       {deviceBadgeLabel && (
                         <span

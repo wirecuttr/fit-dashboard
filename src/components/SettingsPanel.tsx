@@ -449,15 +449,15 @@ function PowerZoneDialog({
     };
   }, [dragging, updateDraftFromPointer]);
 
-  const zoneColours = POWER_ZONE_COLORS.slice(0, 8);
+  const zoneColours = POWER_ZONE_COLORS.slice(0, 7);
   const segmentEdges = [POWER_ZONE_BOUND_MIN_PERCENT, ...draft, POWER_ZONE_BOUND_MAX_PERCENT];
   const zoneLabels = zoneColours.map((colour, index) => {
     const low = index === 0 ? null : draft[index - 1] + 1;
-    const high = index === 7 ? null : draft[index];
+    const high = index === 6 ? null : draft[index];
     const range = low === null
       ? t("settings.powerZoneRangeUpTo", { high: high ?? "" })
       : high === null
-        ? t("settings.powerZoneRangeAbove", { low: draft[6] })
+        ? t("settings.powerZoneRangeAbove", { low: draft[5] })
         : t("settings.powerZoneRangeBetween", { low, high });
     return { name: `Z${index + 1}`, range, colour };
   });
@@ -747,89 +747,79 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
           </label>
         </div>
 
-        <section className="hr-zone-settings" aria-labelledby="manual-hr-zone-settings-title">
+        <section className="hr-zone-settings" aria-labelledby="zone-settings-title">
           <div className="hr-zone-settings-header">
-            <div>
-              <strong id="manual-hr-zone-settings-title">{t("settings.hrZonesManualTitle")}</strong>
-              <p className="small">{t("settings.hrZonesManualDescription")}</p>
-            </div>
-            <IconHeart />
+            <strong id="zone-settings-title">{t("settings.zoneSettingsTitle")}</strong>
           </div>
 
-          {(heartRateZonePreferenceStatus === "idle" || heartRateZonePreferenceStatus === "loading") && (
-            <p className="hr-zone-status" role="status">{t("settings.hrZonesLoading")}</p>
-          )}
-          {heartRateZonePreferenceStatus === "error" && (
-            <div className="hr-zone-load-error" role="alert">
-              <span>{t("settings.hrZonesLoadFailed")}</span>
-              <button type="button" className="btn-secondary" onClick={() => void loadHeartRateZonePreferences()}>
-                {t("app.retry")}
-              </button>
-            </div>
-          )}
-          {heartRateZonePreferenceStatus === "ready" && (
-            <>
-              <button
-                type="button"
-                className="hr-zone-btn-customize"
-                onClick={() => setShowHrZoneDialog(true)}
-                disabled={heartRateZonePreferenceSaving}
-              >
-                <IconHeart />
-                {t("settings.customizeHrZones")}
-              </button>
-
-              {heartRateZonePreferenceSaving && (
-                <p className="hr-zone-status" role="status">{t("settings.hrZonesSaving")}</p>
+          <div className="zone-settings-actions">
+            <div className="zone-settings-control">
+              {(heartRateZonePreferenceStatus === "idle" || heartRateZonePreferenceStatus === "loading") && (
+                <p className="hr-zone-status" role="status">{t("settings.hrZonesLoading")}</p>
               )}
-              {heartRateZonePreferenceError && !showHrZoneDialog && (
-                <p className="hr-zone-status error" role="alert">{t("settings.hrZonesSaveFailed")}</p>
+              {heartRateZonePreferenceStatus === "error" && (
+                <div className="hr-zone-load-error" role="alert">
+                  <span>{t("settings.hrZonesLoadFailed")}</span>
+                  <button type="button" className="btn-secondary" onClick={() => void loadHeartRateZonePreferences()}>
+                    {t("app.retry")}
+                  </button>
+                </div>
               )}
-            </>
-          )}
-        </section>
-
-        <section className="hr-zone-settings" aria-labelledby="configured-power-zone-settings-title">
-          <div className="hr-zone-settings-header">
-            <div>
-              <strong id="configured-power-zone-settings-title">{t("settings.powerZonesManualTitle")}</strong>
-              <p className="small">{t("settings.powerZonesManualDescription")}</p>
+              {heartRateZonePreferenceStatus === "ready" && (
+                <>
+                  <button
+                    type="button"
+                    className="hr-zone-btn-customize"
+                    onClick={() => setShowHrZoneDialog(true)}
+                    disabled={heartRateZonePreferenceSaving}
+                  >
+                    <IconHeart />
+                    {t("settings.customizeHrZones")}
+                  </button>
+                  {heartRateZonePreferenceSaving && (
+                    <p className="hr-zone-status" role="status">{t("settings.hrZonesSaving")}</p>
+                  )}
+                  {heartRateZonePreferenceError && !showHrZoneDialog && (
+                    <p className="hr-zone-status error" role="alert">{t("settings.hrZonesSaveFailed")}</p>
+                  )}
+                </>
+              )}
             </div>
-            <IconPower />
+
+            <div className="zone-settings-control">
+              {(powerZonePreferenceStatus === "idle" || powerZonePreferenceStatus === "loading") && (
+                <p className="hr-zone-status" role="status">{t("settings.powerZonesLoading")}</p>
+              )}
+              {powerZonePreferenceStatus === "error" && (
+                <div className="hr-zone-load-error" role="alert">
+                  <span>{t("settings.powerZonesLoadFailed")}</span>
+                  <button type="button" className="btn-secondary" onClick={() => void loadPowerZonePreferences()}>
+                    {t("app.retry")}
+                  </button>
+                </div>
+              )}
+              {powerZonePreferenceStatus === "ready" && (
+                <>
+                  <button
+                    type="button"
+                    className="hr-zone-btn-customize"
+                    onClick={() => setShowPowerZoneDialog(true)}
+                    disabled={powerZonePreferenceSaving}
+                  >
+                    <IconPower />
+                    {t("settings.customizePowerZones")}
+                  </button>
+                  {powerZonePreferenceSaving && (
+                    <p className="hr-zone-status" role="status">{t("settings.powerZonesSaving")}</p>
+                  )}
+                  {powerZonePreferenceError && !showPowerZoneDialog && (
+                    <p className="hr-zone-status error" role="alert">{t("settings.powerZonesSaveFailed")}</p>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-
-          {(powerZonePreferenceStatus === "idle" || powerZonePreferenceStatus === "loading") && (
-            <p className="hr-zone-status" role="status">{t("settings.powerZonesLoading")}</p>
-          )}
-          {powerZonePreferenceStatus === "error" && (
-            <div className="hr-zone-load-error" role="alert">
-              <span>{t("settings.powerZonesLoadFailed")}</span>
-              <button type="button" className="btn-secondary" onClick={() => void loadPowerZonePreferences()}>
-                {t("app.retry")}
-              </button>
-            </div>
-          )}
-          {powerZonePreferenceStatus === "ready" && (
-            <>
-              <button
-                type="button"
-                className="hr-zone-btn-customize"
-                onClick={() => setShowPowerZoneDialog(true)}
-                disabled={powerZonePreferenceSaving}
-              >
-                <IconPower />
-                {t("settings.customizePowerZones")}
-              </button>
-              {powerZonePreferenceSaving && (
-                <p className="hr-zone-status" role="status">{t("settings.powerZonesSaving")}</p>
-              )}
-              {powerZonePreferenceError && !showPowerZoneDialog && (
-                <p className="hr-zone-status error" role="alert">{t("settings.powerZonesSaveFailed")}</p>
-              )}
-            </>
-          )}
         </section>
-
         <div className="links-box">
           <strong>{t("settings.linksAndContact")}</strong>
           <div className="settings-links-grid">

@@ -19,12 +19,12 @@ created from local `main`.
 
 ## Summary
 
-The app will keep seven globally configured power-zone boundaries expressed as
-percentages of FTP. The initial and reset values are the percentages currently
-hard-coded by the FIT power-zone inference:
+The app will keep six globally configured power-zone boundaries expressed as
+percentages of FTP. Those boundaries define seven zones, with the final zone
+open-ended. The initial and reset values are:
 
 ```text
-55%, 75%, 90%, 105%, 120%, 150%, 200%
+55%, 75%, 90%, 105%, 120%, 150%
 ```
 
 For an activity with a usable FIT FTP, these percentages are converted to watt
@@ -67,7 +67,7 @@ does not change imported FIT metadata or rewrite FIT-reported totals.
 
 - Replace the fixed power-line percentage thresholds with editable global
   percentage thresholds.
-- Preserve the current percentage model as the default and reset state.
+- Use the Garmin-style seven-zone percentage model as the default and reset state.
 - Use the selected activity's FIT FTP to convert configured percentages to watt
   boundaries.
 - Always use configured boundaries for power-line colouring when FIT FTP is
@@ -98,10 +98,10 @@ Add the frontend model in `src/lib/powerZones.ts`. Keep imported FIT-zone types
 and generic numeric-zone rendering helpers in `src/lib/zones.ts`.
 
 ```typescript
-export const POWER_ZONE_PREFERENCES_VERSION = 1 as const;
+export const POWER_ZONE_PREFERENCES_VERSION = 2 as const;
 
 export const DEFAULT_POWER_ZONE_BOUND_PERCENTS = [
-  55, 75, 90, 105, 120, 150, 200,
+  55, 75, 90, 105, 120, 150,
 ] as const;
 
 export type PowerZoneTimeSource = "fit" | "calculated";
@@ -113,15 +113,19 @@ export type PowerZonePreferences = {
 };
 ```
 
-Version-1 defaults are:
+Version-2 defaults are:
 
 ```json
 {
-  "version": 1,
-  "bounds_percent_ftp": [55, 75, 90, 105, 120, 150, 200],
+  "version": 2,
+  "bounds_percent_ftp": [55, 75, 90, 105, 120, 150],
   "zone_time_source": "fit"
 }
 ```
+
+When loading a valid version-1 preference, preserve its first six boundaries and
+chart source, discard the obsolete seventh boundary, and persist the result as
+version 2.
 
 `zone_time_source` is a global preferred source, not a guarantee that every
 activity can provide it. An activity-level availability fallback must not
@@ -131,7 +135,7 @@ overwrite the stored preference.
 
 Configured boundaries must:
 
-- contain exactly seven values, producing eight zones;
+- contain exactly six values, producing seven zones;
 - contain integers only;
 - be between 1% and 300% FTP inclusive;
 - be strictly increasing; and
@@ -156,7 +160,7 @@ derived boundaries are unusable, return no configured watt boundaries rather
 than silently substituting a nominal FTP.
 
 The imported 4000 W cap is not part of this preference model. The configured
-seven boundaries produce an implicit open-ended eighth zone.
+six boundaries produce an implicit open-ended seventh zone.
 
 ## Zone Semantics
 
@@ -165,7 +169,7 @@ seven boundaries produce an implicit open-ended eighth zone.
 When record-level power and usable activity FTP are available:
 
 1. Convert the configured percentage boundaries to watts.
-2. Build eight numeric zones from those seven watt boundaries.
+2. Build seven numeric zones from those six watt boundaries.
 3. Use those zones for the power chart's `visualMap` pieces.
 
 Successfully saving changed or reset percentages updates power-line colours
@@ -220,7 +224,7 @@ Calculated rows have a one-to-one configured-zone presentation:
 Z1 <= first boundary
 Z2 first boundary + 1 through second boundary
 ...
-Z8 > final boundary
+Z7 > final boundary
 ```
 
 The Calculated source is available only when the activity has usable FIT FTP and
@@ -247,17 +251,16 @@ if persistence fails.
 
 ### Settings Panel
 
-Add a Configured power zones section containing:
-
-- a `Customise power zones` button;
-- a brief explanation that boundaries are percentages of the FTP stored in each
-  FIT activity; and
-- no fallback/always zone policy and no FTP input.
+Use one `Heart Rate and Power Zones` Settings section for both zone editors.
+The section has no panel-level icon; each action button retains its own icon.
+The section contains the `Customise HR Zones` and `Customise Power Zones`
+buttons. It does not repeat editor instructions at panel level. The power editor
+contains no fallback/always zone policy and no FTP input.
 
 Adapt the accessible heart-rate-zone dialog into a reusable zone editor or a
 power-specific dialog. The power editor contains:
 
-- seven percentage handles or equivalent numeric controls;
+- six percentage handles or equivalent numeric controls;
 - coloured live zone segments;
 - percentage range labels;
 - `Reset to defaults` using
@@ -375,7 +378,8 @@ Use the existing generic `Database::get_setting` and `Database::set_setting`
 methods. No database schema migration or power-specific query methods are
 required.
 
-Missing preferences return version-1 defaults. Malformed, invalid, or unsupported
+Missing preferences return version-2 defaults. Valid version-1 preferences are
+migrated automatically. Malformed, invalid, or unsupported
 stored preferences log a warning and return safe defaults. Saves validate before
 encoding and use the existing transactional setting-replacement behaviour so a
 failed write preserves the previous complete value.
@@ -450,8 +454,9 @@ and boundary saves cannot race source saves.
 
 ### 5. Add the Settings Editor
 
-- Add the Configured power zones section.
-- Add the seven-boundary percentage editor and Reset to defaults.
+- Combine the heart-rate and power-zone actions in the icon-free `Heart Rate and
+  Power Zones` Settings section.
+- Add the six-boundary percentage editor and Reset to defaults.
 - Add localised, keyboard-accessible controls and clear status feedback.
 
 Completion condition: the user can edit, reset, save, and reload configured
@@ -496,20 +501,19 @@ cold rebuild of heavy native dependencies such as `libduckdb-sys`.
 
 ### Preference and Persistence
 
-- Missing storage returns the seven default percentages and FIT source.
+- Missing storage returns the six default percentages and FIT source.
 - Valid edits survive app restart, browser-storage clearing, and Docker rebuilds
   with the preserved database bind mount.
 - Invalid length, non-integer, out-of-range, unsorted, duplicated, and too-close
   percentage values are rejected in TypeScript and Rust.
-- Confirmed Reset restores `[55, 75, 90, 105, 120, 150, 200]` as a draft; a
+- Confirmed Reset restores `[55, 75, 90, 105, 120, 150]` as a draft; a
   cancelled confirmation leaves the current draft unchanged.
 - Malformed and unsupported persisted values recover safely.
 - Failed and concurrent writes preserve the last confirmed complete preference.
 
 ### Power Line
 
-- Default percentages reproduce the current percentage-inference colouring for
-  representative Edge/MTB files.
+- Default percentages produce seven configured zones, with Z7 above 150% FTP.
 - Editing a percentage immediately changes the line after a successful save.
 - Activities with power but no usable FIT FTP retain an unzoned power line.
 - Explicit imported FIT boundaries do not override configured line boundaries.
@@ -554,8 +558,9 @@ cold rebuild of heavy native dependencies such as `libduckdb-sys`.
 
 ## Acceptance Criteria
 
-- Seven percentage-of-FTP boundaries are editable and database-persisted.
-- Defaults and Reset use `55, 75, 90, 105, 120, 150, 200`.
+- Six percentage-of-FTP boundaries are editable and database-persisted, producing
+  seven zones.
+- Defaults and Reset use `55, 75, 90, 105, 120, 150`, with Z7 above 150% FTP.
 - No manual FTP or FIT/manual zone policy appears in the UI.
 - Once preferences are ready, the power line uses configured percentages when
   activity FIT FTP is usable.
