@@ -3,7 +3,12 @@ import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import type { RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
-import { buildRouteSegmentColors, type PathColorMode } from "../lib/mapRouteColor";
+import {
+  buildRouteDisplayGeoJson,
+  buildRouteLineGradient,
+  buildRouteSegmentColors,
+  type PathColorMode,
+} from "../lib/mapRouteColor";
 import { convertElevationMeters, convertSpeedKmh, elevationLabel, speedLabel } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
 
@@ -108,21 +113,6 @@ function buildColoredGeoJson(
     });
   }
   return { type: "FeatureCollection", features };
-}
-
-function buildSolidDisplayGeoJson(
-  coords: number[][],
-  solidColor: string
-): GeoJSON.FeatureCollection<GeoJSON.Geometry> {
-  if (coords.length < 2) return { type: "FeatureCollection", features: [] };
-  return {
-    type: "FeatureCollection",
-    features: [{
-      type: "Feature",
-      geometry: { type: "LineString", coordinates: coords },
-      properties: { color: solidColor }
-    }]
-  };
 }
 
 function buildMarkerGeoJson(coords: number[][]): GeoJSON.FeatureCollection<GeoJSON.Geometry> {
@@ -533,7 +523,8 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     const visibleGpsRecs = gpsRecs.slice(0, endIndex + 1);
 
     const hitGeojson = buildColoredGeoJson(visibleGpsRecs, visibleCoords, routeColors, SOLID_PATH_COLOR);
-    const displayGeojson = buildSolidDisplayGeoJson(visibleCoords, SOLID_PATH_COLOR);
+    const displayGeojson = buildRouteDisplayGeoJson(visibleCoords);
+    const displayGradient = buildRouteLineGradient(visibleCoords, routeColors, SOLID_PATH_COLOR);
     const markerGeojson = buildMarkerGeoJson(visibleCoords);
     const lapMarkerGeojson = buildLapMarkerGeoJson(visibleGpsRecs, lapTimestampsUtc);
     const existingDisplay = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
@@ -544,7 +535,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     if (existingDisplay) {
       existingDisplay.setData(displayGeojson);
     } else {
-      map.addSource(SOURCE_ID, { type: "geojson", data: displayGeojson });
+      map.addSource(SOURCE_ID, { type: "geojson", data: displayGeojson, lineMetrics: true });
     }
 
     // Diffused black outline under the route for better edge contrast.
@@ -585,16 +576,16 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       map.addLayer({
         id: LAYER_ID,
         type: "line",
-        source: HIT_SOURCE_ID,
+        source: SOURCE_ID,
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
           "line-width": 4,
-          "line-color": ["get", "color"] as any,
+          "line-gradient": displayGradient as any,
           "line-opacity": 1
         }
       });
     }
-    map.setPaintProperty(LAYER_ID, "line-color", ["get", "color"] as any);
+    map.setPaintProperty(LAYER_ID, "line-gradient", displayGradient as any);
     map.setPaintProperty(LAYER_ID, "line-opacity", 1);
 
     // Invisible wider hit-area layer for easier hover detection
