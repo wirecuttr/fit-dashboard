@@ -3,6 +3,7 @@ import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import type { RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { buildRouteSegmentColors, type PathColorMode } from "../lib/mapRouteColor";
 import { convertElevationMeters, convertSpeedKmh, elevationLabel, speedLabel } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
 
@@ -13,8 +14,8 @@ type Props = {
   lapTimestampsUtc?: string[];
 };
 
-type PathColorMode = "solid" | "speed" | "heart_rate" | "cadence" | "altitude" | "power" | "temperature" | "time";
 const PLAYBACK_SPEEDS = [1, 2, 4, 8, 16, 32] as const;
+const SOLID_PATH_COLOR = "#d65252";
 
 const IconPlay = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -73,57 +74,20 @@ function styleFromMap(ms: MapStyle, theme: "light" | "dark"): StyleSpecification
   };
 }
 
-/* ── Color scale ─────────────────────────────────────────────────── */
-
-function valueToColor(t: number): string {
-  const stops: [number, number, number][] = [
-    [0, 100, 200], [0, 185, 225], [16, 185, 129], [250, 170, 30], [240, 70, 70],
-  ];
-  const s = Math.max(0, Math.min(1, t)) * (stops.length - 1);
-  const lo = Math.max(0, Math.min(Math.floor(s), stops.length - 2));
-  const hi = lo + 1;
-  const f = s - lo;
-  return `rgb(${Math.round(stops[lo][0] + (stops[hi][0] - stops[lo][0]) * f)},${Math.round(stops[lo][1] + (stops[hi][1] - stops[lo][1]) * f)},${Math.round(stops[lo][2] + (stops[hi][2] - stops[lo][2]) * f)})`;
-}
-
-function getMetricValues(recs: RecordPoint[], mode: PathColorMode): number[] {
-  switch (mode) {
-    case "speed": return recs.map((r) => (r.speed_m_s ?? 0) * 3.6);
-    case "heart_rate": return recs.map((r) => r.heart_rate ?? 0);
-    case "cadence": return recs.map((r) => r.cadence ?? 0);
-    case "altitude": return recs.map((r) => r.altitude_m ?? 0);
-    case "power": return recs.map((r) => r.power ?? 0);
-    case "temperature": return recs.map((r) => r.temperature_c ?? 0);
-    case "time": return recs.map((_, i) => i);
-    default: return recs.map(() => 0);
-  }
-}
-
 function buildColoredGeoJson(
   gpsRecs: RecordPoint[],
   coords: number[][],
-  mode: PathColorMode,
-  solidColor: string
+  colors: string[],
+  fallbackColor: string,
 ): GeoJSON.FeatureCollection<GeoJSON.Geometry> {
   if (coords.length < 2) {
     return { type: "FeatureCollection", features: [] };
-  }
-
-  let values: number[] | null = null;
-  let min = 0, max = 1, range = 1;
-
-  if (mode !== "solid") {
-    values = getMetricValues(gpsRecs, mode);
-    min = Infinity; max = -Infinity;
-    for (const v of values) { if (v < min) min = v; if (v > max) max = v; }
-    range = (max - min) || 1;
   }
 
   const firstTsMs = gpsRecs.find((r) => Number.isFinite(r.timestamp_ms))?.timestamp_ms ?? 0;
 
   const features: GeoJSON.Feature<GeoJSON.Geometry>[] = [];
   for (let i = 0; i < coords.length - 1; i++) {
-    const color = mode === "solid" ? solidColor : valueToColor((values![i] - min) / range);
     const r = gpsRecs[i];
     const elapsedSeconds = Number.isFinite(r.timestamp_ms)
       ? Math.max(0, Math.round((r.timestamp_ms - firstTsMs) / 1000))
@@ -132,7 +96,7 @@ function buildColoredGeoJson(
       type: "Feature",
       geometry: { type: "LineString", coordinates: [coords[i], coords[i + 1]] },
       properties: {
-        color,
+        color: colors[i] ?? fallbackColor,
         speed_kmh: r.speed_m_s != null ? Math.round(r.speed_m_s * 36) / 10 : 0,
         heart_rate: r.heart_rate ?? 0,
         altitude_m: r.altitude_m != null ? Math.round(r.altitude_m) : 0,
@@ -159,52 +123,6 @@ function buildSolidDisplayGeoJson(
       properties: { color: solidColor }
     }]
   };
-}
-
-function buildGradientExpression(
-  gpsRecs: RecordPoint[],
-  mode: PathColorMode,
-  fallbackColor: string
-): any[] {
-  if (mode === "solid" || gpsRecs.length < 2) {
-    return ["interpolate", ["linear"], ["line-progress"], 0, fallbackColor, 1, fallbackColor];
-  }
-
-  const values = getMetricValues(gpsRecs, mode);
-  let min = Infinity;
-  let max = -Infinity;
-  for (const v of values) {
-    if (v < min) min = v;
-    if (v > max) max = v;
-  }
-  const range = (max - min) || 1;
-
-  const maxStops = 220;
-  const stride = Math.max(1, Math.floor(values.length / maxStops));
-  const expr: any[] = ["interpolate", ["linear"], ["line-progress"]];
-
-  let lastProgress = -1;
-  for (let i = 0; i < values.length; i += stride) {
-    const progress = Math.max(0, Math.min(1, i / Math.max(1, values.length - 1)));
-    if (progress <= lastProgress) continue;
-    const color = valueToColor((values[i] - min) / range);
-    expr.push(progress, color);
-    lastProgress = progress;
-  }
-
-  // Ensure final stop exists at 1.0 without duplicate stop positions.
-  const lastColor = valueToColor((values[values.length - 1] - min) / range);
-  if (lastProgress < 1) {
-    expr.push(1, lastColor);
-    lastProgress = 1;
-  }
-
-  // Minimum valid interpolate expression requires at least two stops.
-  if (expr.length <= 7) {
-    return ["interpolate", ["linear"], ["line-progress"], 0, fallbackColor, 1, lastColor];
-  }
-
-  return expr;
 }
 
 function buildMarkerGeoJson(coords: number[][]): GeoJSON.FeatureCollection<GeoJSON.Geometry> {
@@ -396,7 +314,6 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeedIndex, setPlaybackSpeedIndex] = useState(0);
-  const pathColorModeRef = useRef(pathColorMode);
   const terrainEnabledRef = useRef(terrainEnabled);
   const telemetryEnabledRef = useRef(telemetryEnabled);
   const timelineIndexRef = useRef(timelineIndex);
@@ -415,8 +332,15 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     [gpsRecords]
   );
 
+  const routeSegmentColors = useMemo(
+    () => buildRouteSegmentColors(gpsRecords, gpsRecords, pathColorMode, SOLID_PATH_COLOR),
+    [gpsRecords, pathColorMode],
+  );
+
   const gpsRecordsRef = useRef(gpsRecords);
   const coordinatesRef = useRef(coordinates);
+  const routeSegmentColorsRef = useRef(routeSegmentColors);
+  routeSegmentColorsRef.current = routeSegmentColors;
   const distanceUnitRef = useRef(distanceUnit);
   const maxTimelineIndex = Math.max(0, coordinates.length - 1);
   const playbackSpeed = PLAYBACK_SPEEDS[playbackSpeedIndex];
@@ -459,7 +383,6 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   useEffect(() => { coordinatesRef.current = coordinates; }, [coordinates]);
   useEffect(() => { gpsRecordsRef.current = gpsRecords; }, [gpsRecords]);
   useEffect(() => { distanceUnitRef.current = distanceUnit; }, [distanceUnit]);
-  useEffect(() => { pathColorModeRef.current = pathColorMode; }, [pathColorMode]);
   useEffect(() => { terrainEnabledRef.current = terrainEnabled; }, [terrainEnabled]);
   useEffect(() => {
     telemetryEnabledRef.current = telemetryEnabled;
@@ -588,8 +511,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
   function drawRoute(map: maplibregl.Map, fitToRoute: boolean) {
     const coords = coordinatesRef.current;
     const gpsRecs = gpsRecordsRef.current;
-    const mode = pathColorModeRef.current;
-    const solidPathColor = "#d65252";
+    const routeColors = routeSegmentColorsRef.current;
 
     if (!coords.length) {
       if (map.getLayer(LAP_LABEL_LAYER_ID)) map.removeLayer(LAP_LABEL_LAYER_ID);
@@ -610,11 +532,10 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     const visibleCoords = coords.slice(0, endIndex + 1);
     const visibleGpsRecs = gpsRecs.slice(0, endIndex + 1);
 
-    const hitGeojson = buildColoredGeoJson(visibleGpsRecs, visibleCoords, mode, solidPathColor);
-    const displayGeojson = buildSolidDisplayGeoJson(visibleCoords, solidPathColor);
+    const hitGeojson = buildColoredGeoJson(visibleGpsRecs, visibleCoords, routeColors, SOLID_PATH_COLOR);
+    const displayGeojson = buildSolidDisplayGeoJson(visibleCoords, SOLID_PATH_COLOR);
     const markerGeojson = buildMarkerGeoJson(visibleCoords);
     const lapMarkerGeojson = buildLapMarkerGeoJson(visibleGpsRecs, lapTimestampsUtc);
-    const gradientExpr = buildGradientExpression(visibleGpsRecs, mode, solidPathColor);
     const existingDisplay = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     const existingHit = map.getSource(HIT_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     const existingMarkers = map.getSource(MARKER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
@@ -623,7 +544,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     if (existingDisplay) {
       existingDisplay.setData(displayGeojson);
     } else {
-      map.addSource(SOURCE_ID, { type: "geojson", data: displayGeojson, lineMetrics: true });
+      map.addSource(SOURCE_ID, { type: "geojson", data: displayGeojson });
     }
 
     // Diffused black outline under the route for better edge contrast.
@@ -664,17 +585,16 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       map.addLayer({
         id: LAYER_ID,
         type: "line",
-        source: SOURCE_ID,
+        source: HIT_SOURCE_ID,
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
           "line-width": 4,
-          "line-color": solidPathColor,
+          "line-color": ["get", "color"] as any,
           "line-opacity": 1
         }
       });
     }
-    map.setPaintProperty(LAYER_ID, "line-color", solidPathColor);
-    map.setPaintProperty(LAYER_ID, "line-gradient", gradientExpr as any);
+    map.setPaintProperty(LAYER_ID, "line-color", ["get", "color"] as any);
     map.setPaintProperty(LAYER_ID, "line-opacity", 1);
 
     // Invisible wider hit-area layer for easier hover detection
