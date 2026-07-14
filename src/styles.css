@@ -1467,7 +1467,7 @@ button:focus-visible {
   line-height: 1.35;
 }
 
-.detail-badges {
+.detail-metadata-row {
   display: flex;
   align-items: center;
   gap: 0.4rem;

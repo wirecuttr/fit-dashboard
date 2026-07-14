@@ -1920,10 +1920,10 @@ export function Dashboard({ onLogout }: Props) {
                 <div className="detail-title-row">
                   <div className="detail-identity">
                     <h2>{selectedActivity.activity_name || selectedActivity.file_name}</h2>
-                    <div className="detail-datetime">
-                      {formatDate(selectedActivity.start_ts_utc)} &bull; {formatTimeShort(selectedActivity.start_ts_utc)}
-                    </div>
-                    <div className="detail-badges">
+                    <div className="detail-metadata-row">
+                      <span className="detail-datetime">
+                        {formatDate(selectedActivity.start_ts_utc)} &bull; {formatTimeShort(selectedActivity.start_ts_utc)}
+                      </span>
                       {selectedActivity.sport && <span className="badge sport">{formatActivityTypeLabel(selectedActivity)}</span>}
                       {deviceBadgeLabel && (
                         <span
