@@ -86,8 +86,8 @@ type Props = {
 };
 
 type SeriesRow = [number, number | null, number, number, number | null];
-type ScatterMetricKey = "heartRate" | "power" | "cadence" | "speed" | "pace" | "elevation";
-type ScatterPresetKey = "power_heart_rate" | "power_cadence" | "cadence_heart_rate" | "speed_heart_rate" | "pace_heart_rate" | "elevation_heart_rate";
+type ScatterMetricKey = "heartRate" | "power" | "cadence" | "speed" | "pace" | "elevation" | "temperature";
+type ScatterPresetKey = "power_heart_rate" | "power_cadence" | "cadence_heart_rate" | "speed_heart_rate" | "pace_heart_rate" | "elevation_heart_rate" | "temperature_heart_rate";
 
 type ScatterPreset = {
   key: ScatterPresetKey;
@@ -102,6 +102,7 @@ const SCATTER_PRESETS: ScatterPreset[] = [
   { key: "pace_heart_rate", yMetric: "pace", xMetric: "heartRate" },
   { key: "speed_heart_rate", yMetric: "speed", xMetric: "heartRate" },
   { key: "elevation_heart_rate", yMetric: "elevation", xMetric: "heartRate" },
+  { key: "temperature_heart_rate", yMetric: "temperature", xMetric: "heartRate" },
 ];
 
 function isSeriesRow(row: [number | null, number | null, number, number, number | null]): row is SeriesRow {
@@ -1327,6 +1328,15 @@ export function ActivityInsights({
       minPadding: 5,
       step: 10,
       getValue: (point) => point.altitudeInUnit,
+    },
+    temperature: {
+      label: tr("insights.temperature"),
+      axisName: "C",
+      colour: "#f97316",
+      minFloor: Number.NEGATIVE_INFINITY,
+      minPadding: 1,
+      step: 1,
+      getValue: (point) => point.temperatureC,
     },
   };
 
