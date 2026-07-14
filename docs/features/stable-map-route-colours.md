@@ -108,7 +108,7 @@ Solid does not inspect telemetry values.
 Automated focused tests must pass with:
 
 ```sh
-npm run test:map-route-colors
+npm run test:map-route-color
 ```
 
 Manual or browser rendering validation should cover:
