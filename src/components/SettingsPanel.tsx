@@ -14,10 +14,19 @@ import {
   validateManualHeartRateZoneBounds,
 } from "../lib/hrZones";
 import {
+  DEFAULT_POWER_ZONE_BOUND_PERCENTS,
+  POWER_ZONE_BOUND_MAX_PERCENT,
+  POWER_ZONE_BOUND_MIN_GAP_PERCENT,
+  POWER_ZONE_BOUND_MIN_PERCENT,
+  validatePowerZoneBoundPercents,
+} from "../lib/powerZones";
+import { POWER_ZONE_COLORS } from "../lib/zones";
+import {
   IconBug,
   IconDiscord,
   IconGlobe,
   IconHeart,
+  IconPower,
   IconMail,
 } from "./Icons";
 
@@ -284,6 +293,171 @@ function HeartRateZoneDialog({
     </div>
   );
 }
+function PowerZoneDialog({
+  bounds,
+  saving,
+  saveError,
+  onSave,
+  onClose,
+  t,
+}: {
+  bounds: number[];
+  saving: boolean;
+  saveError: boolean;
+  onSave: (boundsPercentFtp: number[]) => Promise<boolean>;
+  onClose: () => void;
+  t: Translate;
+}) {
+  const [draft, setDraft] = useState(() => [...bounds]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving) onClose();
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled)'
+        ) ?? []
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, saving]);
+
+  const zoneLabels = POWER_ZONE_COLORS.slice(0, 8).map((colour, index) => {
+    const low = index === 0 ? null : draft[index - 1] + 1;
+    const high = index === 7 ? null : draft[index];
+    const range = low === null
+      ? t("settings.powerZoneRangeUpTo", { high: high ?? "" })
+      : high === null
+        ? t("settings.powerZoneRangeAbove", { low: draft[6] })
+        : t("settings.powerZoneRangeBetween", { low, high });
+    return { name: `Z${index + 1}`, range, colour };
+  });
+
+  return (
+    <div className="hr-zone-dialog-overlay">
+      <div
+        className="hr-zone-dialog-backdrop"
+        onClick={() => { if (!saving) onClose(); }}
+      />
+      <div
+        ref={dialogRef}
+        className="hr-zone-dialog power-zone-dialog"
+        role="dialog"
+        tabIndex={-1}
+        aria-modal="true"
+        aria-labelledby="power-zone-dialog-title"
+        aria-describedby="power-zone-dialog-description"
+      >
+        <div className="hr-zone-dialog-header">
+          <h3 id="power-zone-dialog-title">{t("settings.powerZonesTitle")}</h3>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            className="icon-btn"
+            onClick={onClose}
+            disabled={saving}
+            aria-label={t("settings.powerZonesClose")}
+          >
+            &times;
+          </button>
+        </div>
+        <p id="power-zone-dialog-description" className="hr-zone-dialog-desc">
+          {t("settings.powerZonesDescription")}
+        </p>
+
+        <div className="power-zone-preview" aria-hidden="true">
+          {zoneLabels.map((zone) => (
+            <span key={zone.name} style={{ background: zone.colour }} />
+          ))}
+        </div>
+        <div className="power-zone-boundary-grid">
+          {draft.map((value, index) => {
+            const min = index === 0
+              ? POWER_ZONE_BOUND_MIN_PERCENT
+              : draft[index - 1] + POWER_ZONE_BOUND_MIN_GAP_PERCENT;
+            const max = index === draft.length - 1
+              ? POWER_ZONE_BOUND_MAX_PERCENT
+              : draft[index + 1] - POWER_ZONE_BOUND_MIN_GAP_PERCENT;
+            return (
+              <label key={index}>
+                <span>{t("settings.powerZoneBoundaryLabel", { zone: index + 1 })}</span>
+                <span className="power-zone-number-input">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={min}
+                    max={max}
+                    step={1}
+                    value={value}
+                    disabled={saving}
+                    aria-valuetext={t("settings.powerZoneValuePercentFtp", { value })}
+                    onChange={(event) => {
+                      const next = [...draft];
+                      next[index] = Math.max(min, Math.min(max, Math.round(Number(event.target.value))));
+                      setDraft(next);
+                    }}
+                  />
+                  <span>{t("settings.powerZonePercentFtpUnit")}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <div className="power-zone-labels">
+          {zoneLabels.map((zone) => (
+            <div key={zone.name}>
+              <strong style={{ color: zone.colour }}>{zone.name}</strong>
+              <span>{zone.range}</span>
+            </div>
+          ))}
+        </div>
+
+        {saveError && (
+          <p className="hr-zone-status error" role="alert">{t("settings.powerZonesSaveFailed")}</p>
+        )}
+        <div className="hr-zone-dialog-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setDraft([...DEFAULT_POWER_ZONE_BOUND_PERCENTS])}
+            disabled={saving}
+          >
+            {t("settings.powerZonesReset")}
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void onSave(draft).then((saved) => { if (saved) onClose(); })}
+            disabled={saving || !validatePowerZoneBoundPercents(draft)}
+          >
+            {saving ? t("settings.powerZonesSaving") : t("settings.powerZonesSave")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 
 
@@ -300,6 +474,11 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
     heartRateZonePreferenceStatus,
     heartRateZonePreferenceSaving,
     heartRateZonePreferenceError,
+    configuredPowerZoneBoundPercents,
+    powerZonePreferenceStatus,
+    powerZonePreferenceSaving,
+    powerZonePreferenceError,
+    loadPowerZonePreferences,
     setTheme,
     setDistanceUnit,
     setTimeFormat,
@@ -307,6 +486,7 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
     loadHeartRateZonePreferences,
     saveManualHeartRateZoneBounds,
     setManualHeartRateZoneUsage,
+    savePowerZoneBoundPercents,
     verifySupporterCode,
     removeSupporterBadge,
     toggleSettings,
@@ -324,6 +504,7 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
   const [blacklistCount, setBlacklistCount] = useState<number | null>(null);
   const [showHrZoneDialog, setShowHrZoneDialog] = useState(false);
 
+  const [showPowerZoneDialog, setShowPowerZoneDialog] = useState(false);
   useEffect(() => {
     let cancelled = false;
     if (!showSettings) return;
@@ -347,6 +528,7 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
 
   useEffect(() => {
     if (!showSettings) setShowHrZoneDialog(false);
+    if (!showSettings) setShowPowerZoneDialog(false);
   }, [showSettings]);
 
   if (!showSettings) {
@@ -499,6 +681,47 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
           )}
         </section>
 
+        <section className="hr-zone-settings" aria-labelledby="configured-power-zone-settings-title">
+          <div className="hr-zone-settings-header">
+            <div>
+              <strong id="configured-power-zone-settings-title">{t("settings.powerZonesManualTitle")}</strong>
+              <p className="small">{t("settings.powerZonesManualDescription")}</p>
+            </div>
+            <IconPower />
+          </div>
+
+          {(powerZonePreferenceStatus === "idle" || powerZonePreferenceStatus === "loading") && (
+            <p className="hr-zone-status" role="status">{t("settings.powerZonesLoading")}</p>
+          )}
+          {powerZonePreferenceStatus === "error" && (
+            <div className="hr-zone-load-error" role="alert">
+              <span>{t("settings.powerZonesLoadFailed")}</span>
+              <button type="button" className="btn-secondary" onClick={() => void loadPowerZonePreferences()}>
+                {t("app.retry")}
+              </button>
+            </div>
+          )}
+          {powerZonePreferenceStatus === "ready" && (
+            <>
+              <button
+                type="button"
+                className="hr-zone-btn-customize"
+                onClick={() => setShowPowerZoneDialog(true)}
+                disabled={powerZonePreferenceSaving}
+              >
+                <IconPower />
+                {t("settings.customizePowerZones")}
+              </button>
+              {powerZonePreferenceSaving && (
+                <p className="hr-zone-status" role="status">{t("settings.powerZonesSaving")}</p>
+              )}
+              {powerZonePreferenceError && !showPowerZoneDialog && (
+                <p className="hr-zone-status error" role="alert">{t("settings.powerZonesSaveFailed")}</p>
+              )}
+            </>
+          )}
+        </section>
+
         <div className="links-box">
           <strong>{t("settings.linksAndContact")}</strong>
           <div className="settings-links-grid">
@@ -628,6 +851,16 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
           saveError={!!heartRateZonePreferenceError}
           onSave={saveManualHeartRateZoneBounds}
           onClose={() => setShowHrZoneDialog(false)}
+          t={t}
+        />
+      )}
+      {showPowerZoneDialog && (
+        <PowerZoneDialog
+          bounds={configuredPowerZoneBoundPercents}
+          saving={powerZonePreferenceSaving}
+          saveError={!!powerZonePreferenceError}
+          onSave={savePowerZoneBoundPercents}
+          onClose={() => setShowPowerZoneDialog(false)}
           t={t}
         />
       )}

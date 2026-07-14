@@ -2,6 +2,7 @@ import axios from "axios";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { Activity, OverviewStats, RecordPoint } from "../types";
 import type { HeartRateZonePreferences } from "./hrZones";
+import type { PowerZonePreferences } from "./powerZones";
 
 type StorageInfo = {
   data_dir: string;
@@ -288,6 +289,24 @@ export const api = {
       return invoke<HeartRateZonePreferences>("set_heart_rate_zone_preferences", { preferences });
     }
     const res = await webClient.post("/settings/heart-rate-zones", preferences);
+    return res.data;
+  },
+
+  async getPowerZonePreferences(): Promise<PowerZonePreferences> {
+    if (isTauriRuntime()) {
+      return invoke<PowerZonePreferences>("get_power_zone_preferences");
+    }
+    const res = await webClient.get("/settings/power-zones");
+    return res.data;
+  },
+
+  async setPowerZonePreferences(
+    preferences: PowerZonePreferences,
+  ): Promise<PowerZonePreferences> {
+    if (isTauriRuntime()) {
+      return invoke<PowerZonePreferences>("set_power_zone_preferences", { preferences });
+    }
+    const res = await webClient.post("/settings/power-zones", preferences);
     return res.data;
   }
 };

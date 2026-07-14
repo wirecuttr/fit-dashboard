@@ -27,7 +27,7 @@ export type NumericZone = {
   color: string;
 };
 
-const POWER_ZONE_COLORS = ["#60a5fa", "#22c55e", "#eab308", "#f97316", "#ef4444", "#a855f7", "#06b6d4", "#f43f5e", "#94a3b8"];
+export const POWER_ZONE_COLORS = ["#60a5fa", "#22c55e", "#eab308", "#f97316", "#ef4444", "#a855f7", "#06b6d4", "#f43f5e", "#94a3b8"];
 
 function numericArray(values: unknown, minExclusive = Number.NEGATIVE_INFINITY, maxInclusive = Number.POSITIVE_INFINITY): number[] {
   if (!Array.isArray(values)) return [];

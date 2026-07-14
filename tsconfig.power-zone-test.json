@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": "node_modules/.cache/fit-dashboard-power-zone-tests",
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": [
+    "scripts/test-power-zones.ts",
+    "src/lib/powerZones.ts",
+    "src/lib/powerZoneTime.ts",
+    "src/lib/zones.ts",
+    "src/stores/powerZonePreferenceSlice.ts"
+  ]
+}

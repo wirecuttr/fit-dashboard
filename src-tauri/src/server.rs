@@ -19,6 +19,9 @@ use crate::{
         HeartRateZonePreferences,
     },
     models::{Credentials, RenameActivityPayload, TokenResponse, UnlockPayload},
+    power_zones::{
+        load_power_zone_preferences, save_power_zone_preferences, PowerZonePreferences,
+    },
     state::AppState,
 };
 
@@ -63,6 +66,10 @@ pub fn app(state: AppState) -> Router {
         .route(
             "/api/settings/heart-rate-zones",
             get(get_heart_rate_zone_preferences).post(set_heart_rate_zone_preferences),
+        )
+        .route(
+            "/api/settings/power-zones",
+            get(get_power_zone_preferences).post(set_power_zone_preferences),
         )
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .layer(
@@ -902,6 +909,28 @@ async fn set_heart_rate_zone_preferences(
         .validate()
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     let saved = save_heart_rate_zone_preferences(&state.db, preferences)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(saved))
+}
+
+async fn get_power_zone_preferences(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<PowerZonePreferences>, StatusCode> {
+    ensure_session(&state, &headers)?;
+    let preferences = load_power_zone_preferences(&state.db)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(preferences))
+}
+
+async fn set_power_zone_preferences(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(preferences): Json<PowerZonePreferences>,
+) -> Result<Json<PowerZonePreferences>, StatusCode> {
+    ensure_session(&state, &headers)?;
+    preferences.validate().map_err(|_| StatusCode::BAD_REQUEST)?;
+    let saved = save_power_zone_preferences(&state.db, preferences)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(saved))
 }

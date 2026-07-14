@@ -3,12 +3,13 @@ import ReactECharts from "./ModularECharts";
 import type { Activity, RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
 import { buildHeartRateZones, type HeartRateZoneSource } from "../lib/hrZones";
+import { buildPowerZones, zoneSecondsToMinutes, type ActivityZones } from "../lib/zones";
+import { calculatePowerZoneTime } from "../lib/powerZoneTime";
 import {
-  buildPowerZones,
-  resolveNumericZoneIndex,
-  zoneSecondsToMinutes,
-  type ActivityZones,
-} from "../lib/zones";
+  resolvePowerZoneTimeSource,
+  validFitPowerZoneSeconds,
+  type PowerZoneTimeSource,
+} from "../lib/powerZones";
 import {
   accumulateHeartRateZoneMinutes,
   buildZoneTimeRows,
@@ -69,6 +70,14 @@ type Props = {
   zones?: ActivityZones | null;
   heartRateZoneBoundsBpm?: number[];
   heartRateZoneSource?: HeartRateZoneSource;
+  configuredPowerZoneBoundsWatts?: number[];
+  powerZoneTimeSource?: PowerZoneTimeSource;
+  powerZonePreferenceStatus?: "idle" | "loading" | "ready" | "error";
+  powerZonePreferenceSaving?: boolean;
+  powerZonePreferenceError?: string | null;
+  onPowerZoneTimeSourceChange?: (source: PowerZoneTimeSource) => Promise<boolean>;
+  onPowerZonePreferencesRetry?: () => Promise<boolean>;
+  powerZonePreferenceRetrying?: boolean;
   zoomRange?: { start: number; end: number } | null;
   onZoomChange?: (range: { start: number; end: number }) => void;
   lapTimestampsUtc?: string[];
@@ -379,13 +388,22 @@ export function ActivityInsights({
   heartRateZoneBoundsBpm,
   heartRateZoneSource,
   zoomRange,
+  configuredPowerZoneBoundsWatts,
+  powerZoneTimeSource,
+  powerZonePreferenceStatus = "idle",
+  powerZonePreferenceSaving = false,
+  powerZonePreferenceError,
+  onPowerZoneTimeSourceChange,
+  onPowerZonePreferencesRetry,
+  powerZonePreferenceRetrying = false,
   onZoomChange,
   lapTimestampsUtc = [],
   smoothGraphs = true,
   timerMetadata,
 }: Props) {
   const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
-  const powerZones = buildPowerZones(zones?.power?.upper_bounds_watts);
+  const fitPowerZones = buildPowerZones(zones?.power?.upper_bounds_watts);
+  const configuredPowerZones = buildPowerZones(configuredPowerZoneBoundsWatts);
   const isDark = theme === "dark";
   const { t: tr } = useTranslation();
   const [heartRateDriftHelpOpen, setHeartRateDriftHelpOpen] = useState(false);
@@ -591,18 +609,38 @@ export function ActivityInsights({
     accumulatedHeartRateZones.hasHeartRateSamples,
   );
 
-  const fitPowerZoneMinutes = zoneSecondsToMinutes(zones?.power?.time_in_zone_s, powerZones.length);
-  const powerZoneMinutes = fitPowerZoneMinutes.some((value) => value > 0) ? fitPowerZoneMinutes : powerZones.map(() => 0);
-  if (!fitPowerZoneMinutes.some((value) => value > 0) && powerZones.length > 0 && hasPowerData) {
-    for (let i = 0; i < activeTelemetryPoints.length - 1; i += 1) {
-      const power = activeTelemetryPoints[i].record.power;
-      if (typeof power !== "number" || power < 0) continue;
-      const dtMin = Math.max(0, (activeTelemetryPoints[i + 1].relMs - activeTelemetryPoints[i].relMs) / 60000);
-      const zoneIndex = resolveNumericZoneIndex(power, powerZones);
-      powerZoneMinutes[zoneIndex] += dtMin;
-    }
-  }
-  const hasPowerZoneData = powerZones.length > 0 && (hasPowerData || powerZoneMinutes.some((value) => value > 0));
+  const fitPowerZoneSeconds = validFitPowerZoneSeconds(zones?.power?.time_in_zone_s);
+  const fitPowerZoneMinutes = fitPowerZoneSeconds && fitPowerZones.length > 0
+    ? zoneSecondsToMinutes(fitPowerZoneSeconds, fitPowerZones.length)
+    : null;
+  const calculatedPowerTelemetryPoints = configuredPowerZones.length > 0
+    ? buildTelemetryPoints(zoneRecords, t0, "time", distanceUnit, timerMetadata, "moving")
+    : [];
+  const calculatedPowerZoneTime = calculatePowerZoneTime(
+    calculatedPowerTelemetryPoints.map((point) => ({
+      relMs: point.relMs,
+      power: point.record.power,
+    })),
+    configuredPowerZones,
+  );
+  const fitPowerZoneSourceAvailable = !!fitPowerZoneMinutes;
+  const calculatedPowerZoneSourceAvailable = powerZonePreferenceStatus === "ready"
+    && configuredPowerZones.length > 0
+    && calculatedPowerZoneTime.hasPowerSamples;
+  const effectivePowerZoneTimeSource = resolvePowerZoneTimeSource(
+    powerZoneTimeSource ?? "fit",
+    fitPowerZoneSourceAvailable,
+    calculatedPowerZoneSourceAvailable,
+  );
+  const displayedPowerZones = effectivePowerZoneTimeSource === "fit"
+    ? fitPowerZones
+    : effectivePowerZoneTimeSource === "calculated" ? configuredPowerZones : [];
+  const displayedPowerZoneMinutes = effectivePowerZoneTimeSource === "fit"
+    ? fitPowerZoneMinutes ?? []
+    : effectivePowerZoneTimeSource === "calculated" ? calculatedPowerZoneTime.minutes : [];
+  const bothPowerZoneSourcesAvailable = fitPowerZoneSourceAvailable
+    && calculatedPowerZoneSourceAvailable;
+  const hasPowerZoneData = effectivePowerZoneTimeSource !== undefined;
   const zoneChartTotalMinutes = analysisDurationMs > 0 ? analysisDurationMs / 60000 : 0;
 
   const sharedXAxis = {
@@ -643,11 +681,11 @@ export function ActivityInsights({
     }),
   } : undefined;
 
-  const powerVisualMap = powerZones.length > 0 ? {
+  const powerVisualMap = configuredPowerZones.length > 0 ? {
     show: false,
     seriesIndex: 0,
     dimension: 1,
-    pieces: powerZones.map((zone) => {
+    pieces: configuredPowerZones.map((zone) => {
       if (zone.maxInclusive === null) {
         return { gt: zone.minExclusive, color: zone.color };
       }
@@ -1697,8 +1735,73 @@ export function ActivityInsights({
       )}
       {hasPowerZoneData && (
         <article className="panel">
-          <h3>{tr("insights.powerZoneTime")}</h3>
-          <ZoneTimeBars title={tr("insights.powerZoneTime")} zones={powerZones} minutes={powerZoneMinutes} unit="W" totalMinutes={zoneChartTotalMinutes} />
+          <div className="zone-time-panel-header">
+            <h3>{tr("insights.powerZoneTime")}</h3>
+            {bothPowerZoneSourcesAvailable ? (
+              <fieldset
+                className="power-zone-source-control"
+                disabled={powerZonePreferenceSaving}
+                aria-label={tr("insights.powerZoneSource")}
+              >
+                <legend>{tr("insights.powerZoneSource")}</legend>
+                <button
+                  type="button"
+                  className={effectivePowerZoneTimeSource === "fit" ? "active" : ""}
+                  aria-pressed={effectivePowerZoneTimeSource === "fit"}
+                  title={tr("insights.powerZoneSourceFitHelp")}
+                  onClick={() => void onPowerZoneTimeSourceChange?.("fit")}
+                >
+                  {tr("insights.powerZoneSourceFit")}
+                </button>
+                <button
+                  type="button"
+                  className={effectivePowerZoneTimeSource === "calculated" ? "active" : ""}
+                  aria-pressed={effectivePowerZoneTimeSource === "calculated"}
+                  title={tr("insights.powerZoneSourceCalculatedHelp")}
+                  onClick={() => void onPowerZoneTimeSourceChange?.("calculated")}
+                >
+                  {tr("insights.powerZoneSourceCalculated")}
+                </button>
+              </fieldset>
+            ) : effectivePowerZoneTimeSource ? (
+              <span
+                className="power-zone-source-label"
+                title={tr(effectivePowerZoneTimeSource === "fit"
+                  ? "insights.powerZoneSourceFitHelp"
+                  : "insights.powerZoneSourceCalculatedHelp")}
+              >
+                {tr("insights.powerZoneSource")}: {tr(effectivePowerZoneTimeSource === "fit"
+                  ? "insights.powerZoneSourceFit"
+                  : "insights.powerZoneSourceCalculated")}
+              </span>
+            ) : null}
+          </div>
+          {powerZonePreferenceStatus === "error" && onPowerZonePreferencesRetry && (
+            <div className="power-zone-source-error" role="alert">
+              <span>{tr("settings.powerZonesLoadFailed")}</span>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={powerZonePreferenceRetrying}
+                onClick={() => void onPowerZonePreferencesRetry()}
+              >
+                {tr("app.retry")}
+              </button>
+            </div>
+          )}
+          {powerZonePreferenceStatus === "ready" && powerZonePreferenceError && (
+            <p className="power-zone-source-error-text" role="alert">
+              {tr("insights.powerZoneSourceSaveFailed")}
+            </p>
+          )}
+          <ZoneTimeBars
+            title={tr("insights.powerZoneTime")}
+            zones={displayedPowerZones}
+            minutes={displayedPowerZoneMinutes}
+            unit="W"
+            totalMinutes={zoneChartTotalMinutes}
+            rowMode={effectivePowerZoneTimeSource === "calculated" ? "explicit-zones" : "fit-boundaries"}
+          />
         </article>
       )}
     </>

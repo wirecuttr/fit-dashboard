@@ -5,6 +5,11 @@ import {
   createInitialHeartRateZonePreferenceData,
   type HeartRateZonePreferenceSlice,
 } from "./heartRateZonePreferenceSlice";
+import {
+  createInitialPowerZonePreferenceData,
+  createPowerZonePreferenceActions,
+  type PowerZonePreferenceSlice,
+} from "./powerZonePreferenceSlice";
 
 type Theme = "light" | "dark";
 type DistanceUnit = "km" | "mi";
@@ -42,7 +47,7 @@ type SettingsState = {
   verifySupporterCode: (code: string) => Promise<boolean>;
   removeSupporterBadge: () => Promise<void>;
   dismissDonationBanner: () => void;
-} & HeartRateZonePreferenceSlice;
+} & HeartRateZonePreferenceSlice & PowerZonePreferenceSlice;
 
 const STORAGE_KEY = "fitDashboard.settings";
 
@@ -58,6 +63,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   supporterBadge: false,
   donationDismissed: false,
   ...createInitialHeartRateZonePreferenceData(),
+  ...createInitialPowerZonePreferenceData(),
   showSettings: false,
 
   hydrate: () => {
@@ -136,6 +142,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   ...createHeartRateZonePreferenceActions(
+    (partial) => set(partial),
+    () => get(),
+    api,
+  ),
+
+  ...createPowerZonePreferenceActions(
     (partial) => set(partial),
     () => get(),
     api,

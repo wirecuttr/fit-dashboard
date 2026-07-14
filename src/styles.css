@@ -1854,6 +1854,92 @@ button:focus-visible {
   font-size: 0.78rem;
   font-weight: 600;
 }
+.zone-time-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.zone-time-panel-header h3 {
+  margin: 0;
+}
+
+.power-zone-source-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.power-zone-source-control legend {
+  float: left;
+  margin-right: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 30px;
+}
+
+.power-zone-source-control button {
+  min-height: 30px;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border);
+  background: var(--panel-solid);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.power-zone-source-control button:first-of-type {
+  border-radius: 7px 0 0 7px;
+}
+
+.power-zone-source-control button:last-of-type {
+  margin-left: -1px;
+  border-radius: 0 7px 7px 0;
+}
+
+.power-zone-source-control button.active {
+  position: relative;
+  border-color: var(--border-accent);
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.power-zone-source-control:disabled button {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.power-zone-source-label {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.power-zone-source-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+  color: var(--danger);
+  font-size: 0.72rem;
+}
+
+.power-zone-source-error-text {
+  margin: 0 0 0.4rem;
+  color: var(--danger);
+  font-size: 0.72rem;
+}
+
 
 .zone-time-bars {
   display: grid;
@@ -3039,6 +3125,79 @@ button:focus-visible {
   justify-content: space-between;
   gap: 0.75rem;
 }
+.power-zone-dialog {
+  width: min(680px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.power-zone-preview {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.power-zone-boundary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 0.65rem;
+}
+
+.power-zone-boundary-grid > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.power-zone-number-input {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.power-zone-number-input input {
+  width: 80px;
+  min-width: 0;
+}
+
+.power-zone-number-input > span {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.power-zone-labels {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.45rem;
+}
+
+.power-zone-labels > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-solid);
+}
+
+.power-zone-labels strong {
+  font-size: 0.72rem;
+}
+
+.power-zone-labels span {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  white-space: nowrap;
+}
+
 
 @media (max-width: 520px) {
   .hr-zone-dialog {
@@ -3052,6 +3211,10 @@ button:focus-visible {
 
   .hr-zone-label-range {
     font-size: 0.58rem;
+  }
+
+  .power-zone-labels {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .hr-zone-dialog-actions {

@@ -11,6 +11,7 @@
     "lint": "echo 'No linter configured yet'",
     "test:cardiac-decoupling": "node scripts/run-cardiac-decoupling-tests.mjs",
     "test:heart-rate-zones": "node scripts/run-heart-rate-zone-tests.mjs",
+    "test:power-zones": "node scripts/run-power-zone-tests.mjs",
     "test:map-follow": "node scripts/run-map-follow-tests.mjs",
     "test:activity-time": "node scripts/run-activity-time-tests.mjs",
     "tauri": "tauri",

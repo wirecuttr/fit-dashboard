@@ -54,6 +54,7 @@ import {
 } from "../lib/activityTime";
 import { getHeartRateZoneBounds } from "../lib/zones";
 import { resolveHeartRateZoneSelection } from "../lib/hrZones";
+import { configuredPowerZoneBoundsWatts } from "../lib/powerZones";
 
 type Props = { onLogout: () => Promise<void> };
 
@@ -359,6 +360,11 @@ export function Dashboard({ onLogout }: Props) {
     overviewMapStyle, setOverviewMapStyle, smoothGraphs,
     loadSupporterStatus, theme, manualHeartRateZoneBoundsBpm,
     manualHeartRateZoneUsage, heartRateZonePreferenceStatus,
+    configuredPowerZoneBoundPercents, powerZoneTimeSource,
+    powerZonePreferenceStatus, powerZonePreferenceSaving,
+    powerZonePreferenceError, setPowerZoneTimeSource,
+    powerZonePreferenceErrorContext,
+    loadPowerZonePreferences,
   } = useSettingsStore();
   const { t } = useTranslation();
 
@@ -1152,6 +1158,19 @@ export function Dashboard({ onLogout }: Props) {
       manualHeartRateZoneBoundsBpm,
       manualHeartRateZoneUsage,
     ]
+  );
+  const selectedPowerZoneBoundsWatts = useMemo(
+    () => powerZonePreferenceStatus === "ready"
+      ? configuredPowerZoneBoundsWatts(
+          selectedMetadata?.zones?.power?.functional_threshold_power,
+          configuredPowerZoneBoundPercents,
+        )
+      : undefined,
+    [
+      configuredPowerZoneBoundPercents,
+      powerZonePreferenceStatus,
+      selectedMetadata,
+    ],
   );
   const hasPlannedWorkoutIntervals = useMemo(() => {
     const steps = selectedMetadata?.workout_steps ?? [];
@@ -2053,7 +2072,32 @@ export function Dashboard({ onLogout }: Props) {
                   </Suspense>
                 )}
                 <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} />}>
-                  <ActivityInsights activity={selectedActivity} records={selectedRecords} analysisRecords={analysisRecords} theme={theme} distanceUnit={distanceUnit} xAxisMode={telemetryXAxisMode} timeBasis={effectiveActivityTimeBasis} timeResolution={activityTimeResolution} zones={selectedMetadata?.zones ?? null} heartRateZoneBoundsBpm={heartRateZoneSelection?.boundsBpm} heartRateZoneSource={heartRateZoneSelection?.source} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} timerMetadata={selectedMetadata?.timer} />
+                  <ActivityInsights
+                    activity={selectedActivity}
+                    records={selectedRecords}
+                    analysisRecords={analysisRecords}
+                    theme={theme}
+                    distanceUnit={distanceUnit}
+                    xAxisMode={telemetryXAxisMode}
+                    timeBasis={effectiveActivityTimeBasis}
+                    timeResolution={activityTimeResolution}
+                    zones={selectedMetadata?.zones ?? null}
+                    heartRateZoneBoundsBpm={heartRateZoneSelection?.boundsBpm}
+                    heartRateZoneSource={heartRateZoneSelection?.source}
+                    configuredPowerZoneBoundsWatts={selectedPowerZoneBoundsWatts}
+                    powerZoneTimeSource={powerZoneTimeSource}
+                    powerZonePreferenceStatus={powerZonePreferenceStatus}
+                    powerZonePreferenceSaving={powerZonePreferenceSaving}
+                    powerZonePreferenceError={powerZonePreferenceErrorContext === "source" ? powerZonePreferenceError : null}
+                    onPowerZoneTimeSourceChange={setPowerZoneTimeSource}
+                    onPowerZonePreferencesRetry={loadPowerZonePreferences}
+                    powerZonePreferenceRetrying={powerZonePreferenceStatus === "loading"}
+                    zoomRange={telemetryZoom}
+                    onZoomChange={setTelemetryZoom}
+                    lapTimestampsUtc={lapTimestampsUtc}
+                    smoothGraphs={smoothGraphs}
+                    timerMetadata={selectedMetadata?.timer}
+                  />
                 </Suspense>
               </section>
               {lapRows.length > 0 && (

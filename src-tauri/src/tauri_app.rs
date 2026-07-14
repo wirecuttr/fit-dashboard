@@ -11,6 +11,9 @@ use crate::{
         HeartRateZonePreferences,
     },
     models::{Activity, OverviewStats, RecordPoint, TokenResponse},
+    power_zones::{
+        load_power_zone_preferences, save_power_zone_preferences, PowerZonePreferences,
+    },
     state::{AppState, StorageInfo},
 };
 
@@ -107,6 +110,8 @@ pub fn run(state: AppState) -> anyhow::Result<()> {
             set_donation_dismissed,
             get_heart_rate_zone_preferences,
             set_heart_rate_zone_preferences,
+            get_power_zone_preferences,
+            set_power_zone_preferences,
         ])
         .build(tauri::generate_context!())
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
@@ -910,6 +915,21 @@ fn set_heart_rate_zone_preferences(
     preferences: HeartRateZonePreferences,
 ) -> Result<HeartRateZonePreferences, String> {
     save_heart_rate_zone_preferences(&state.db, preferences).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_power_zone_preferences(
+    state: State<'_, AppState>,
+) -> Result<PowerZonePreferences, String> {
+    load_power_zone_preferences(&state.db).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_power_zone_preferences(
+    state: State<'_, AppState>,
+    preferences: PowerZonePreferences,
+) -> Result<PowerZonePreferences, String> {
+    save_power_zone_preferences(&state.db, preferences).map_err(|e| e.to_string())
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

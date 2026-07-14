@@ -17,11 +17,13 @@ export function App() {
   const theme = useSettingsStore((s) => s.theme);
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const loadHeartRateZonePreferences = useSettingsStore((s) => s.loadHeartRateZonePreferences);
+  const loadPowerZonePreferences = useSettingsStore((s) => s.loadPowerZonePreferences);
   const { t } = useTranslation();
 
   async function loadDashboardData() {
     await Promise.all([
       refresh(),
+      loadPowerZonePreferences(),
       loadHeartRateZonePreferences(),
     ]);
   }
