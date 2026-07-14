@@ -108,6 +108,14 @@ export function buildRouteDisplayGeoJson(
   };
 }
 
+export function buildRevealedRouteGeoJson(
+  coordinates: number[][],
+  revealedEndIndex: number,
+): GeoJSON.FeatureCollection<GeoJSON.LineString> {
+  const clampedEndIndex = Math.max(0, Math.min(coordinates.length - 1, revealedEndIndex));
+  return buildRouteDisplayGeoJson(coordinates.slice(0, clampedEndIndex + 1));
+}
+
 function buildSteppedRouteGradient(
   coordinates: number[][],
   colorForSegment: (index: number) => string,
@@ -179,20 +187,6 @@ export function buildRouteLineGradient(
   return buildSteppedRouteGradient(
     coordinates,
     (index) => segmentColors[index] ?? fallbackColor,
-    revealedEndIndex,
-    hiddenColor,
-  );
-}
-
-export function buildRouteRevealGradient(
-  coordinates: number[][],
-  revealedEndIndex: number,
-  visibleColor: string,
-  hiddenColor = HIDDEN_ROUTE_COLOR,
-): RouteLineGradient {
-  return buildSteppedRouteGradient(
-    coordinates,
-    () => visibleColor,
     revealedEndIndex,
     hiddenColor,
   );

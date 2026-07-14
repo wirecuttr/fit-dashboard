@@ -6,7 +6,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import {
   buildRouteDisplayGeoJson,
   buildRouteLineGradient,
-  buildRouteRevealGradient,
+  buildRevealedRouteGeoJson,
   buildRouteSegmentColors,
   type PathColorMode,
 } from "../lib/mapRouteColor";
@@ -230,6 +230,7 @@ function sampleRouteRecords(records: RecordPoint[], maxPoints: number): RecordPo
 /* ── Component ───────────────────────────────────────────────────── */
 
 const SOURCE_ID = "activity-route";
+const OUTLINE_SOURCE_ID = "activity-route-outline-source";
 const HIT_SOURCE_ID = "activity-route-hit-source";
 const MARKER_SOURCE_ID = "activity-route-markers";
 const LAP_SOURCE_ID = "activity-route-lap-markers";
@@ -516,6 +517,7 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       if (map.getSource(MARKER_SOURCE_ID)) map.removeSource(MARKER_SOURCE_ID);
       if (map.getSource(HIT_SOURCE_ID)) map.removeSource(HIT_SOURCE_ID);
       if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      if (map.getSource(OUTLINE_SOURCE_ID)) map.removeSource(OUTLINE_SOURCE_ID);
       return;
     }
 
@@ -526,10 +528,11 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
     const hitGeojson = buildColoredGeoJson(visibleGpsRecs, visibleCoords, routeColors, SOLID_PATH_COLOR);
     const displayGeojson = buildRouteDisplayGeoJson(coords);
     const displayGradient = buildRouteLineGradient(coords, routeColors, SOLID_PATH_COLOR, endIndex);
-    const outlineGradient = buildRouteRevealGradient(coords, endIndex, "#000000");
+    const outlineGeojson = buildRevealedRouteGeoJson(coords, endIndex);
     const markerGeojson = buildMarkerGeoJson(visibleCoords);
     const lapMarkerGeojson = buildLapMarkerGeoJson(visibleGpsRecs, lapTimestampsUtc);
     const existingDisplay = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+    const existingOutline = map.getSource(OUTLINE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     const existingHit = map.getSource(HIT_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     const existingMarkers = map.getSource(MARKER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
     const existingLapMarkers = map.getSource(LAP_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
@@ -540,22 +543,27 @@ export function ActivityMap({ records, mapStyle, setMapStyle, lapTimestampsUtc =
       map.addSource(SOURCE_ID, { type: "geojson", data: displayGeojson, lineMetrics: true });
     }
 
+    if (existingOutline) {
+      existingOutline.setData(outlineGeojson);
+    } else {
+      map.addSource(OUTLINE_SOURCE_ID, { type: "geojson", data: outlineGeojson });
+    }
+
     // Diffused black outline under the route for better edge contrast.
     if (!map.getLayer(OUTLINE_LAYER_ID)) {
       map.addLayer({
         id: OUTLINE_LAYER_ID,
         type: "line",
-        source: SOURCE_ID,
+        source: OUTLINE_SOURCE_ID,
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
           "line-width": 8,
-          "line-gradient": outlineGradient as any,
+          "line-color": "#000000",
           "line-opacity": 0.62,
           "line-blur": 2.2,
         }
       });
     }
-    map.setPaintProperty(OUTLINE_LAYER_ID, "line-gradient", outlineGradient as any);
 
     if (existingHit) {
       existingHit.setData(hitGeojson);

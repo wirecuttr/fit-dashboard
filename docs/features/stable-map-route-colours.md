@@ -33,7 +33,8 @@ segmented visible geometry, the defect appeared in every colour mode.
 - Change the colour palette, scaling rules, or missing-data policy.
 - Change playback timing or route sampling.
 - Change the route outline's width, opacity, or blur.
-- Add new controls or user-facing strings.
+- Add new controls or user-facing strings, including an optional unplayed-route
+  preview.
 
 ## Rendering Design
 
@@ -42,13 +43,15 @@ therefore use separate sources:
 
 | Source | Geometry | Consumers | Purpose |
 | --- | --- | --- | --- |
-| Display route | One continuous `LineString` | Coloured route and outline | Seam-free visual rendering |
+| Display route | One complete continuous `LineString` | Coloured route | Stable full-route gradient domain |
+| Outline route | One revealed-prefix continuous `LineString` | Diffused outline | Seam-free outline with no unplayed preview |
 | Hit-test route | One two-point feature per GPS segment | Invisible wide hit layer | Segment-specific tooltip data |
 | Marker sources | Points | Start/end and lap layers | Existing route annotations |
 
 The display GeoJSON source enables MapLibre `lineMetrics`. Its coloured layer
-uses a stepped `line-gradient` based on `line-progress`. The outline uses the
-same continuous source, so both visible strokes follow identical geometry.
+uses a stepped `line-gradient` based on `line-progress`. The outline uses a
+separate continuous source containing only the revealed prefix. Both visible
+strokes are continuous, but the outline cannot expose the unplayed route.
 
 The segmented source retains speed, heart rate, elevation, cadence, power,
 temperature, and elapsed-time properties. It is no longer used by a visible
@@ -70,8 +73,8 @@ For each redraw:
 4. Build a stepped `line-gradient` from those fixed boundaries.
 5. Add a transparent stop at the current full-route playback progress to hide
    the unrevealed tail.
-6. Apply the same cutoff to the outline while the hit-test route, markers, and
-   lap markers continue to use the revealed prefix.
+6. Update the continuous outline, hit-test route, markers, and lap markers with
+   only the revealed prefix.
 
 MapLibre's `line-progress` is distance-based, so distance-normalized stops keep
 colour changes aligned with their geographic segments. Because both the source
@@ -102,14 +105,15 @@ Solid does not inspect telemetry values.
 - `src/components/ActivityMap.tsx`
   - enables `lineMetrics` on the display source;
   - keeps the complete display geometry fixed while scrubbing;
-  - reveals the coloured route and outline through matching gradient cutoffs;
+  - reveals the coloured route through a fixed-domain gradient cutoff;
+  - renders the outline from a separate continuous revealed-prefix source;
   - retains revealed-prefix segmented geometry exclusively for hit-testing.
 - `scripts/test-map-route-color.ts`
   - verifies stable full-activity colour calculation;
   - verifies one complete continuous display feature;
   - verifies MapLibre-compatible distance stops;
   - verifies stable full-domain playback colours and cutoff positions;
-  - verifies a matching outline cutoff;
+  - verifies revealed-prefix geometry excludes unplayed coordinates;
   - verifies constant-colour Solid rendering.
 
 ## Validation
@@ -133,6 +137,7 @@ Manual or browser rendering validation should cover:
 
 - Solid has no grey or black gaps within its red route stroke.
 - Metric modes have no outline-coloured seams between GPS samples.
+- The unplayed portion of the route is not shown as a grey outline.
 - Previously revealed route colours do not shift as playback advances.
 - Previously revealed route gradient stops do not shift while scrubbing.
 - Missing metric segments remain neutral grey.

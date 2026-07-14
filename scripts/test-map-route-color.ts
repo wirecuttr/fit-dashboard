@@ -3,7 +3,7 @@ import {
   MISSING_ROUTE_METRIC_COLOR,
   buildRouteDisplayGeoJson,
   buildRouteLineGradient,
-  buildRouteRevealGradient,
+  buildRevealedRouteGeoJson,
   buildRouteSegmentColors,
   type PathColorMode,
 } from "../src/lib/mapRouteColor";
@@ -79,6 +79,19 @@ function testDisplayRouteUsesOneCompleteContinuousFeature() {
   );
 }
 
+function testRevealedRouteExcludesUnplayedCoordinates() {
+  const coordinates = [[0, 0], [0.001, 0], [0.002, 0], [0.003, 0]];
+  const route = buildRevealedRouteGeoJson(coordinates, 1);
+
+  assertEqual(route.features.length, 1, "the revealed route should remain one continuous feature");
+  assertEqual(
+    route.features[0].geometry.coordinates.length,
+    2,
+    "the revealed route should exclude unplayed coordinates",
+  );
+  assertEqual(route.features[0].geometry.coordinates[1][0], 0.001, "the revealed route should end at the playhead");
+}
+
 function testGradientStopsFollowMapLibreRouteDistance() {
   const coordinates = [[0, 0], [0.001, 0], [0.003, 0]];
   const gradient = buildRouteLineGradient(
@@ -113,19 +126,6 @@ function testPlaybackCutoffKeepsTheFullGradientDomain() {
   assertEqual(partialGradient[6], HIDDEN_ROUTE_COLOR, "the unplayed tail should be transparent");
 }
 
-function testOutlineUsesTheSamePlaybackCutoff() {
-  const gradient = buildRouteRevealGradient(
-    [[0, 0], [0.001, 0], [0.002, 0]],
-    1,
-    "#000000",
-  );
-
-  assert(Array.isArray(gradient), "a partial outline should produce a cutoff expression");
-  assertEqual(gradient[2], "#000000", "the revealed outline should remain black");
-  assertEqual(gradient[3], 0.5, "the outline cutoff should use full-route progress");
-  assertEqual(gradient[4], HIDDEN_ROUTE_COLOR, "the unplayed outline should be transparent");
-}
-
 function testSolidRouteUsesOneConstantGradientColour() {
   const gradient = buildRouteLineGradient(
     [[0, 0], [0.001, 0], [0.002, 0]],
@@ -139,9 +139,9 @@ testColoursRemainStableAsRouteIsRevealed();
 testMissingValuesDoNotChangeTheScale();
 testSolidColourIsUnchanged();
 testDisplayRouteUsesOneCompleteContinuousFeature();
+testRevealedRouteExcludesUnplayedCoordinates();
 testGradientStopsFollowMapLibreRouteDistance();
 testPlaybackCutoffKeepsTheFullGradientDomain();
-testOutlineUsesTheSamePlaybackCutoff();
 testSolidRouteUsesOneConstantGradientColour();
 
 console.log("Map route colour tests passed");
