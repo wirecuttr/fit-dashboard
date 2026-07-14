@@ -21,8 +21,10 @@ export type HeartRateZonePreferenceData = {
 
 export type HeartRateZonePreferenceActions = {
   loadHeartRateZonePreferences: () => Promise<boolean>;
-  saveManualHeartRateZoneBounds: (boundsBpm: number[]) => Promise<boolean>;
-  setManualHeartRateZoneUsage: (usage: ManualHeartRateZoneUsage) => Promise<boolean>;
+  saveManualHeartRateZonePreferences: (
+    boundsBpm: number[],
+    usage: ManualHeartRateZoneUsage,
+  ) => Promise<boolean>;
 };
 
 export type HeartRateZonePreferenceSlice = HeartRateZonePreferenceData
@@ -84,10 +86,11 @@ export function createHeartRateZonePreferenceActions(
       }
     },
 
-    saveManualHeartRateZoneBounds: async (boundsBpm) => {
+    saveManualHeartRateZonePreferences: async (boundsBpm, usage) => {
       const state = get();
       if (state.heartRateZonePreferenceStatus !== "ready"
         || state.heartRateZonePreferenceSaving
+        || (usage !== "fallback" && usage !== "always")
         || !validateManualHeartRateZoneBounds(boundsBpm)) {
         return false;
       }
@@ -101,45 +104,6 @@ export function createHeartRateZonePreferenceActions(
           await backend.setHeartRateZonePreferences({
             version: HEART_RATE_ZONE_PREFERENCES_VERSION,
             bounds_bpm: [...boundsBpm],
-            usage: state.confirmedManualHeartRateZoneUsage,
-          })
-        );
-        set({
-          manualHeartRateZoneBoundsBpm: [...preferences.bounds_bpm],
-          manualHeartRateZoneUsage: preferences.usage,
-          confirmedManualHeartRateZoneBoundsBpm: [...preferences.bounds_bpm],
-          confirmedManualHeartRateZoneUsage: preferences.usage,
-          heartRateZonePreferenceStatus: "ready",
-          heartRateZonePreferenceError: null,
-        });
-        return true;
-      } catch (err) {
-        console.warn("Failed to save heart-rate-zone boundaries:", err);
-        set({ heartRateZonePreferenceError: errorMessage(err) });
-        return false;
-      } finally {
-        set({ heartRateZonePreferenceSaving: false });
-      }
-    },
-
-    setManualHeartRateZoneUsage: async (usage) => {
-      const state = get();
-      if (state.heartRateZonePreferenceStatus !== "ready"
-        || state.heartRateZonePreferenceSaving
-        || usage === state.manualHeartRateZoneUsage) {
-        return false;
-      }
-
-      set({
-        manualHeartRateZoneUsage: usage,
-        heartRateZonePreferenceSaving: true,
-        heartRateZonePreferenceError: null,
-      });
-      try {
-        const preferences = normalizeHeartRateZonePreferences(
-          await backend.setHeartRateZonePreferences({
-            version: HEART_RATE_ZONE_PREFERENCES_VERSION,
-            bounds_bpm: [...state.confirmedManualHeartRateZoneBoundsBpm],
             usage,
           })
         );
@@ -153,11 +117,8 @@ export function createHeartRateZonePreferenceActions(
         });
         return true;
       } catch (err) {
-        console.warn("Failed to save heart-rate-zone usage policy:", err);
-        set({
-          manualHeartRateZoneUsage: state.confirmedManualHeartRateZoneUsage,
-          heartRateZonePreferenceError: errorMessage(err),
-        });
+        console.warn("Failed to save heart-rate-zone preferences:", err);
+        set({ heartRateZonePreferenceError: errorMessage(err) });
         return false;
       } finally {
         set({ heartRateZonePreferenceSaving: false });

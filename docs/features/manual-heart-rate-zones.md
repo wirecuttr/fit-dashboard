@@ -255,39 +255,32 @@ Malformed stored JSON or unsupported versions fall back to the version-1
 defaults and emit a diagnostic message. Invalid save requests return an error
 without changing the stored value.
 
-### Boundary Save Behaviour
+### Preference Save Behaviour
 
-The zone editor edits a local boundary draft. Pressing Save:
+The zone editor edits local boundary and usage-policy drafts. Pressing Save:
 
-1. validates the draft in the frontend;
-2. sends the draft boundaries together with the last confirmed usage policy as
-   one complete preference object;
+1. validates both drafts in the frontend;
+2. sends the draft boundaries and usage policy as one complete preference
+   object;
 3. waits for the backend response;
 4. updates the Zustand state with the confirmed normalized value; and
 5. closes the dialog only after success.
 
 On failure, the previous effective preferences remain active, the dialog stays
-open, and the user sees a localized error. Disable the usage control while the
-boundary save is in flight.
+open, and the user sees a localized error. Disable the dialog controls while
+the save is in flight.
 
-### Usage Toggle Behaviour
+### Usage Checkbox Behaviour
 
-The fallback/always control applies immediately, consistent with the other
-Settings controls. Changing it:
+The usage policy is presented inside the zone editor as an `Always use custom
+zones` checkbox with an adjacent help button. The checkbox is off by default,
+which maps to `fallback`; the stored `always` value opens as checked. The help
+explains that off prefers FIT-derived zones and uses custom zones only as a
+fallback, while on uses custom zones for every activity.
 
-1. updates the in-memory usage policy optimistically;
-2. sends the new policy with the last confirmed boundaries as one complete
-   preference object;
-3. disables the policy control while that request is in flight;
-4. replaces state with the normalized backend response on success; and
-5. restores the last confirmed policy and shows a localized error on failure.
-
-An unsaved boundary draft in an open editor is not included in a policy-toggle
-request. Disable the zone editor and its Save action while a policy request is
-in flight. Serialize all preference writes so a policy change and boundary save
-cannot overwrite each other with stale copies of the combined object. The usage
-control and zone editor remain disabled until the initial database preference
-load has completed successfully.
+The checkbox remains a draft until Save succeeds. Reset asks for confirmation,
+then restores the default boundaries and clears the checkbox as drafts. Closing
+without saving discards both drafts.
 
 ### Existing Browser Settings
 
@@ -375,14 +368,8 @@ heart-rate drift, scatter plots, and other sample-dependent insights.
 Keep every existing Settings control and add a Manual heart-rate zones section
 containing:
 
-- a `Customise manual zones` button;
-- a clearly labelled usage choice;
-- `Fallback only` with help text explaining that FIT zones are preferred; and
-- `Always` with help text explaining that manual zones replace FIT boundaries.
-
-A radio pair or segmented control is preferred over an unexplained Boolean
-switch because both behaviours need to be visible. `Fallback only` is selected
-by default.
+- a `Customise HR Zones` button; and
+- no separate usage-policy controls.
 
 The manual-zone editor remains available in fallback mode because its values are
 used for FIT files without zone boundaries.
@@ -395,7 +382,10 @@ The dialog includes:
 - four boundary handles;
 - coloured zone segments;
 - live zone range labels;
-- a Reset to defaults action;
+- an `Always use custom zones` checkbox, off by default;
+- a help button explaining the checked and unchecked behaviours;
+- a Reset to defaults action that confirms before replacing the boundary and
+  usage drafts;
 - Save and Cancel/Close actions;
 - pointer interaction;
 - keyboard-operable handles with appropriate slider semantics; and
@@ -477,13 +467,14 @@ information, and blacklist controls while adding the manual-zone section.
   - Add Tauri/HTTP preference methods and shared response types.
 - `src/stores/settingsStore.ts`
   - Add manual bounds, usage, explicit load status, asynchronous load/retry,
-    optimistic policy save with rollback, and confirmed boundary save.
+    and one confirmed atomic save for the boundary and usage drafts.
   - Do not include the new durable settings in the existing localStorage
     serializer.
 - `src/lib/hrZones.ts` and/or `src/lib/zones.ts`
   - Centralize defaults, validation, and effective-source resolution.
 - `src/components/SettingsPanel.tsx`
-  - Integrate the editor and usage control without removing existing settings.
+  - Integrate the boundary editor, saved usage checkbox, help, and reset
+    confirmation.
 - `src/components/Dashboard.tsx`
   - Resolve FIT versus manual bounds and pass source-aware selection to charts.
 - `src/components/ActivityInsights.tsx`
@@ -534,8 +525,7 @@ reload it, and reject invalid values.
 - Disable manual controls until loading succeeds and provide a retry after
   failure.
 - Keep browser-persisted presentation settings unchanged.
-- Keep confirmed preferences separately so an immediate policy change can roll
-  back cleanly when persistence fails.
+- Keep confirmed preferences active until the combined draft save succeeds.
 
 Completion condition: refresh and browser-storage clearing do not remove the
 manual preferences.
@@ -543,8 +533,8 @@ manual preferences.
 ### 4. Integrate the Manual-Zone User Interface
 
 - Port and adapt the upstream slider dialog.
-- Add the immediate, optimistic fallback/always control with persistence and
-  rollback behaviour.
+- Add the saved `Always use custom zones` checkbox and explanatory help.
+- Confirm before Reset replaces the boundary and usage drafts.
 - Fix slider range and validation consistency.
 - Add keyboard and accessible-label support.
 - Merge and add localized copy.
@@ -608,10 +598,8 @@ begins a cold rebuild of heavy native dependencies such as `libduckdb-sys`.
 - A simulated interruption of preference replacement retains the old complete
   value rather than deleting the row.
 - An unsupported stored version falls back safely.
-- A failed save leaves the previously confirmed preference active.
-- A failed immediate policy save restores the last confirmed policy.
-- Concurrent policy and boundary writes are serialized and cannot overwrite
-  each other with stale preference objects.
+- A failed combined save leaves the confirmed boundaries and policy active.
+- A second preference save is blocked while the first is in flight.
 
 ### Selection Matrix
 
@@ -619,8 +607,8 @@ begins a cold rebuild of heavy native dependencies such as `libduckdb-sys`.
 - No FIT bounds plus `fallback` uses manual bounds.
 - FIT bounds plus `always` uses manual bounds.
 - No FIT bounds plus `always` uses manual bounds.
-- Switching the policy updates the displayed chart colouring and zone-time bars
-  without changing the imported activity metadata.
+- Saving a changed policy updates the displayed chart colouring and zone-time
+  bars without changing the imported activity metadata.
 
 ### Zone-Time Data
 
@@ -651,7 +639,8 @@ begins a cold rebuild of heavy native dependencies such as `libduckdb-sys`.
 ### Automated Coverage
 
 - Add a lightweight frontend test script, following the existing compiled
-  TypeScript script pattern, for boundary validation, policy/FIT selection,
+  TypeScript script pattern, for preference saving, boundary validation,
+  policy/FIT selection,
   aggregate compatibility, and record-based zone accumulation.
 - Add focused backend tests for JSON serialization, default loading, validation,
   transactional replacement, and invalid stored versions.

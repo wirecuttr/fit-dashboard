@@ -244,20 +244,15 @@ async function testPreferenceStoreLoadsAndSavesConfirmedValues() {
   assertEqual(store.getState().heartRateZonePreferenceStatus, "ready", "successful load should enable preferences");
   assertEqual(JSON.stringify(store.getState().manualHeartRateZoneBoundsBpm), JSON.stringify(stored.bounds_bpm), "load should apply stored boundaries");
 
-  const usageSave = store.getState().setManualHeartRateZoneUsage("always");
-  assertEqual(store.getState().manualHeartRateZoneUsage, "always", "usage should apply optimistically");
-  assertEqual(store.getState().heartRateZonePreferenceSaving, true, "optimistic usage should remain marked as saving");
-  assertEqual(await usageSave, true, "valid usage should save");
-  assertEqual(store.getState().confirmedManualHeartRateZoneUsage, "always", "successful usage save should update the confirmed policy");
-
   const nextBounds = [85, 110, 140, 170];
-  assertEqual(await store.getState().saveManualHeartRateZoneBounds(nextBounds), true, "valid boundaries should save");
-  assertEqual(JSON.stringify(writes[1].bounds_bpm), JSON.stringify(nextBounds), "boundary save should send the draft bounds");
-  assertEqual(writes[1].usage, "always", "boundary save should preserve the confirmed policy");
+  assertEqual(await store.getState().saveManualHeartRateZonePreferences(nextBounds, "always"), true, "valid preferences should save");
+  assertEqual(JSON.stringify(writes[0].bounds_bpm), JSON.stringify(nextBounds), "save should send the draft bounds");
+  assertEqual(writes[0].usage, "always", "save should send the draft policy with the bounds");
   assertEqual(JSON.stringify(store.getState().confirmedManualHeartRateZoneBoundsBpm), JSON.stringify(nextBounds), "successful boundary save should update confirmed bounds");
+  assertEqual(store.getState().confirmedManualHeartRateZoneUsage, "always", "successful save should update the confirmed policy");
 }
 
-async function testPreferenceStoreRollsBackAndSerializesWrites() {
+async function testPreferenceStorePreservesConfirmedValuesAndSerializesWrites() {
   const pendingSave = deferred<HeartRateZonePreferences>();
   let saveCalls = 0;
   const store = createPreferenceStore({
@@ -273,23 +268,24 @@ async function testPreferenceStoreRollsBackAndSerializesWrites() {
   });
   await store.getState().loadHeartRateZonePreferences();
 
-  const usageSave = withoutExpectedWarnings(
-    () => store.getState().setManualHeartRateZoneUsage("always"),
+  const preferenceSave = withoutExpectedWarnings(
+    () => store.getState().saveManualHeartRateZonePreferences([85, 110, 140, 170], "always"),
   );
-  assertEqual(store.getState().manualHeartRateZoneUsage, "always", "pending policy save should apply immediately");
+  assertEqual(store.getState().manualHeartRateZoneUsage, "fallback", "pending save should leave the confirmed policy active");
+  assertEqual(JSON.stringify(store.getState().manualHeartRateZoneBoundsBpm), JSON.stringify([80, 105, 135, 165]), "pending save should leave confirmed bounds active");
   assertEqual(
-    await store.getState().saveManualHeartRateZoneBounds([85, 110, 140, 170]),
+    await store.getState().saveManualHeartRateZonePreferences([90, 115, 145, 175], "always"),
     false,
-    "boundary save should be blocked while a policy write is pending",
+    "a second save should be blocked while a preference write is pending",
   );
   assertEqual(saveCalls, 1, "concurrent preference writes should be serialized");
 
   pendingSave.reject(new Error("save failed"));
-  assertEqual(await usageSave, false, "failed policy save should report failure");
-  assertEqual(store.getState().manualHeartRateZoneUsage, "fallback", "failed policy save should restore the confirmed policy");
-  assertEqual(store.getState().confirmedManualHeartRateZoneUsage, "fallback", "failed policy save should not change confirmation");
-  assertEqual(store.getState().heartRateZonePreferenceSaving, false, "failed policy save should clear saving state");
-  assert(!!store.getState().heartRateZonePreferenceError, "failed policy save should expose an error");
+  assertEqual(await preferenceSave, false, "failed preference save should report failure");
+  assertEqual(store.getState().manualHeartRateZoneUsage, "fallback", "failed save should preserve the confirmed policy");
+  assertEqual(store.getState().confirmedManualHeartRateZoneUsage, "fallback", "failed save should not change confirmation");
+  assertEqual(store.getState().heartRateZonePreferenceSaving, false, "failed save should clear saving state");
+  assert(!!store.getState().heartRateZonePreferenceError, "failed save should expose an error");
 }
 
 async function testPreferenceStorePreservesBoundsAfterSaveFailure() {
@@ -307,11 +303,13 @@ async function testPreferenceStorePreservesBoundsAfterSaveFailure() {
   await store.getState().loadHeartRateZonePreferences();
 
   const saved = await withoutExpectedWarnings(
-    () => store.getState().saveManualHeartRateZoneBounds([85, 110, 140, 170]),
+    () => store.getState().saveManualHeartRateZonePreferences([85, 110, 140, 170], "fallback"),
   );
-  assertEqual(saved, false, "failed boundary save should report failure");
+  assertEqual(saved, false, "failed preference save should report failure");
   assertEqual(JSON.stringify(store.getState().manualHeartRateZoneBoundsBpm), JSON.stringify(originalBounds), "failed boundary save should preserve active bounds");
   assertEqual(JSON.stringify(store.getState().confirmedManualHeartRateZoneBoundsBpm), JSON.stringify(originalBounds), "failed boundary save should preserve confirmed bounds");
+  assertEqual(store.getState().manualHeartRateZoneUsage, "always", "failed save should preserve the active policy");
+  assertEqual(store.getState().confirmedManualHeartRateZoneUsage, "always", "failed save should preserve the confirmed policy");
 }
 
 async function testPreferenceStoreReportsLoadFailure() {
@@ -339,7 +337,7 @@ const tests = [
   testActiveTimeZoneAccumulation,
   testNoHeartRateSamplesHideZoneTime,
   testPreferenceStoreLoadsAndSavesConfirmedValues,
-  testPreferenceStoreRollsBackAndSerializesWrites,
+  testPreferenceStorePreservesConfirmedValuesAndSerializesWrites,
   testPreferenceStorePreservesBoundsAfterSaveFailure,
   testPreferenceStoreReportsLoadFailure,
 ];

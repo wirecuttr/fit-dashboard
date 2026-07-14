@@ -267,8 +267,9 @@ power-specific dialog. The power editor contains:
 - appropriate slider roles, values, and localised accessible labels; and
 - loading, saving, validation, and persistence-error states.
 
-Reset updates the dialog draft. The new values become active only after a
-successful save, matching the heart-rate-zone editor pattern.
+Reset asks for confirmation before updating the dialog draft. The new values
+become active only after a successful save, matching the heart-rate-zone editor
+pattern.
 
 ### Time in Power Zones Chart
 
@@ -500,7 +501,8 @@ cold rebuild of heavy native dependencies such as `libduckdb-sys`.
   with the preserved database bind mount.
 - Invalid length, non-integer, out-of-range, unsorted, duplicated, and too-close
   percentage values are rejected in TypeScript and Rust.
-- Reset restores `[55, 75, 90, 105, 120, 150, 200]`.
+- Confirmed Reset restores `[55, 75, 90, 105, 120, 150, 200]` as a draft; a
+  cancelled confirmation leaves the current draft unchanged.
 - Malformed and unsupported persisted values recover safely.
 - Failed and concurrent writes preserve the last confirmed complete preference.
 

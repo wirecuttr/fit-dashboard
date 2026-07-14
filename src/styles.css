@@ -2884,60 +2884,6 @@ button:focus-visible {
   background: var(--accent-glow);
 }
 
-.hr-zone-policy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.hr-zone-policy legend {
-  margin-bottom: 0.35rem;
-  color: var(--text-secondary);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.hr-zone-policy label {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: start;
-  gap: 0.55rem;
-  padding: 0.55rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel-solid);
-  cursor: pointer;
-}
-
-.hr-zone-policy input {
-  width: 17px;
-  height: 17px;
-  margin: 0.1rem 0 0;
-  accent-color: var(--accent);
-}
-
-.hr-zone-policy label > span {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.hr-zone-policy strong {
-  color: var(--text);
-  font-size: 0.78rem;
-}
-
-.hr-zone-policy small {
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  line-height: 1.35;
-}
-
-.hr-zone-policy:disabled label,
 .hr-zone-btn-customize:disabled {
   cursor: not-allowed;
   opacity: 0.65;
@@ -3009,6 +2955,76 @@ button:focus-visible {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.8rem;
+}
+
+.hr-zone-usage-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.hr-zone-usage-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.hr-zone-usage-checkbox input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.hr-zone-usage-checkbox input:disabled {
+  cursor: not-allowed;
+}
+
+.hr-zone-usage-help {
+  position: relative;
+  display: inline-flex;
+}
+
+.hr-zone-usage-help-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--input-bg);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.hr-zone-usage-help-button:hover,
+.hr-zone-usage-help-button[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.hr-zone-usage-help-popover {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 0.45rem);
+  left: 50%;
+  width: min(320px, calc(100vw - 3rem));
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-solid);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  transform: translateX(-50%);
 }
 
 .hr-zone-slider-container {

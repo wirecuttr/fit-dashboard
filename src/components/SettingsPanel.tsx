@@ -12,6 +12,7 @@ import {
   MANUAL_HR_SLIDER_MAX_BPM,
   MANUAL_HR_SLIDER_MIN_BPM,
   validateManualHeartRateZoneBounds,
+  type ManualHeartRateZoneUsage,
 } from "../lib/hrZones";
 import {
   DEFAULT_POWER_ZONE_BOUND_PERCENTS,
@@ -50,6 +51,7 @@ type Translate = (key: string, params?: Record<string, string | number>) => stri
 
 function HeartRateZoneDialog({
   bounds,
+  usage,
   saving,
   saveError,
   onSave,
@@ -57,15 +59,22 @@ function HeartRateZoneDialog({
   t,
 }: {
   bounds: number[];
+  usage: ManualHeartRateZoneUsage;
   saving: boolean;
   saveError: boolean;
-  onSave: (boundsBpm: number[]) => Promise<boolean>;
+  onSave: (
+    boundsBpm: number[],
+    usage: ManualHeartRateZoneUsage,
+  ) => Promise<boolean>;
   onClose: () => void;
   t: Translate;
 }) {
   const [draft, setDraft] = useState(() => [...bounds]);
+  const [draftUsage, setDraftUsage] = useState(usage);
   const [dragging, setDragging] = useState<number | null>(null);
+  const [usageHelpOpen, setUsageHelpOpen] = useState(false);
   const trackRef = useRef<HTMLDivElement>(null);
+  const usageHelpRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -110,12 +119,19 @@ function HeartRateZoneDialog({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving) onClose();
+      if (event.key === "Escape") {
+        if (usageHelpOpen) {
+          event.preventDefault();
+          setUsageHelpOpen(false);
+          return;
+        }
+        if (!saving) onClose();
+      }
       if (event.key !== "Tab") return;
 
       const focusable = Array.from(
         dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), [role="slider"][tabindex="0"]'
+          'button:not(:disabled), input:not(:disabled), [role="slider"][tabindex="0"]'
         ) ?? []
       );
       if (focusable.length === 0) {
@@ -136,7 +152,18 @@ function HeartRateZoneDialog({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, saving]);
+  }, [onClose, saving, usageHelpOpen]);
+
+  useEffect(() => {
+    if (!usageHelpOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!usageHelpRef.current?.contains(event.target as Node)) {
+        setUsageHelpOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
+  }, [usageHelpOpen]);
 
   useEffect(() => {
     if (dragging === null) return;
@@ -192,6 +219,35 @@ function HeartRateZoneDialog({
         <p id="hr-zone-dialog-description" className="hr-zone-dialog-desc">
           {t("settings.hrZonesDescription")}
         </p>
+
+        <div className="hr-zone-usage-row">
+          <label className="hr-zone-usage-checkbox">
+            <input
+              type="checkbox"
+              checked={draftUsage === "always"}
+              disabled={saving}
+              onChange={(event) => setDraftUsage(event.target.checked ? "always" : "fallback")}
+            />
+            <span>{t("settings.hrZonesAlwaysCustom")}</span>
+          </label>
+          <div className="hr-zone-usage-help" ref={usageHelpRef}>
+            <button
+              type="button"
+              className="hr-zone-usage-help-button"
+              aria-label={t("settings.hrZonesUsageHelpLabel")}
+              aria-expanded={usageHelpOpen}
+              disabled={saving}
+              onClick={() => setUsageHelpOpen((open) => !open)}
+            >
+              ?
+            </button>
+            {usageHelpOpen && (
+              <div className="hr-zone-usage-help-popover" role="dialog" aria-label={t("settings.hrZonesUsageHelpLabel")}>
+                {t("settings.hrZonesUsageHelp")}
+              </div>
+            )}
+          </div>
+        </div>
 
         <div className="hr-zone-slider-container">
           <div className="hr-zone-slider" ref={trackRef}>
@@ -275,7 +331,11 @@ function HeartRateZoneDialog({
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => setDraft([...DEFAULT_HR_ZONE_BOUNDS])}
+            onClick={() => {
+              if (!window.confirm(t("settings.zoneResetConfirm"))) return;
+              setDraft([...DEFAULT_HR_ZONE_BOUNDS]);
+              setDraftUsage("fallback");
+            }}
             disabled={saving}
           >
             {t("settings.hrZonesReset")}
@@ -283,7 +343,7 @@ function HeartRateZoneDialog({
           <button
             type="button"
             className="btn-primary"
-            onClick={() => void onSave(draft).then((saved) => { if (saved) onClose(); })}
+            onClick={() => void onSave(draft, draftUsage).then((saved) => { if (saved) onClose(); })}
             disabled={saving || !validateManualHeartRateZoneBounds(draft)}
           >
             {saving ? t("settings.hrZonesSaving") : t("settings.hrZonesSave")}
@@ -515,7 +575,10 @@ function PowerZoneDialog({
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => setDraft([...DEFAULT_POWER_ZONE_BOUND_PERCENTS])}
+            onClick={() => {
+              if (!window.confirm(t("settings.zoneResetConfirm"))) return;
+              setDraft([...DEFAULT_POWER_ZONE_BOUND_PERCENTS]);
+            }}
             disabled={saving}
           >
             {t("settings.powerZonesReset")}
@@ -560,8 +623,7 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
     setTimeFormat,
     setSmoothGraphs,
     loadHeartRateZonePreferences,
-    saveManualHeartRateZoneBounds,
-    setManualHeartRateZoneUsage,
+    saveManualHeartRateZonePreferences,
     savePowerZoneBoundPercents,
     verifySupporterCode,
     removeSupporterBadge,
@@ -716,36 +778,6 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
                 <IconHeart />
                 {t("settings.customizeHrZones")}
               </button>
-
-              <fieldset className="hr-zone-policy" disabled={heartRateZonePreferenceSaving}>
-                <legend>{t("settings.hrZonesUsage")}</legend>
-                <label>
-                  <input
-                    type="radio"
-                    name="heart-rate-zone-usage"
-                    value="fallback"
-                    checked={manualHeartRateZoneUsage === "fallback"}
-                    onChange={() => void setManualHeartRateZoneUsage("fallback")}
-                  />
-                  <span>
-                    <strong>{t("settings.hrZonesFallback")}</strong>
-                    <small>{t("settings.hrZonesFallbackHelp")}</small>
-                  </span>
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="heart-rate-zone-usage"
-                    value="always"
-                    checked={manualHeartRateZoneUsage === "always"}
-                    onChange={() => void setManualHeartRateZoneUsage("always")}
-                  />
-                  <span>
-                    <strong>{t("settings.hrZonesAlways")}</strong>
-                    <small>{t("settings.hrZonesAlwaysHelp")}</small>
-                  </span>
-                </label>
-              </fieldset>
 
               {heartRateZonePreferenceSaving && (
                 <p className="hr-zone-status" role="status">{t("settings.hrZonesSaving")}</p>
@@ -923,9 +955,10 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
       {showHrZoneDialog && (
         <HeartRateZoneDialog
           bounds={manualHeartRateZoneBoundsBpm}
+          usage={manualHeartRateZoneUsage}
           saving={heartRateZonePreferenceSaving}
           saveError={!!heartRateZonePreferenceError}
-          onSave={saveManualHeartRateZoneBounds}
+          onSave={saveManualHeartRateZonePreferences}
           onClose={() => setShowHrZoneDialog(false)}
           t={t}
         />
