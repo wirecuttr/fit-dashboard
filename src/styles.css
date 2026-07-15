@@ -1043,6 +1043,84 @@ button:focus-visible {
   font-weight: 500;
 }
 
+.activity-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.multisport-parent-wrapper {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.multisport-expand-button {
+  align-self: stretch;
+  width: 1.8rem;
+  padding: 0;
+  border: 0;
+  border-radius: 8px 0 0 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.multisport-expand-button:hover {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.multisport-expand-button svg {
+  transition: transform 160ms ease;
+}
+
+.multisport-expand-button.expanded svg {
+  transform: rotate(90deg);
+}
+
+.multisport-leg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-left: 1rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid var(--border);
+}
+
+.multisport-leg {
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+}
+
+.multisport-leg.transition {
+  opacity: 0.72;
+}
+
+.multisport-leg-content {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.multisport-leg-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.multisport-leg-count {
+  color: var(--accent);
+}
+
+.compare-unavailable {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 /* Inline Rename */
 
 .inline-rename {

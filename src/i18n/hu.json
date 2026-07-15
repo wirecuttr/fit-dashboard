@@ -303,5 +303,11 @@
   "activityMap.temp": "Hőm.",
   "activityMap.low": "Alacsony",
   "activityMap.high": "Magas",
-  "activityMap.noGpsCoordinates": "Nem találhatók GPS-koordináták ebben a tevékenységben."
+  "activityMap.noGpsCoordinates": "Nem találhatók GPS-koordináták ebben a tevékenységben.",
+  "multisport.parent": "Multisport",
+  "multisport.legs": "{count} szakasz",
+  "multisport.expandLegs": "Szakaszok kibontása",
+  "multisport.collapseLegs": "Szakaszok összecsukása",
+  "multisport.compareUnavailable": "A multisport-összehasonlítás még nem érhető el.",
+  "multisport.excludedFromBulkExport": "A multisport szülőtevékenységek kimaradnak az exportálásból."
 }

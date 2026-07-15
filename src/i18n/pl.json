@@ -303,5 +303,11 @@
   "activityMap.temp": "Temp.",
   "activityMap.low": "Niska",
   "activityMap.high": "Wysoka",
-  "activityMap.noGpsCoordinates": "Nie znaleziono współrzędnych GPS w tej aktywności."
+  "activityMap.noGpsCoordinates": "Nie znaleziono współrzędnych GPS w tej aktywności.",
+  "multisport.parent": "Wielosport",
+  "multisport.legs": "{count} segmentów",
+  "multisport.expandLegs": "Rozwiń segmenty",
+  "multisport.collapseLegs": "Zwiń segmenty",
+  "multisport.compareUnavailable": "Porównywanie aktywności wielosportowych nie jest jeszcze dostępne.",
+  "multisport.excludedFromBulkExport": "Nadrzędne aktywności wielosportowe są pomijane podczas eksportu."
 }

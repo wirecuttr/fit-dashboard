@@ -1,3 +1,21 @@
+export type ActivitySegment = {
+  activity_id: number;
+  segment_index: number;
+  segment_type: "sport" | "transition";
+  name: string;
+  sport: string;
+  sub_sport: string;
+  start_ts_utc: string;
+  end_ts_utc: string;
+  timer_duration_s: number;
+  elapsed_duration_s: number;
+  distance_m: number;
+  record_distance_offset_m: number;
+  start_latitude?: number;
+  start_longitude?: number;
+  metadata_json?: string;
+};
+
 export type Activity = {
   id: number;
   file_name: string;
@@ -11,6 +29,8 @@ export type Activity = {
   start_latitude?: number;
   start_longitude?: number;
   metadata_json?: string;
+  activity_kind: "single" | "multisport_parent" | "multisport_segment";
+  segments: ActivitySegment[];
 };
 
 export type RecordPoint = {
@@ -24,6 +44,7 @@ export type RecordPoint = {
   cadence?: number;
   power?: number;
   temperature_c?: number;
+  segment_index?: number;
 };
 
 export type OverviewStats = {

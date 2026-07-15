@@ -21,6 +21,7 @@ type Props = {
   onZoomChange?: (range: { start: number; end: number }) => void;
   lapTimestampsUtc?: string[];
   smoothGraphs?: boolean;
+  neutralOnly?: boolean;
 };
 
 function safeAvg(values: Array<number | null | undefined>): number | null {
@@ -57,8 +58,9 @@ export function ActivityInsights({
   onZoomChange,
   lapTimestampsUtc = [],
   smoothGraphs = true,
+  neutralOnly = false,
 }: Props) {
-    const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
+  const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
   const isDark = theme === "dark";
   const { t: tr } = useTranslation();
   const axisColor = isDark ? "#8899b8" : "#64748b";
@@ -603,31 +605,31 @@ export function ActivityInsights({
         <h3>{tr("insights.speedTrend")}</h3>
         <ReactECharts option={timelineOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
       </article>
-      {hasPowerData && hasHeartRateData && (
+      {!neutralOnly && hasPowerData && hasHeartRateData && (
         <article className="panel">
           <h3>{tr("insights.heartRateZoneTime")}</h3>
           <ReactECharts option={zoneOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
       )}
-      {hasHeartRateData && (
+      {!neutralOnly && hasHeartRateData && (
         <article className="panel">
           <h3>{tr("insights.hrHistogram")}</h3>
           <ReactECharts option={hrHistogramOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
         </article>
       )}
-      <article className="panel">
+      {!neutralOnly && <article className="panel">
         <h3>{hasPowerData ? tr("insights.cadenceAndPower") : tr("insights.cadence")}</h3>
         <ReactECharts option={cadenceOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-      </article>
-      <article className="panel">
+      </article>}
+      {!neutralOnly && <article className="panel">
         <h3>{tr("insights.effortHeatmap")}</h3>
         <ReactECharts option={heatOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
-      </article>
+      </article>}
       <article className="panel">
         <h3>{tr("insights.elevation")}</h3>
         <ReactECharts option={elevationOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />
       </article>
-      {hasPowerData && hasHeartRateData && (
+      {!neutralOnly && hasPowerData && hasHeartRateData && (
         <article className="panel">
           <h3>{tr("insights.powerVsHeartRate")}</h3>
           <ReactECharts option={scatterOption} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 280, width: "100%" }} />

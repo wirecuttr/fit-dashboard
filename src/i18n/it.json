@@ -303,5 +303,11 @@
   "activityMap.temp": "Temp.",
   "activityMap.low": "Basso",
   "activityMap.high": "Alto",
-  "activityMap.noGpsCoordinates": "Nessuna coordinata GPS trovata in questa attività."
+  "activityMap.noGpsCoordinates": "Nessuna coordinata GPS trovata in questa attività.",
+  "multisport.parent": "Multisport",
+  "multisport.legs": "{count} segmenti",
+  "multisport.expandLegs": "Mostra segmenti",
+  "multisport.collapseLegs": "Nascondi segmenti",
+  "multisport.compareUnavailable": "Il confronto multisport non è ancora disponibile.",
+  "multisport.excludedFromBulkExport": "Le attività multisport principali sono escluse dall’esportazione."
 }

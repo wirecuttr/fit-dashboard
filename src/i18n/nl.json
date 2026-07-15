@@ -303,5 +303,11 @@
   "activityMap.temp": "Temp.",
   "activityMap.low": "Laag",
   "activityMap.high": "Hoog",
-  "activityMap.noGpsCoordinates": "Geen GPS-coördinaten gevonden in deze activiteit."
+  "activityMap.noGpsCoordinates": "Geen GPS-coördinaten gevonden in deze activiteit.",
+  "multisport.parent": "Multisport",
+  "multisport.legs": "{count} onderdelen",
+  "multisport.expandLegs": "Onderdelen uitklappen",
+  "multisport.collapseLegs": "Onderdelen inklappen",
+  "multisport.compareUnavailable": "Multisport vergelijken is nog niet beschikbaar.",
+  "multisport.excludedFromBulkExport": "Multisport-hoofdactiviteiten worden niet geëxporteerd."
 }

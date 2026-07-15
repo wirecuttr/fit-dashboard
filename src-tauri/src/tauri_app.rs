@@ -6,13 +6,12 @@ use tauri::{Emitter, Manager, State};
 use crate::{
     auth::{create_session, hash_password, verify_password},
     fit_parser::{is_non_activity_fit_error, parse_activity_bytes},
-    models::{Activity, OverviewStats, RecordPoint, TokenResponse},
+    models::{Activity, ActivitySegment, OverviewStats, RecordPoint, TokenResponse},
     state::{AppState, StorageInfo},
 };
 
 /// SHA-256 hash of the valid supporter code.
-const SUPPORTER_HASH: &str =
-    "20268baf2f8af1792eaf2cd864c29b3b6698b4387810f39946fbccbc350bf5c3";
+const SUPPORTER_HASH: &str = "20268baf2f8af1792eaf2cd864c29b3b6698b4387810f39946fbccbc350bf5c3";
 const SYNC_WAL_CHECKPOINT_EVERY_IMPORTED: usize = 10;
 
 #[derive(Serialize)]
@@ -92,6 +91,7 @@ pub fn run(state: AppState) -> anyhow::Result<()> {
             clear_blacklisted_hashes,
             get_blacklisted_hash_count,
             list_activities,
+            list_activity_segments,
             get_overview,
             get_records,
             rename_activity,
@@ -106,15 +106,15 @@ pub fn run(state: AppState) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     app.run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                let app_state = app_handle.state::<AppState>();
-                if let Err(err) = app_state.db.flush_wal_to_disk() {
-                    tracing::error!(error = %err, "failed to checkpoint DB on exit request");
-                } else {
-                    tracing::debug!("duckdb checkpoint completed on exit request");
-                }
+        if let tauri::RunEvent::ExitRequested { .. } = event {
+            let app_state = app_handle.state::<AppState>();
+            if let Err(err) = app_state.db.flush_wal_to_disk() {
+                tracing::error!(error = %err, "failed to checkpoint DB on exit request");
+            } else {
+                tracing::debug!("duckdb checkpoint completed on exit request");
             }
-        });
+        }
+    });
     Ok(())
 }
 
@@ -127,7 +127,11 @@ fn status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-fn onboard(state: State<'_, AppState>, username: String, password: String) -> Result<TokenResponse, String> {
+fn onboard(
+    state: State<'_, AppState>,
+    username: String,
+    password: String,
+) -> Result<TokenResponse, String> {
     tracing::info!(username = %username, "onboard command invoked");
     if state.db.has_user().map_err(|e| e.to_string())? {
         tracing::warn!("onboard denied: user already exists");
@@ -187,7 +191,10 @@ fn import_fit_bytes(
 }
 
 #[tauri::command]
-fn import_activity_path(state: State<'_, AppState>, path: String) -> Result<serde_json::Value, String> {
+fn import_activity_path(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<serde_json::Value, String> {
     tracing::info!(path = %path, "import_activity_path command invoked");
     let bytes = std::fs::read(&path).map_err(|e| format!("failed reading file: {e}"))?;
     let file_name = Path::new(&path)
@@ -254,7 +261,10 @@ fn import_activity_inner(
     }
 
     let file_hash = parsed.file_hash.clone();
-    let activity_id = state.db.insert_activity(parsed).map_err(|e| e.to_string())?;
+    let activity_id = state
+        .db
+        .insert_activity(parsed)
+        .map_err(|e| e.to_string())?;
     if let Err(err) = persist_fit_file(state, file_name, bytes, &file_hash) {
         tracing::error!(file_name = %file_name, activity_id, error = %err, "import persistence failed after DB insert; rolling back activity");
         if let Err(rb_err) = state.db.delete_activity(activity_id) {
@@ -268,7 +278,10 @@ fn import_activity_inner(
 }
 
 #[tauri::command]
-fn sync_fit_files(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<SyncSummary, String> {
+fn sync_fit_files(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SyncSummary, String> {
     tracing::info!(fit_dir = %state.storage.fit_files_dir, "sync_fit_files command invoked");
     let mut summary = SyncSummary {
         scanned: 0,
@@ -643,7 +656,10 @@ fn list_sync_files(state: State<'_, AppState>) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn process_sync_file(state: State<'_, AppState>, path: String) -> Result<serde_json::Value, String> {
+fn process_sync_file(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<serde_json::Value, String> {
     let path_ref = Path::new(&path);
     if !is_supported_activity_file(path_ref) {
         return Ok(serde_json::json!({ "status": "ignored", "file": path }));
@@ -710,7 +726,10 @@ fn process_sync_file(state: State<'_, AppState>, path: String) -> Result<serde_j
         return Ok(serde_json::json!({ "status": "duplicate", "file": file_name }));
     }
 
-    state.db.insert_activity(parsed).map_err(|e| e.to_string())?;
+    state
+        .db
+        .insert_activity(parsed)
+        .map_err(|e| e.to_string())?;
     tracing::info!(file = %file_name, "sync file imported");
 
     Ok(serde_json::json!({ "status": "imported", "file": file_name }))
@@ -733,10 +752,7 @@ fn clear_blacklisted_hashes(state: State<'_, AppState>) -> Result<usize, String>
 
 #[tauri::command]
 fn get_blacklisted_hash_count(state: State<'_, AppState>) -> Result<usize, String> {
-    state
-        .db
-        .blacklisted_hash_count()
-        .map_err(|e| e.to_string())
+    state.db.blacklisted_hash_count().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -744,6 +760,17 @@ fn list_activities(state: State<'_, AppState>) -> Result<Vec<Activity>, String> 
     let activities = state.db.list_activities().map_err(|e| e.to_string())?;
     tracing::debug!(count = activities.len(), "list_activities completed");
     Ok(activities)
+}
+
+#[tauri::command]
+fn list_activity_segments(
+    state: State<'_, AppState>,
+    activity_id: i64,
+) -> Result<Vec<ActivitySegment>, String> {
+    state
+        .db
+        .list_activity_segments(activity_id)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -763,14 +790,16 @@ fn get_records(
     state: State<'_, AppState>,
     activity_id: i64,
     resolution_ms: Option<i64>,
+    segment_index: Option<i64>,
 ) -> Result<Vec<RecordPoint>, String> {
     let effective_resolution = resolution_ms.unwrap_or(10_000);
     let records = state
         .db
-        .records_downsampled(activity_id, effective_resolution)
+        .records_downsampled(activity_id, effective_resolution, segment_index)
         .map_err(|e| e.to_string())?;
     tracing::debug!(
         activity_id,
+        segment_index,
         resolution_ms = effective_resolution,
         count = records.len(),
         "get_records completed"
@@ -779,7 +808,11 @@ fn get_records(
 }
 
 #[tauri::command]
-fn rename_activity(state: State<'_, AppState>, activity_id: i64, name: String) -> Result<(), String> {
+fn rename_activity(
+    state: State<'_, AppState>,
+    activity_id: i64,
+    name: String,
+) -> Result<(), String> {
     tracing::info!(activity_id, "rename_activity command invoked");
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -866,7 +899,10 @@ fn get_supporter_status(state: State<'_, AppState>) -> Result<bool, String> {
 fn set_supporter_status(state: State<'_, AppState>, active: bool) -> Result<bool, String> {
     state
         .db
-        .set_setting("supporter_badge_active", if active { "true" } else { "false" })
+        .set_setting(
+            "supporter_badge_active",
+            if active { "true" } else { "false" },
+        )
         .map_err(|e| e.to_string())?;
     Ok(active)
 }
@@ -886,7 +922,10 @@ fn get_donation_dismissed(state: State<'_, AppState>) -> Result<bool, String> {
 fn set_donation_dismissed(state: State<'_, AppState>, dismissed: bool) -> Result<bool, String> {
     state
         .db
-        .set_setting("donation_dismissed", if dismissed { "true" } else { "false" })
+        .set_setting(
+            "donation_dismissed",
+            if dismissed { "true" } else { "false" },
+        )
         .map_err(|e| e.to_string())?;
     Ok(dismissed)
 }
@@ -942,10 +981,7 @@ fn move_sync_file_to_incompatible(
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("activity");
-        let ext = target
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("fit");
+        let ext = target.extension().and_then(|s| s.to_str()).unwrap_or("fit");
         let suffix = &file_hash[..8.min(file_hash.len())];
         target = incompatible_dir.join(format!("{stem}_{suffix}.{ext}"));
 
@@ -991,10 +1027,7 @@ fn persist_fit_file(
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("activity");
-        let ext = target
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("fit");
+        let ext = target.extension().and_then(|s| s.to_str()).unwrap_or("fit");
         let suffix = &file_hash[..8.min(file_hash.len())];
         target = fit_dir.join(format!("{stem}_{suffix}.{ext}"));
 

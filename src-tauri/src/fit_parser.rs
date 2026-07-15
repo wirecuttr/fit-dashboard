@@ -4,9 +4,237 @@ use anyhow::{anyhow, Context, Result};
 use fitparser::{profile::MesgNum, Value};
 use sha2::{Digest, Sha256};
 
-use crate::models::{ParsedActivity, RecordPoint};
+use crate::models::{ParsedActivity, ParsedActivitySegment, RecordPoint};
 
 const NON_ACTIVITY_FIT_MARKER: &str = "non-activity-fit:";
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+struct FitActivitySummary {
+    activity_type: String,
+    total_timer_time_s: Option<f64>,
+    total_elapsed_time_s: Option<f64>,
+    total_distance_m: Option<f64>,
+    timestamp_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+struct FitSessionSummary {
+    message_index: usize,
+    sport: String,
+    sub_sport: String,
+    start_timestamp_ms: Option<i64>,
+    timestamp_ms: Option<i64>,
+    total_timer_time_s: Option<f64>,
+    total_elapsed_time_s: Option<f64>,
+    total_distance_m: Option<f64>,
+    total_calories: Option<i64>,
+    avg_speed_m_s: Option<f64>,
+    max_speed_m_s: Option<f64>,
+    avg_heart_rate: Option<i64>,
+    max_heart_rate: Option<i64>,
+    avg_cadence: Option<i64>,
+    max_cadence: Option<i64>,
+    avg_power: Option<i64>,
+    max_power: Option<i64>,
+    normalized_power: Option<i64>,
+    total_ascent_m: Option<f64>,
+    total_descent_m: Option<f64>,
+    beginning_body_battery: Option<i64>,
+    ending_body_battery: Option<i64>,
+    first_lap_index: Option<usize>,
+    num_laps: Option<usize>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct FitLapAssignment {
+    start_timestamp_ms: Option<i64>,
+    sport: String,
+    sub_sport: String,
+}
+
+fn normalized_fit_value(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn is_transition_sport(sport: &str) -> bool {
+    normalized_fit_value(sport) == "transition"
+}
+
+fn session_is_meaningful(session: &FitSessionSummary) -> bool {
+    session.start_timestamp_ms.is_some()
+        && [
+            session.total_timer_time_s,
+            session.total_elapsed_time_s,
+            session.total_distance_m,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|value| value > 0.0)
+}
+
+fn ordered_meaningful_sessions(sessions: &[FitSessionSummary]) -> Vec<FitSessionSummary> {
+    let mut ordered = sessions
+        .iter()
+        .filter(|session| session_is_meaningful(session))
+        .cloned()
+        .collect::<Vec<_>>();
+    ordered.sort_by_key(|session| (session.start_timestamp_ms, session.message_index));
+    ordered.dedup_by_key(|session| session.start_timestamp_ms);
+    ordered
+}
+
+fn multisport_detection_reason(
+    activity_type: &str,
+    sessions: &[FitSessionSummary],
+) -> Option<String> {
+    let ordered = ordered_meaningful_sessions(sessions);
+    if ordered.len() < 2 {
+        return None;
+    }
+
+    if normalized_fit_value(activity_type) == "automultisport" {
+        return Some("activity_type".to_string());
+    }
+    if ordered
+        .iter()
+        .any(|session| is_transition_sport(&session.sport))
+    {
+        return Some("transition_session".to_string());
+    }
+    if ordered.windows(2).any(|pair| {
+        normalized_fit_value(&pair[0].sport) != normalized_fit_value(&pair[1].sport)
+            || normalized_fit_value(&pair[0].sub_sport) != normalized_fit_value(&pair[1].sub_sport)
+    }) {
+        return Some("adjacent_sport_change".to_string());
+    }
+    None
+}
+
+fn display_sport_name(sport: &str, sub_sport: &str) -> String {
+    let raw = if !sub_sport.trim().is_empty()
+        && normalized_fit_value(sub_sport) != "generic"
+        && normalized_fit_value(sub_sport) != normalized_fit_value(sport)
+    {
+        sub_sport
+    } else {
+        sport
+    };
+    raw.split('_')
+        .filter(|part| !part.is_empty())
+        .map(title_case_sport)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[derive(Debug, Clone)]
+struct SegmentInterval {
+    segment_index: i64,
+    session: FitSessionSummary,
+    start_timestamp_ms: i64,
+    end_timestamp_ms: i64,
+}
+
+fn build_segment_intervals(
+    sessions: &[FitSessionSummary],
+    parent_end_timestamp_ms: i64,
+) -> Vec<SegmentInterval> {
+    let ordered = ordered_meaningful_sessions(sessions);
+    ordered
+        .iter()
+        .enumerate()
+        .filter_map(|(index, session)| {
+            let start = session.start_timestamp_ms?;
+            let declared_end = session
+                .total_elapsed_time_s
+                .or(session.total_timer_time_s)
+                .map(|seconds| start + (seconds.max(0.0) * 1000.0).round() as i64);
+            let end = ordered
+                .get(index + 1)
+                .and_then(|next| next.start_timestamp_ms)
+                .or(declared_end)
+                .unwrap_or(parent_end_timestamp_ms);
+            let end = if index + 1 == ordered.len() {
+                end.max(parent_end_timestamp_ms)
+            } else {
+                end
+            };
+            Some(SegmentInterval {
+                segment_index: index as i64 + 1,
+                session: session.clone(),
+                start_timestamp_ms: start,
+                end_timestamp_ms: end.max(start),
+            })
+        })
+        .collect()
+}
+
+fn segment_index_for_timestamp(intervals: &[SegmentInterval], timestamp_ms: i64) -> Option<i64> {
+    intervals.iter().enumerate().find_map(|(index, interval)| {
+        let is_last = index + 1 == intervals.len();
+        let inside = timestamp_ms >= interval.start_timestamp_ms
+            && (timestamp_ms < interval.end_timestamp_ms
+                || (is_last && timestamp_ms <= interval.end_timestamp_ms));
+        inside.then_some(interval.segment_index)
+    })
+}
+
+fn assign_laps_to_segments(
+    intervals: &[SegmentInterval],
+    lap_sources: &[FitLapAssignment],
+) -> Vec<Option<i64>> {
+    let mut assignments = vec![None; lap_sources.len()];
+    for interval in intervals {
+        if let (Some(first), Some(count)) =
+            (interval.session.first_lap_index, interval.session.num_laps)
+        {
+            for lap_index in first..first.saturating_add(count).min(assignments.len()) {
+                assignments[lap_index] = Some(interval.segment_index);
+            }
+        }
+    }
+
+    for (lap_index, source) in lap_sources.iter().enumerate() {
+        if assignments[lap_index].is_none() {
+            assignments[lap_index] = source
+                .start_timestamp_ms
+                .and_then(|timestamp| segment_index_for_timestamp(intervals, timestamp));
+        }
+        if assignments[lap_index].is_none() && !source.sport.is_empty() {
+            let matches = intervals
+                .iter()
+                .filter(|interval| {
+                    normalized_fit_value(&interval.session.sport)
+                        == normalized_fit_value(&source.sport)
+                        && (source.sub_sport.is_empty()
+                            || normalized_fit_value(&interval.session.sub_sport)
+                                == normalized_fit_value(&source.sub_sport))
+                })
+                .collect::<Vec<_>>();
+            if matches.len() == 1 {
+                assignments[lap_index] = Some(matches[0].segment_index);
+            }
+        }
+    }
+    assignments
+}
+
+fn record_distance_offset(points: &[RecordPoint], segment_start_ms: i64) -> f64 {
+    points
+        .iter()
+        .filter(|point| point.timestamp_ms < segment_start_ms)
+        .filter_map(|point| {
+            point
+                .distance_m
+                .map(|distance| (point.timestamp_ms, distance))
+        })
+        .max_by_key(|(timestamp, _)| *timestamp)
+        .map(|(_, distance)| distance)
+        .unwrap_or(0.0)
+}
 
 pub fn is_non_activity_fit_error(err: &anyhow::Error) -> bool {
     err.chain()
@@ -61,20 +289,18 @@ fn combine_device_name(
     let manufacturer = manufacturer
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    let product = product
-        .map(|s| s.trim().to_string())
-        .and_then(|s| {
-            // Many FIT files provide only numeric product IDs (e.g. "4625")
-            // or unknown placeholders. Avoid surfacing these as user-facing names.
-            let lower = s.to_lowercase();
-            let is_numeric_only = s.chars().all(|c| c.is_ascii_digit());
-            let is_unknown_variant = lower.starts_with("unknown_variant_");
-            if s.is_empty() || is_numeric_only || is_unknown_variant {
-                None
-            } else {
-                Some(s)
-            }
-        });
+    let product = product.map(|s| s.trim().to_string()).and_then(|s| {
+        // Many FIT files provide only numeric product IDs (e.g. "4625")
+        // or unknown placeholders. Avoid surfacing these as user-facing names.
+        let lower = s.to_lowercase();
+        let is_numeric_only = s.chars().all(|c| c.is_ascii_digit());
+        let is_unknown_variant = lower.starts_with("unknown_variant_");
+        if s.is_empty() || is_numeric_only || is_unknown_variant {
+            None
+        } else {
+            Some(s)
+        }
+    });
 
     match (manufacturer, product) {
         (Some(m), Some(p)) => Some(format!("{} {}", m, p)),
@@ -163,7 +389,10 @@ fn build_activity_name(file_name: &str, sport: &str, points: &[RecordPoint]) -> 
     let fallback = strip_known_extension(file_name);
     let sport_label = title_case_sport(sport);
 
-    if let Some(pos) = points.iter().find(|p| p.latitude.is_some() && p.longitude.is_some()) {
+    if let Some(pos) = points
+        .iter()
+        .find(|p| p.latitude.is_some() && p.longitude.is_some())
+    {
         let geocoder = reverse_geocoder::ReverseGeocoder::new();
         let result = geocoder.search((pos.latitude.unwrap(), pos.longitude.unwrap()));
         let record = result.record;
@@ -285,6 +514,9 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     let records = fitparser::from_reader(&mut reader).context("failed to parse FIT")?;
 
     let mut points: Vec<RecordPoint> = Vec::new();
+    let mut fit_activity = FitActivitySummary::default();
+    let mut fit_sessions: Vec<FitSessionSummary> = Vec::new();
+    let mut lap_assignment_sources: Vec<FitLapAssignment> = Vec::new();
     let mut sport = String::from("unknown");
     let mut device = String::new();
     let mut file_id_product_name: Option<String> = None;
@@ -334,8 +566,12 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                             timestamp_ms = Some(dt.timestamp_millis());
                         }
                     }
-                    "position_lat" => latitude = value_f64(field.value()).map(to_degrees_if_semicircles),
-                    "position_long" => longitude = value_f64(field.value()).map(to_degrees_if_semicircles),
+                    "position_lat" => {
+                        latitude = value_f64(field.value()).map(to_degrees_if_semicircles)
+                    }
+                    "position_long" => {
+                        longitude = value_f64(field.value()).map(to_degrees_if_semicircles)
+                    }
                     "altitude" | "enhanced_altitude" => {
                         let v = value_f64(field.value());
                         if field.name() == "enhanced_altitude" || altitude_m.is_none() {
@@ -371,28 +607,91 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     heart_rate,
                     power,
                     temperature_c,
+                    segment_index: None,
                 });
             }
-        } else if rec.kind() == MesgNum::Session {
+        } else if rec.kind() == MesgNum::Activity {
             for field in rec.fields() {
                 match field.name() {
-                    "sport" => sport = value_string(field.value()).to_lowercase(),
-                    "beginning_body_battery" | "start_body_battery" => {
-                        session_beginning_body_battery = value_i64(field.value())
+                    "type" => {
+                        fit_activity.activity_type = value_string(field.value()).to_lowercase()
                     }
-                    "ending_body_battery" | "end_body_battery" => {
-                        session_ending_body_battery = value_i64(field.value())
+                    "total_timer_time" => {
+                        fit_activity.total_timer_time_s = value_f64(field.value())
                     }
-                    "max_heart_rate" => session_max_heart_rate = value_i64(field.value()),
-                    "avg_heart_rate" => session_avg_heart_rate = value_i64(field.value()),
-                    "max_cadence" => session_max_cadence = value_i64(field.value()),
-                    "avg_cadence" => session_avg_cadence = value_i64(field.value()),
-                    "total_elapsed_time" => session_total_elapsed_time_s = value_f64(field.value()),
-                    "total_distance" => session_total_distance_m = value_f64(field.value()),
-                    "total_calories" => session_total_calories = value_i64(field.value()),
+                    "total_elapsed_time" => {
+                        fit_activity.total_elapsed_time_s = value_f64(field.value())
+                    }
+                    "total_distance" => fit_activity.total_distance_m = value_f64(field.value()),
+                    "timestamp" => fit_activity.timestamp_ms = value_timestamp_ms(field.value()),
                     _ => {}
                 }
             }
+        } else if rec.kind() == MesgNum::Session {
+            let mut session = FitSessionSummary {
+                message_index: fit_sessions.len(),
+                ..FitSessionSummary::default()
+            };
+            for field in rec.fields() {
+                match field.name() {
+                    "sport" => session.sport = value_string(field.value()).to_lowercase(),
+                    "sub_sport" => session.sub_sport = value_string(field.value()).to_lowercase(),
+                    "start_time" => session.start_timestamp_ms = value_timestamp_ms(field.value()),
+                    "timestamp" => session.timestamp_ms = value_timestamp_ms(field.value()),
+                    "total_timer_time" => session.total_timer_time_s = value_f64(field.value()),
+                    "total_elapsed_time" => session.total_elapsed_time_s = value_f64(field.value()),
+                    "total_distance" => session.total_distance_m = value_f64(field.value()),
+                    "total_calories" => session.total_calories = value_i64(field.value()),
+                    "enhanced_avg_speed" => session.avg_speed_m_s = value_f64(field.value()),
+                    "avg_speed" if session.avg_speed_m_s.is_none() => {
+                        session.avg_speed_m_s = value_f64(field.value())
+                    }
+                    "enhanced_max_speed" => session.max_speed_m_s = value_f64(field.value()),
+                    "max_speed" if session.max_speed_m_s.is_none() => {
+                        session.max_speed_m_s = value_f64(field.value())
+                    }
+                    "avg_heart_rate" => session.avg_heart_rate = value_i64(field.value()),
+                    "max_heart_rate" => session.max_heart_rate = value_i64(field.value()),
+                    "avg_cadence" => session.avg_cadence = value_i64(field.value()),
+                    "max_cadence" => session.max_cadence = value_i64(field.value()),
+                    "avg_power" => session.avg_power = value_i64(field.value()),
+                    "max_power" => session.max_power = value_i64(field.value()),
+                    "normalized_power" => session.normalized_power = value_i64(field.value()),
+                    "total_ascent" => session.total_ascent_m = value_f64(field.value()),
+                    "total_descent" => session.total_descent_m = value_f64(field.value()),
+                    "beginning_body_battery" | "start_body_battery" => {
+                        session.beginning_body_battery = value_i64(field.value())
+                    }
+                    "ending_body_battery" | "end_body_battery" => {
+                        session.ending_body_battery = value_i64(field.value())
+                    }
+                    "first_lap_index" => {
+                        session.first_lap_index = value_i64(field.value())
+                            .filter(|value| *value >= 0)
+                            .map(|value| value as usize)
+                    }
+                    "num_laps" => {
+                        session.num_laps = value_i64(field.value())
+                            .filter(|value| *value >= 0)
+                            .map(|value| value as usize)
+                    }
+                    _ => {}
+                }
+            }
+
+            if !session.sport.is_empty() {
+                sport = session.sport.clone();
+            }
+            session_beginning_body_battery = session.beginning_body_battery;
+            session_ending_body_battery = session.ending_body_battery;
+            session_max_heart_rate = session.max_heart_rate;
+            session_avg_heart_rate = session.avg_heart_rate;
+            session_max_cadence = session.max_cadence;
+            session_avg_cadence = session.avg_cadence;
+            session_total_elapsed_time_s = session.total_elapsed_time_s;
+            session_total_distance_m = session.total_distance_m;
+            session_total_calories = session.total_calories;
+            fit_sessions.push(session);
         } else if rec.kind() == MesgNum::DeviceInfo {
             let mut candidate_product_name: Option<String> = None;
             let mut candidate_manufacturer: Option<String> = None;
@@ -485,7 +784,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     _ => {}
                 }
             }
-        } else if rec.kind() == MesgNum::Value(140){
+        } else if rec.kind() == MesgNum::Value(140) {
             for field in rec.fields() {
                 if field.name() == "unknown_field_7" {
                     if let Some(v) = value_f64(field.value()) {
@@ -495,7 +794,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             }
         } else if rec.kind() == MesgNum::Lap {
             let mut lap_start_ms: Option<i64> = None;
-            let mut lap_end_ms: Option<i64> = None;
+            let mut lap_timestamp_ms: Option<i64> = None;
             let mut lap_total_elapsed_time_s: Option<f64> = None;
             let mut lap_total_timer_time_s: Option<f64> = None;
             let mut lap_total_distance_m: Option<f64> = None;
@@ -509,30 +808,28 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             let mut lap_max_cadence: Option<i64> = None;
             let mut lap_total_calories: Option<i64> = None;
             let mut lap_best_speed_m_s: Option<f64> = None;
+            let mut lap_sport = String::new();
+            let mut lap_sub_sport = String::new();
             for field in rec.fields() {
                 match field.name() {
                     "start_time" => lap_start_ms = value_timestamp_ms(field.value()),
-                    "timestamp" => lap_end_ms = value_timestamp_ms(field.value()),
+                    "timestamp" => lap_timestamp_ms = value_timestamp_ms(field.value()),
+                    "sport" => lap_sport = value_string(field.value()).to_lowercase(),
+                    "sub_sport" => lap_sub_sport = value_string(field.value()).to_lowercase(),
                     "total_elapsed_time" => lap_total_elapsed_time_s = value_f64(field.value()),
                     "total_timer_time" => lap_total_timer_time_s = value_f64(field.value()),
                     "total_distance" => lap_total_distance_m = value_f64(field.value()),
                     "enhanced_avg_speed" => lap_avg_speed_m_s = value_f64(field.value()),
-                    "avg_speed" => {
-                        if lap_avg_speed_m_s.is_none() {
-                            lap_avg_speed_m_s = value_f64(field.value());
-                        }
+                    "avg_speed" if lap_avg_speed_m_s.is_none() => {
+                        lap_avg_speed_m_s = value_f64(field.value())
                     }
                     "enhanced_max_speed" => lap_max_speed_m_s = value_f64(field.value()),
-                    "max_speed" => {
-                        if lap_max_speed_m_s.is_none() {
-                            lap_max_speed_m_s = value_f64(field.value());
-                        }
+                    "max_speed" if lap_max_speed_m_s.is_none() => {
+                        lap_max_speed_m_s = value_f64(field.value())
                     }
                     "enhanced_best_speed" => lap_best_speed_m_s = value_f64(field.value()),
-                    "best_speed" => {
-                        if lap_best_speed_m_s.is_none() {
-                            lap_best_speed_m_s = value_f64(field.value());
-                        }
+                    "best_speed" if lap_best_speed_m_s.is_none() => {
+                        lap_best_speed_m_s = value_f64(field.value())
                     }
                     "avg_heart_rate" => lap_avg_heart_rate = value_i64(field.value()),
                     "max_heart_rate" => lap_max_heart_rate = value_i64(field.value()),
@@ -545,7 +842,26 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                 }
             }
 
+            let duration_ms = lap_total_elapsed_time_s
+                .or(lap_total_timer_time_s)
+                .map(|seconds| (seconds.max(0.0) * 1000.0).round() as i64);
+            let lap_end_ms = lap_start_ms
+                .zip(duration_ms)
+                .map(|(start, duration)| start + duration)
+                .or_else(|| {
+                    lap_timestamp_ms
+                        .filter(|end| lap_start_ms.map(|start| *end > start).unwrap_or(true))
+                });
+            let fit_lap_index = lap_ranges.len();
+            lap_assignment_sources.push(FitLapAssignment {
+                start_timestamp_ms: lap_start_ms,
+                sport: lap_sport.clone(),
+                sub_sport: lap_sub_sport.clone(),
+            });
             lap_ranges.push(serde_json::json!({
+                "fit_lap_index": fit_lap_index,
+                "sport": lap_sport,
+                "sub_sport": lap_sub_sport,
                 "start_ts_utc": lap_start_ms
                     .and_then(chrono::DateTime::from_timestamp_millis)
                     .map(|dt| dt.to_rfc3339()),
@@ -572,9 +888,8 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         if rec_kind_name.contains("zone") {
             for field in rec.fields() {
                 let field_name = field.name().to_lowercase();
-                let is_heart_rate_zone_field =
-                    field_name.contains("zone")
-                        && (field_name.contains("heart") || field_name.starts_with("hr_"));
+                let is_heart_rate_zone_field = field_name.contains("zone")
+                    && (field_name.contains("heart") || field_name.starts_with("hr_"));
                 if !is_heart_rate_zone_field {
                     continue;
                 }
@@ -598,23 +913,127 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         let is_activity_name = type_name == "activity";
         let is_activity_code = file_id_type_code == Some(4) || type_name == "4";
         if !(is_activity_name || is_activity_code) {
-            let type_desc = file_id_type_name
-                .clone()
-                .unwrap_or_else(|| file_id_type_code.map(|v| v.to_string()).unwrap_or_else(|| "unknown".to_string()));
+            let type_desc = file_id_type_name.clone().unwrap_or_else(|| {
+                file_id_type_code
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            });
             return Err(anyhow!(
                 "{NON_ACTIVITY_FIT_MARKER} file_id.type={type_desc}"
             ));
         }
     }
 
-    let start_ts = min_ts.ok_or_else(|| anyhow!("FIT file had no timestamped records"))?;
-    let end_ts = max_ts.unwrap_or(start_ts);
+    let record_start_ts = min_ts.ok_or_else(|| anyhow!("FIT file had no timestamped records"))?;
+    let record_end_ts = max_ts.unwrap_or(record_start_ts);
 
     derive_distance_if_missing(&mut points);
     derive_speed_if_missing(&mut points);
 
-    let duration_s = ((end_ts - start_ts).max(0) as f64) / 1000.0;
-    let distance_m = total_distance_m(&points);
+    let detection_reason = multisport_detection_reason(&fit_activity.activity_type, &fit_sessions);
+    let is_multisport = detection_reason.is_some();
+    let intervals = if is_multisport {
+        build_segment_intervals(&fit_sessions, record_end_ts)
+    } else {
+        Vec::new()
+    };
+
+    let mut unassigned_record_count = 0usize;
+    if is_multisport {
+        for point in &mut points {
+            point.segment_index = segment_index_for_timestamp(&intervals, point.timestamp_ms);
+            if point.segment_index.is_none() {
+                unassigned_record_count += 1;
+            }
+        }
+    }
+
+    let lap_segment_indices = if is_multisport {
+        assign_laps_to_segments(&intervals, &lap_assignment_sources)
+    } else {
+        vec![None; lap_ranges.len()]
+    };
+    if is_multisport {
+        let mut local_lap_counts = vec![0usize; intervals.len()];
+        for (lap_index, segment_index) in lap_segment_indices.iter().enumerate() {
+            let Some(segment_index) = segment_index else {
+                continue;
+            };
+            let local_index = (*segment_index - 1) as usize;
+            local_lap_counts[local_index] += 1;
+            if let Some(lap) = lap_ranges
+                .get_mut(lap_index)
+                .and_then(|value| value.as_object_mut())
+            {
+                lap.insert(
+                    "segment_index".to_string(),
+                    serde_json::json!(segment_index),
+                );
+                lap.insert(
+                    "segment_type".to_string(),
+                    serde_json::json!(
+                        if is_transition_sport(&intervals[local_index].session.sport) {
+                            "transition"
+                        } else {
+                            "sport"
+                        }
+                    ),
+                );
+                lap.insert(
+                    "segment_lap_index".to_string(),
+                    serde_json::json!(local_lap_counts[local_index]),
+                );
+            }
+        }
+    }
+    let unassigned_lap_count = lap_segment_indices
+        .iter()
+        .filter(|value| value.is_none())
+        .count();
+
+    let record_span_duration_s = ((record_end_ts - record_start_ts).max(0) as f64) / 1000.0;
+    let session_timer_duration_s = intervals
+        .iter()
+        .filter_map(|interval| interval.session.total_timer_time_s)
+        .sum::<f64>();
+    let session_elapsed_duration_s = intervals
+        .iter()
+        .filter_map(|interval| interval.session.total_elapsed_time_s)
+        .sum::<f64>();
+    let duration_s = if is_multisport {
+        fit_activity
+            .total_timer_time_s
+            .filter(|value| *value > 0.0)
+            .or_else(|| (session_timer_duration_s > 0.0).then_some(session_timer_duration_s))
+            .or_else(|| (session_elapsed_duration_s > 0.0).then_some(session_elapsed_duration_s))
+            .unwrap_or(record_span_duration_s)
+    } else {
+        record_span_duration_s
+    };
+
+    let record_distance_m = total_distance_m(&points);
+    let session_distance_m = intervals
+        .iter()
+        .filter_map(|interval| interval.session.total_distance_m)
+        .sum::<f64>();
+    let distance_m = if is_multisport {
+        fit_activity
+            .total_distance_m
+            .filter(|value| *value > 0.0)
+            .or_else(|| (session_distance_m > 0.0).then_some(session_distance_m))
+            .unwrap_or(record_distance_m)
+    } else {
+        record_distance_m
+    };
+
+    let start_ts = intervals
+        .first()
+        .map(|interval| interval.start_timestamp_ms)
+        .unwrap_or(record_start_ts);
+    let end_ts = intervals
+        .last()
+        .map(|interval| interval.end_timestamp_ms)
+        .unwrap_or(record_end_ts);
     let (start_latitude, start_longitude) = first_valid_coordinates(&points);
 
     let file_id_combined_name = combine_device_name(
@@ -622,7 +1041,6 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         file_id_manufacturer,
         file_id_product,
     );
-
     if device.is_empty() {
         device = device_info_creator_name
             .clone()
@@ -630,15 +1048,158 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             .or(device_info_fallback_name.clone())
             .unwrap_or_default();
     }
-
     let resolved_serial_number = file_id_serial_number
         .or(device_info_creator_serial)
         .or(device_info_fallback_serial);
 
-    let metadata_json = serde_json::json!({
+    let mut segments = Vec::new();
+    for (interval_position, interval) in intervals.iter().enumerate() {
+        let record_distance_offset_m = if interval_position == 0 {
+            0.0
+        } else {
+            record_distance_offset(&points, interval.start_timestamp_ms)
+        };
+        let start_coordinates = points.iter().find(|point| {
+            point.segment_index == Some(interval.segment_index)
+                && point.latitude.is_some()
+                && point.longitude.is_some()
+        });
+        let base_name = display_sport_name(&interval.session.sport, &interval.session.sub_sport);
+        let repeated_count = intervals
+            .iter()
+            .filter(|candidate| {
+                display_sport_name(&candidate.session.sport, &candidate.session.sub_sport)
+                    == base_name
+            })
+            .count();
+        let occurrence = intervals[..=interval_position]
+            .iter()
+            .filter(|candidate| {
+                display_sport_name(&candidate.session.sport, &candidate.session.sub_sport)
+                    == base_name
+            })
+            .count();
+        let transition_number = intervals[..=interval_position]
+            .iter()
+            .filter(|candidate| is_transition_sport(&candidate.session.sport))
+            .count();
+        let name = if is_transition_sport(&interval.session.sport) {
+            format!("T{transition_number}")
+        } else if repeated_count > 1 {
+            format!("{base_name} {occurrence}")
+        } else if base_name.is_empty() {
+            format!("Leg {}", interval.segment_index)
+        } else {
+            base_name
+        };
+        let record_segment_distance_m = points
+            .iter()
+            .filter(|point| point.segment_index == Some(interval.segment_index))
+            .filter_map(|point| point.distance_m)
+            .max_by(|left, right| left.total_cmp(right))
+            .map(|last| (last - record_distance_offset_m).max(0.0));
+        let segment_distance_m = interval
+            .session
+            .total_distance_m
+            .filter(|value| *value >= 0.0)
+            .or(record_segment_distance_m)
+            .unwrap_or(0.0);
+        let interval_duration_s =
+            ((interval.end_timestamp_ms - interval.start_timestamp_ms).max(0) as f64) / 1000.0;
+        let segment_metadata = serde_json::json!({
+            "fit_session_index": interval.session.message_index,
+            "session": interval.session
+        })
+        .to_string();
+
+        segments.push(ParsedActivitySegment {
+            segment_index: interval.segment_index,
+            segment_type: if is_transition_sport(&interval.session.sport) {
+                "transition".to_string()
+            } else {
+                "sport".to_string()
+            },
+            name,
+            sport: interval.session.sport.clone(),
+            sub_sport: interval.session.sub_sport.clone(),
+            start_ts_utc: chrono::DateTime::from_timestamp_millis(interval.start_timestamp_ms)
+                .ok_or_else(|| anyhow!("invalid segment start timestamp"))?
+                .to_rfc3339(),
+            end_ts_utc: chrono::DateTime::from_timestamp_millis(interval.end_timestamp_ms)
+                .ok_or_else(|| anyhow!("invalid segment end timestamp"))?
+                .to_rfc3339(),
+            timer_duration_s: interval
+                .session
+                .total_timer_time_s
+                .unwrap_or(interval_duration_s),
+            elapsed_duration_s: interval
+                .session
+                .total_elapsed_time_s
+                .unwrap_or(interval_duration_s),
+            distance_m: segment_distance_m,
+            record_distance_offset_m,
+            start_latitude: start_coordinates.and_then(|point| point.latitude),
+            start_longitude: start_coordinates.and_then(|point| point.longitude),
+            metadata_json: segment_metadata,
+        });
+    }
+
+    let parent_session = if is_multisport {
+        let avg_heart_rates = intervals
+            .iter()
+            .filter_map(|interval| interval.session.avg_heart_rate)
+            .collect::<Vec<_>>();
+        serde_json::json!({
+            "beginning_body_battery": intervals
+                .iter()
+                .find_map(|interval| interval.session.beginning_body_battery),
+            "ending_body_battery": intervals
+                .iter()
+                .rev()
+                .find_map(|interval| interval.session.ending_body_battery),
+            "max_heart_rate": intervals
+                .iter()
+                .filter_map(|interval| interval.session.max_heart_rate)
+                .max(),
+            "avg_heart_rate": (!avg_heart_rates.is_empty()).then(|| {
+                avg_heart_rates.iter().sum::<i64>() / avg_heart_rates.len() as i64
+            }),
+            "max_cadence": null,
+            "avg_cadence": null,
+            "total_elapsed_time_s": fit_activity.total_elapsed_time_s.or_else(|| {
+                (session_elapsed_duration_s > 0.0).then_some(session_elapsed_duration_s)
+            }),
+            "total_distance_m": distance_m,
+            "total_calories": {
+                let total = intervals
+                    .iter()
+                    .filter_map(|interval| interval.session.total_calories)
+                    .sum::<i64>();
+                (total > 0).then_some(total)
+            }
+        })
+    } else {
+        serde_json::json!({
+            "beginning_body_battery": session_beginning_body_battery,
+            "ending_body_battery": session_ending_body_battery,
+            "max_heart_rate": session_max_heart_rate,
+            "avg_heart_rate": session_avg_heart_rate,
+            "max_cadence": session_max_cadence,
+            "avg_cadence": session_avg_cadence,
+            "total_elapsed_time_s": session_total_elapsed_time_s,
+            "total_distance_m": session_total_distance_m,
+            "total_calories": session_total_calories
+        })
+    };
+    let resolved_sport = if is_multisport {
+        "multisport".to_string()
+    } else {
+        sport.clone()
+    };
+    let mut metadata = serde_json::json!({
         "record_count": points.len(),
         "device": device,
-        "sport": sport,
+        "sport": resolved_sport,
         "source_format": "fit",
         "file_id": {
             "product_name": file_id_combined_name,
@@ -654,28 +1215,39 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             "vo2_max": vo2_max
         },
         "heart_rate_zone_bounds_bpm": heart_rate_zone_bounds_bpm,
-        "session": {
-            "beginning_body_battery": session_beginning_body_battery,
-            "ending_body_battery": session_ending_body_battery,
-            "max_heart_rate": session_max_heart_rate,
-            "avg_heart_rate": session_avg_heart_rate,
-            "max_cadence": session_max_cadence,
-            "avg_cadence": session_avg_cadence,
-            "total_elapsed_time_s": session_total_elapsed_time_s,
-            "total_distance_m": session_total_distance_m,
-            "total_calories": session_total_calories
-        },
+        "session": parent_session,
         "laps": lap_ranges
-    })
-    .to_string();
-
-    let activity_name = build_activity_name(file_name, &sport, &points);
+    });
+    if is_multisport {
+        metadata
+            .as_object_mut()
+            .expect("activity metadata is an object")
+            .insert(
+                "multisport".to_string(),
+                serde_json::json!({
+                    "activity": fit_activity,
+                    "sessions": fit_sessions,
+                    "assignment": {
+                        "detection_reason": detection_reason,
+                        "unassigned_record_count": unassigned_record_count,
+                        "overlapping_record_count": 0,
+                        "unassigned_lap_count": unassigned_lap_count
+                    }
+                }),
+            );
+    }
+    let metadata_json = metadata.to_string();
+    let activity_name = if is_multisport {
+        "Multisport".to_string()
+    } else {
+        build_activity_name(file_name, &resolved_sport, &points)
+    };
 
     Ok(ParsedActivity {
         file_name: file_name.to_string(),
         source_format: "fit".to_string(),
         activity_name,
-        sport,
+        sport: resolved_sport,
         device,
         start_ts_utc: chrono::DateTime::from_timestamp_millis(start_ts)
             .ok_or_else(|| anyhow!("invalid start timestamp"))?
@@ -690,6 +1262,12 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         file_hash,
         records: points,
         metadata_json,
+        activity_kind: if is_multisport {
+            "multisport_parent".to_string()
+        } else {
+            "single".to_string()
+        },
+        segments,
     })
 }
 
@@ -788,6 +1366,7 @@ fn parse_tcx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             heart_rate: child_node(tp, "HeartRateBpm").and_then(|hr| child_i64(hr, "Value")),
             power,
             temperature_c,
+            segment_index: None,
         });
     }
 
@@ -830,6 +1409,8 @@ fn parse_tcx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         file_hash,
         records: points,
         metadata_json,
+        activity_kind: "single".to_string(),
+        segments: Vec::new(),
     })
 }
 
@@ -864,7 +1445,9 @@ fn parse_gpx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         .descendants()
         .filter(|n| n.is_element() && n.tag_name().name() == "trkpt")
     {
-        let ts = child_text(tp, "time").as_deref().and_then(parse_timestamp_ms);
+        let ts = child_text(tp, "time")
+            .as_deref()
+            .and_then(parse_timestamp_ms);
         let Some(timestamp_ms) = ts else {
             continue;
         };
@@ -935,6 +1518,7 @@ fn parse_gpx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             heart_rate,
             power,
             temperature_c,
+            segment_index: None,
         });
     }
 
@@ -977,5 +1561,98 @@ fn parse_gpx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         file_hash,
         records: points,
         metadata_json,
+        activity_kind: "single".to_string(),
+        segments: Vec::new(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session(start_timestamp_ms: i64, sport: &str) -> FitSessionSummary {
+        FitSessionSummary {
+            sport: sport.to_string(),
+            start_timestamp_ms: Some(start_timestamp_ms),
+            total_timer_time_s: Some(10.0),
+            total_elapsed_time_s: Some(10.0),
+            ..FitSessionSummary::default()
+        }
+    }
+
+    #[test]
+    fn single_session_auto_multisport_is_not_detected() {
+        let sessions = vec![session(1_000, "running")];
+        assert_eq!(
+            multisport_detection_reason("auto_multi_sport", &sessions),
+            None
+        );
+    }
+
+    #[test]
+    fn manual_multi_session_sport_change_is_detected() {
+        let sessions = vec![session(1_000, "cycling"), session(11_000, "running")];
+        assert_eq!(
+            multisport_detection_reason("manual", &sessions).as_deref(),
+            Some("adjacent_sport_change")
+        );
+    }
+
+    #[test]
+    fn adjacent_starts_create_half_open_segment_intervals() {
+        let sessions = vec![session(1_000, "cycling"), session(11_000, "running")];
+        let intervals = build_segment_intervals(&sessions, 21_000);
+        assert_eq!(segment_index_for_timestamp(&intervals, 10_999), Some(1));
+        assert_eq!(segment_index_for_timestamp(&intervals, 11_000), Some(2));
+        assert_eq!(segment_index_for_timestamp(&intervals, 21_000), Some(2));
+        assert_eq!(segment_index_for_timestamp(&intervals, 999), None);
+    }
+
+    #[test]
+    fn explicit_session_lap_ranges_take_priority() {
+        let mut first = session(1_000, "cycling");
+        first.first_lap_index = Some(0);
+        first.num_laps = Some(2);
+        let mut second = session(11_000, "running");
+        second.first_lap_index = Some(2);
+        second.num_laps = Some(1);
+        let intervals = build_segment_intervals(&[first, second], 21_000);
+        let lap_sources = vec![
+            FitLapAssignment {
+                start_timestamp_ms: Some(12_000),
+                ..FitLapAssignment::default()
+            },
+            FitLapAssignment {
+                start_timestamp_ms: Some(13_000),
+                ..FitLapAssignment::default()
+            },
+            FitLapAssignment {
+                start_timestamp_ms: Some(2_000),
+                ..FitLapAssignment::default()
+            },
+        ];
+        assert_eq!(
+            assign_laps_to_segments(&intervals, &lap_sources),
+            vec![Some(1), Some(1), Some(2)]
+        );
+    }
+
+    #[test]
+    fn distance_offset_uses_last_sample_before_segment_start() {
+        let point = |timestamp_ms, distance_m| RecordPoint {
+            timestamp_ms,
+            latitude: None,
+            longitude: None,
+            altitude_m: None,
+            distance_m: Some(distance_m),
+            speed_m_s: None,
+            cadence: None,
+            heart_rate: None,
+            power: None,
+            temperature_c: None,
+            segment_index: None,
+        };
+        let points = vec![point(0, 0.0), point(900, 42.0), point(1_000, 45.0)];
+        assert_eq!(record_distance_offset(&points, 1_000), 42.0);
+    }
 }

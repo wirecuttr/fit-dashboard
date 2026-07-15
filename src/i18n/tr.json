@@ -303,5 +303,11 @@
   "activityMap.temp": "Sıc.",
   "activityMap.low": "Düşük",
   "activityMap.high": "Yüksek",
-  "activityMap.noGpsCoordinates": "Bu etkinlikte GPS koordinatı bulunamadı."
+  "activityMap.noGpsCoordinates": "Bu etkinlikte GPS koordinatı bulunamadı.",
+  "multisport.parent": "Çoklu spor",
+  "multisport.legs": "{count} bölüm",
+  "multisport.expandLegs": "Bölümleri genişlet",
+  "multisport.collapseLegs": "Bölümleri daralt",
+  "multisport.compareUnavailable": "Çoklu spor karşılaştırması henüz kullanılamıyor.",
+  "multisport.excludedFromBulkExport": "Çoklu spor ana etkinlikleri dışa aktarmaya dahil edilmez."
 }

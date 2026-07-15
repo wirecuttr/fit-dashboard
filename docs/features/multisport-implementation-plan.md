@@ -2,11 +2,10 @@
 
 ## Status
 
-Build plan for issue #21, reconciled with the 15 July 2026
-[implementation investigation](multisport-implementation-spike.md). Production
-support is not implemented; the spike records the recommended working defaults
-that still need product confirmation. The product design is in
-[multisport-support.md](multisport-support.md).
+First-pass implementation plan for issue #21, reconciled with the 15 July 2026
+[implementation investigation](multisport-implementation-spike.md). The spike
+records the accepted product defaults and the implementation follows this plan.
+The product design is in [multisport-support.md](multisport-support.md).
 
 ## Implementation Principles
 
@@ -26,7 +25,7 @@ that still need product confirmation. The product design is in
 - Include automatic additive migration in the first implementation so persistent
   databases survive an application rebuild.
 
-## Current Code Baseline
+## Upstream Baseline Used for Planning
 
 ### Backend
 
@@ -75,8 +74,10 @@ fresh-database-only release is not acceptable.
 
 Implementation requirements:
 
+- Add `activity_kind`, `segment_index`, and the existing coordinate columns before
+  the numeric rebuild check so a rebuild can copy them safely.
 - Update numeric rebuild table definitions so they preserve the new columns.
-- Run additive column and table creation after the existing rebuild check.
+- Create and re-assert the segment table and dependent indexes after any rebuild.
 - Backfill existing activities as `single`; existing records remain unassigned.
 - Require manual reimport only for already-imported multisport payloads, whose
   folded metadata cannot reconstruct every session.
@@ -132,34 +133,19 @@ needed, add a separate `activity_segments.display_name` or
 
 ### Parent Calculation Policy
 
-The upstream app currently has generic telemetry visualizations and summary
-stats, but no persisted sport-specific calculation framework and no heart-rate
-drift feature.
+Accepted first-pass behaviour:
 
-First pass:
-
-- Parent view shows normal activity summary, charts, map, laps, and existing
-  insights using full parent records.
-- Treat these as whole-activity telemetry views, not sport-specific performance
-  calculations.
-- Parent calculation behaviour is TBD until after the first implementation slice
-  exposes parent and child records cleanly.
-- Segment views may run sport-specific calculations later because they are scoped
-  to one leg with one sport/sub-sport and one expected output metric.
-
-Known future interaction:
-
-- Heart-rate drift, if added later, should be disabled on multisport parent
-  activities and available only on eligible child segments.
-
-Parent calculation options to review after the first slice:
-
-- Leave existing upstream insight charts visible on parent as raw whole-activity
-  telemetry.
-- Show only clearly generic parent views: summary stats, map, laps, heart-rate
-  chart, and elevation chart.
-- Hide the insights grid on multisport parent and require child selection for
-  leg-level analysis.
+- The parent shows whole-activity duration, distance, heart rate, elevation,
+  calories, the complete map, laps, and neutral time-based telemetry.
+- Mixed-sport parent views suppress pace, power, cadence, zone, training-load,
+  VO2 max, and similar interpretations that assume one coherent sport/output
+  stream.
+- Selected sport legs use the normal sport-specific detail view with scoped
+  summary metadata, laps, records, charts, and map.
+- Transition legs reuse the detail view with the generic data streams available
+  in that segment.
+- If heart-rate drift is added later, keep it disabled on multisport parents and
+  evaluate it only on eligible child legs.
 
 ## Build Sequence
 

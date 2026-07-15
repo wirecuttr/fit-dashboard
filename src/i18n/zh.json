@@ -303,5 +303,11 @@
   "activityMap.temp": "温度",
   "activityMap.low": "低",
   "activityMap.high": "高",
-  "activityMap.noGpsCoordinates": "此活动中未找到 GPS 坐标。"
+  "activityMap.noGpsCoordinates": "此活动中未找到 GPS 坐标。",
+  "multisport.parent": "多项运动",
+  "multisport.legs": "{count} 个分段",
+  "multisport.expandLegs": "展开分段",
+  "multisport.collapseLegs": "收起分段",
+  "multisport.compareUnavailable": "多项运动比较功能尚不可用。",
+  "multisport.excludedFromBulkExport": "多项运动的父活动不会导出。"
 }

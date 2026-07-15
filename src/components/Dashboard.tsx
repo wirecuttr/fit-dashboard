@@ -19,7 +19,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { exportSingleActivity, exportBulkActivities, type ExportFormat, type BulkExportProgress } from "../lib/exportUtils";
 import { useSettingsStore } from "../stores/settingsStore";
-import type { Activity, RecordPoint } from "../types";
+import type { Activity, ActivitySegment, RecordPoint } from "../types";
 import appIcon from "../assets/app-icon.svg";
 import {
   convertElevationMeters,
@@ -277,6 +277,7 @@ export function Dashboard({ onLogout }: Props) {
   const [compareIds, setCompareIds] = useState<number[]>([]);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [expandedMultisportIds, setExpandedMultisportIds] = useState<Set<number>>(() => new Set());
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
@@ -328,7 +329,7 @@ export function Dashboard({ onLogout }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const {
-    activities, selectedActivity, records, overview,
+    activities, selectedActivity, selectedParentActivity, selectedSegment, records, overview,
     filterSport, setFilterSport, selectActivity, refresh
   } = useActivityStore();
   const {
@@ -436,8 +437,13 @@ export function Dashboard({ onLogout }: Props) {
     });
   }, [activities, filterSport, minDurationMinutes, maxDurationMinutes, dateFrom, dateTo, searchQuery]);
 
+  const exportableFiltered = useMemo(
+    () => filtered.filter((activity) => activity.activity_kind !== "multisport_parent"),
+    [filtered],
+  );
+
   useEffect(() => {
-    const allowed = new Set(filtered.map((a) => a.id));
+    const allowed = new Set(filtered.filter((a) => a.activity_kind !== "multisport_parent").map((a) => a.id));
     setCompareIds((prev) => {
       const next = prev.filter((id) => allowed.has(id));
       return next.length === prev.length ? prev : next;
@@ -481,6 +487,8 @@ export function Dashboard({ onLogout }: Props) {
   const filteredSports = Array.from(new Set(filtered.map((a) => a.sport).filter(Boolean)));
   const filteredDevices = Array.from(new Set(filtered.map((a) => a.device).filter(Boolean)));
   const selectedRecords = tab === "overview" ? overviewRecords : records;
+  const isMultisportParentSelection = selectedParentActivity?.activity_kind === "multisport_parent"
+    && selectedSegment === null;
   const distanceDivisorValue = distanceDivisor(distanceUnit);
   const distanceSuffix = distanceLabel(distanceUnit);
   const filteredTotalDistanceM = filtered.reduce((sum, a) => sum + a.distance_m, 0);
@@ -920,6 +928,21 @@ export function Dashboard({ onLogout }: Props) {
     setImportMessage("Activity deleted.");
   }
 
+  function toggleMultisportExpanded(activityId: number) {
+    setExpandedMultisportIds((current) => {
+      const next = new Set(current);
+      if (next.has(activityId)) next.delete(activityId);
+      else next.add(activityId);
+      return next;
+    });
+  }
+
+  function selectSegment(activity: Activity, segment: ActivitySegment) {
+    setExpandedMultisportIds((current) => new Set(current).add(activity.id));
+    void selectActivity(activity, segment);
+    setTab("individual");
+  }
+
   function onItemContextMenu(e: MouseEvent, activity: Activity) {
     e.preventDefault();
     setContextExportOpen(false);
@@ -945,10 +968,10 @@ export function Dashboard({ onLogout }: Props) {
   }
 
   async function handleBulkExport(format: ExportFormat) {
-    if (filtered.length === 0 || isExporting) return;
+    if (exportableFiltered.length === 0 || isExporting) return;
     setIsExporting(true);
     try {
-      const result = await exportBulkActivities(filtered, format, setExportProgress);
+      const result = await exportBulkActivities(exportableFiltered, format, setExportProgress);
       if (result === "cancelled") {
         // User cancelled the folder picker — no-op
         return;
@@ -1038,25 +1061,25 @@ export function Dashboard({ onLogout }: Props) {
     push("duration", t("detail.duration"), formatDuration(selectedActivity.duration_s), "clock");
     push("distance", t("detail.distance"), `${(selectedActivity.distance_m / distanceDivisorValue).toFixed(2)} ${distanceSuffix}`, "distance");
 
-    if (recordStats.avgSpeed > 0) push("avg_speed", t("detail.avgSpeed"), `${convertSpeedKmh(recordStats.avgSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
-    if (recordStats.maxSpeed > 0) push("max_speed", t("detail.maxSpeed"), `${convertSpeedKmh(recordStats.maxSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
+    if (!isMultisportParentSelection && recordStats.avgSpeed > 0) push("avg_speed", t("detail.avgSpeed"), `${convertSpeedKmh(recordStats.avgSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
+    if (!isMultisportParentSelection && recordStats.maxSpeed > 0) push("max_speed", t("detail.maxSpeed"), `${convertSpeedKmh(recordStats.maxSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
 
     const session = selectedMetadata?.session ?? {};
     const metric = selectedMetadata?.activity_metrics ?? {};
     const avgPaceSec = selectedActivity.distance_m > 0
       ? selectedActivity.duration_s / (selectedActivity.distance_m / distanceDivisorValue)
       : 0;
-    const avgPaceText = formatPace(avgPaceSec, distanceSuffix);
+    const avgPaceText = isMultisportParentSelection ? "-" : formatPace(avgPaceSec, distanceSuffix);
     const avgHr = recordStats.avgHr > 0 ? Math.round(recordStats.avgHr) : (typeof session.avg_heart_rate === "number" ? session.avg_heart_rate : null);
     const maxHr = recordStats.maxHr > 0 ? recordStats.maxHr : (typeof session.max_heart_rate === "number" ? session.max_heart_rate : null);
     if (avgHr && avgHr > 0) push("avg_hr", t("detail.avgHr"), `${Math.round(avgHr)} bpm`, "heart", avgPaceText !== "-" ? `${t("detail.pace")} ${avgPaceText}` : undefined);
     if (maxHr && maxHr > 0) push("max_hr", t("detail.maxHr"), `${Math.round(maxHr)} bpm`, "heart");
 
     if (recordStats.maxAlt > 0) push("max_alt", t("detail.maxAltitude"), `${convertElevationMeters(recordStats.maxAlt, distanceUnit).toFixed(0)} ${elevationLabel(distanceUnit)}`, "mountain");
-    if (recordStats.avgPower > 0) push("avg_power", t("detail.avgPower"), `${Math.round(recordStats.avgPower)} W`, "power");
+    if (!isMultisportParentSelection && recordStats.avgPower > 0) push("avg_power", t("detail.avgPower"), `${Math.round(recordStats.avgPower)} W`, "power");
 
-    if (typeof session.avg_cadence === "number" && session.avg_cadence > 0) push("avg_cadence", t("detail.avgCadence"), `${Math.round(session.avg_cadence)} rpm`, "cadence");
-    if (typeof session.max_cadence === "number" && session.max_cadence > 0) push("max_cadence", t("detail.maxCadence"), `${Math.round(session.max_cadence)} rpm`, "cadence");
+    if (!isMultisportParentSelection && typeof session.avg_cadence === "number" && session.avg_cadence > 0) push("avg_cadence", t("detail.avgCadence"), `${Math.round(session.avg_cadence)} rpm`, "cadence");
+    if (!isMultisportParentSelection && typeof session.max_cadence === "number" && session.max_cadence > 0) push("max_cadence", t("detail.maxCadence"), `${Math.round(session.max_cadence)} rpm`, "cadence");
     if (typeof session.beginning_body_battery === "number" && typeof session.ending_body_battery === "number") {
       const delta = session.ending_body_battery - session.beginning_body_battery;
       const deltaLabel = delta > 0 ? `+${delta}` : `${delta}`;
@@ -1068,12 +1091,16 @@ export function Dashboard({ onLogout }: Props) {
         `${session.beginning_body_battery} -> ${session.ending_body_battery}`
       );
     }
-    if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", "VO2 Max", `${metric.vo2_max.toFixed(1)}`, "vo2");
+    if (!isMultisportParentSelection && typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", "VO2 Max", `${metric.vo2_max.toFixed(1)}`, "vo2");
     if (typeof session.total_calories === "number" && session.total_calories > 0) push("total_calories", t("detail.calories"), `${Math.round(session.total_calories)} kcal`, "flame");
     if (lapTimestampsUtc.length > 0) push("laps", t("detail.laps"), String(lapTimestampsUtc.length), "avg");
 
     return out;
-  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, lapTimestampsUtc.length, t]);
+  }, [selectedActivity, selectedMetadata, recordStats, distanceDivisorValue, distanceSuffix, distanceUnit, lapTimestampsUtc.length, t, isMultisportParentSelection]);
+
+  const contextMenuActivity = contextMenu
+    ? activities.find((activity) => activity.id === contextMenu.activityId) ?? null
+    : null;
 
   const lapRows = useMemo(() => {
     const laps = selectedMetadata?.laps ?? [];
@@ -1369,7 +1396,8 @@ export function Dashboard({ onLogout }: Props) {
             {/* Bulk Actions */}
             <div className="bulk-actions-bar" onClick={(e) => e.stopPropagation()}>
               <div className="bulk-export-wrapper">
-                <button className="btn-outline-accent" disabled={filtered.length === 0 || isExporting} onClick={() => setBulkExportDropdownOpen((v) => !v)}>
+                <button className="btn-outline-accent" disabled={exportableFiltered.length === 0 || isExporting}
+                  title={exportableFiltered.length !== filtered.length ? t("multisport.excludedFromBulkExport") : undefined} onClick={() => setBulkExportDropdownOpen((v) => !v)}>
                   <IconDownload /> {t("sidebar.exportFiltered")}
                 </button>
                 {bulkExportDropdownOpen && (
@@ -1398,85 +1426,140 @@ export function Dashboard({ onLogout }: Props) {
             <div className="activity-list-box">
               <div className="activity-list">
                 {sortedForList.map((a) => {
-                const isRenaming = renameTarget?.id === a.id;
-                const isDeleting = deleteTarget === a.id;
-                const isActive = selectedActivity?.id === a.id;
+                  const isRenaming = renameTarget?.id === a.id;
+                  const isDeleting = deleteTarget === a.id;
+                  const isMultisport = a.activity_kind === "multisport_parent";
+                  const hasMultisportSegments = isMultisport && a.segments.length > 0;
+                  const isExpanded = expandedMultisportIds.has(a.id);
+                  const isCompareEligible = !isMultisport;
+                  const isParentActive = selectedParentActivity?.id === a.id && selectedSegment === null;
+                  const parentName = isMultisport && a.activity_name === "Multisport"
+                    ? t("multisport.parent")
+                    : (a.activity_name || a.file_name);
 
                   return (
-                  <div key={a.id} className={`activity-item ${isActive ? "active" : ""}`}>
-                    {isRenaming ? (
-                      <div className="inline-rename">
-                        <input
-                          autoFocus
-                          value={renameTarget.name}
-                          onChange={(e) => setRenameTarget({ ...renameTarget, name: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") void confirmRename();
-                            if (e.key === "Escape") setRenameTarget(null);
-                          }}
-                        />
-                        <div className="inline-actions">
-                          <button className="btn-compact confirm" onClick={() => void confirmRename()} title={t("sidebar.save")}><IconCheck /> {t("sidebar.save")}</button>
-                          <button className="btn-compact cancel" onClick={() => setRenameTarget(null)} title={t("sidebar.cancel")}><IconX /> {t("sidebar.cancel")}</button>
-                        </div>
-                      </div>
-                    ) : isDeleting ? (
-                      <div className="inline-delete-confirm">
-                        <span>{t("sidebar.deleteActivity")}</span>
-                        <div className="inline-actions">
-                          <button className="btn-compact danger" onClick={() => void confirmDelete()}><IconTrash /> {t("sidebar.delete")}</button>
-                          <button className="btn-compact cancel" onClick={() => setDeleteTarget(null)}><IconX /> {t("sidebar.cancel")}</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="activity-item-wrapper" style={{ display: "flex", alignItems: "center", position: "relative", minWidth: 0 }}>
-                        {tab === "compare" && (
-                          <input 
-                            className="compare-checkbox"
-                            type="checkbox" 
-                            checked={compareIds.includes(a.id)}
-                            onChange={(e) => {
-                               if (e.target.checked && compareIds.length < 4) {
-                                  setCompareIds([...compareIds, a.id]);
-                               } else if (!e.target.checked) {
-                                  setCompareIds(compareIds.filter(id => id !== a.id));
-                               }
-                            }}
-                            disabled={!compareIds.includes(a.id) && compareIds.length >= 4}
-                          />
-                        )}
-                        <div
-                          className="activity-item-content"
-                          role="button"
-                          tabIndex={0}
-                          style={{ flex: 1, paddingLeft: tab === "compare" ? "8px" : "" }}
-                          onClick={() => {
-                            if (tab === "compare") {
-                              const checked = compareIds.includes(a.id);
-                              if (!checked && compareIds.length < 4) setCompareIds([...compareIds, a.id]);
-                              else if (checked) setCompareIds(compareIds.filter(id => id !== a.id));
-                            } else {
-                              void selectActivity(a); 
-                              setTab("individual"); 
-                            }
-                          }}
-                          onContextMenu={(e) => onItemContextMenu(e, a)}
-                        >
-                          <span className="activity-name">{a.activity_name || a.file_name}</span>
-                          <div className="activity-meta-rows">
-                            <div className="activity-meta-row" style={{ color: "var(--text-muted)", marginBottom: "4px" }}>
-                              <span>{formatDateShort(a.start_ts_utc)} &bull; {formatTimeShort(a.start_ts_utc)}</span>
-                            </div>
-                            <div className="activity-meta-row" style={{ fontWeight: 600 }}>
-                              <span className="activity-pill">{(a.distance_m / distanceDivisorValue).toFixed(1)} {distanceSuffix}</span>
-                              <span className="spacer" />
-                              <span className="activity-pill">{formatDuration(a.duration_s)}</span>
+                    <div key={a.id} className="activity-group">
+                      <div className={`activity-item ${isParentActive ? "active" : ""}`}>
+                        {isRenaming ? (
+                          <div className="inline-rename">
+                            <input
+                              autoFocus
+                              value={renameTarget.name}
+                              onChange={(e) => setRenameTarget({ ...renameTarget, name: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void confirmRename();
+                                if (e.key === "Escape") setRenameTarget(null);
+                              }}
+                            />
+                            <div className="inline-actions">
+                              <button className="btn-compact confirm" onClick={() => void confirmRename()} title={t("sidebar.save")}><IconCheck /> {t("sidebar.save")}</button>
+                              <button className="btn-compact cancel" onClick={() => setRenameTarget(null)} title={t("sidebar.cancel")}><IconX /> {t("sidebar.cancel")}</button>
                             </div>
                           </div>
-                        </div>
+                        ) : isDeleting ? (
+                          <div className="inline-delete-confirm">
+                            <span>{t("sidebar.deleteActivity")}</span>
+                            <div className="inline-actions">
+                              <button className="btn-compact danger" onClick={() => void confirmDelete()}><IconTrash /> {t("sidebar.delete")}</button>
+                              <button className="btn-compact cancel" onClick={() => setDeleteTarget(null)}><IconX /> {t("sidebar.cancel")}</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="activity-item-wrapper multisport-parent-wrapper">
+                            {tab === "compare" && isCompareEligible && (
+                              <input
+                                className="compare-checkbox"
+                                type="checkbox"
+                                checked={compareIds.includes(a.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked && compareIds.length < 4) setCompareIds([...compareIds, a.id]);
+                                  else if (!e.target.checked) setCompareIds(compareIds.filter((id) => id !== a.id));
+                                }}
+                                disabled={!compareIds.includes(a.id) && compareIds.length >= 4}
+                              />
+                            )}
+                            {hasMultisportSegments && tab !== "compare" && (
+                              <button
+                                type="button"
+                                className={`multisport-expand-button ${isExpanded ? "expanded" : ""}`}
+                                onClick={(event) => { event.stopPropagation(); toggleMultisportExpanded(a.id); }}
+                                aria-expanded={isExpanded}
+                                aria-label={isExpanded ? t("multisport.collapseLegs") : t("multisport.expandLegs")}
+                                title={isExpanded ? t("multisport.collapseLegs") : t("multisport.expandLegs")}
+                              >
+                                <IconChevron />
+                              </button>
+                            )}
+                            <div
+                              className={tab === "compare" && !isCompareEligible ? "activity-item-content compare-unavailable" : "activity-item-content"}
+                              role="button"
+                              tabIndex={isCompareEligible || tab !== "compare" ? 0 : -1}
+                              aria-disabled={tab === "compare" && !isCompareEligible}
+                              title={tab === "compare" && !isCompareEligible ? t("multisport.compareUnavailable") : undefined}
+                              style={{ flex: 1, paddingLeft: tab === "compare" ? "8px" : "" }}
+                              onClick={() => {
+                                if (tab === "compare") {
+                                  if (!isCompareEligible) return;
+                                  const checked = compareIds.includes(a.id);
+                                  if (!checked && compareIds.length < 4) setCompareIds([...compareIds, a.id]);
+                                  else if (checked) setCompareIds(compareIds.filter((id) => id !== a.id));
+                                } else {
+                                  void selectActivity(a);
+                                  setTab("individual");
+                                }
+                              }}
+                              onContextMenu={(e) => onItemContextMenu(e, a)}
+                            >
+                              <span className="activity-name">{parentName}</span>
+                              <div className="activity-meta-rows">
+                                <div className="activity-meta-row" style={{ color: "var(--text-muted)", marginBottom: "4px" }}>
+                                  <span>{formatDateShort(a.start_ts_utc)} &bull; {formatTimeShort(a.start_ts_utc)}</span>
+                                </div>
+                                <div className="activity-meta-row" style={{ fontWeight: 600 }}>
+                                  <span className="activity-pill">{(a.distance_m / distanceDivisorValue).toFixed(1)} {distanceSuffix}</span>
+                                  {isMultisport && <span className="activity-pill multisport-leg-count">{t("multisport.legs", { count: a.segments.length })}</span>}
+                                  <span className="spacer" />
+                                  <span className="activity-pill">{formatDuration(a.duration_s)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                      {hasMultisportSegments && isExpanded && tab !== "compare" && (
+                        <div className="multisport-leg-list">
+                          {a.segments.map((segment) => {
+                            const isSegmentActive = selectedParentActivity?.id === a.id
+                              && selectedSegment?.segment_index === segment.segment_index;
+                            const duration = segment.timer_duration_s > 0
+                              ? segment.timer_duration_s
+                              : segment.elapsed_duration_s;
+                            return (
+                              <div
+                                key={`${a.id}-${segment.segment_index}`}
+                                className={`activity-item multisport-leg ${segment.segment_type === "transition" ? "transition" : ""} ${isSegmentActive ? "active" : ""}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="activity-item-content multisport-leg-content"
+                                  onClick={() => selectSegment(a, segment)}
+                                >
+                                  <span className="activity-name">{segment.name}</span>
+                                  <div className="activity-meta-row multisport-leg-meta">
+                                    <span>{formatTimeShort(segment.start_ts_utc)}</span>
+                                    <span className="spacer" />
+                                    {segment.distance_m > 0 && (
+                                      <span className="activity-pill">{(segment.distance_m / distanceDivisorValue).toFixed(1)} {distanceSuffix}</span>
+                                    )}
+                                    <span className="activity-pill">{formatDuration(duration)}</span>
+                                  </div>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
                 {filtered.length === 0 && (
@@ -1559,7 +1642,7 @@ export function Dashboard({ onLogout }: Props) {
             <>
               <div className="detail-header">
                 <div className="detail-title-row">
-                  <h2>{selectedActivity.activity_name || selectedActivity.file_name}</h2>
+                  <h2>{isMultisportParentSelection && selectedActivity.activity_name === "Multisport" ? t("multisport.parent") : (selectedActivity.activity_name || selectedActivity.file_name)}</h2>
                   <div className="detail-badges">
                     <span className="badge">{formatDate(selectedActivity.start_ts_utc)}</span>
                     {selectedActivity.sport && <span className="badge sport">{selectedActivity.sport}</span>}
@@ -1601,10 +1684,10 @@ export function Dashboard({ onLogout }: Props) {
                 </div>
               </div>
               <div className="detail-grid">
-                <div className="panel"><h3>{t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></div>
+                <div className="panel"><h3>{isMultisportParentSelection ? t("chart.heartRate") : t("detail.heartRateAndPace")}</h3><ActivityChart records={selectedRecords} neutralOnly={isMultisportParentSelection} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} /></div>
                 <ActivityMap records={selectedRecords} mapStyle={mapStyle} setMapStyle={setMapStyle} lapTimestampsUtc={lapTimestampsUtc} />
               </div>
-              <ActivityInsights records={selectedRecords} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
+              <ActivityInsights records={selectedRecords} neutralOnly={isMultisportParentSelection} theme={theme} distanceUnit={distanceUnit} heartRateZoneBoundsBpm={hrZoneBounds} zoomRange={telemetryZoom} onZoomChange={setTelemetryZoom} lapTimestampsUtc={lapTimestampsUtc} smoothGraphs={smoothGraphs} />
               {lapRows.length > 0 && (
                 <div className="panel laps-table-panel">
                   <h3>{t("detail.laps")}</h3>
@@ -1616,12 +1699,12 @@ export function Dashboard({ onLogout }: Props) {
                           <th>{t("detail.time")}</th>
                           <th>{t("detail.cumulativeTime")}</th>
                           <th>{t("detail.distance")}</th>
-                          <th>{t("detail.avgPace")}</th>
+                          {!isMultisportParentSelection && <th>{t("detail.avgPace")}</th>}
                           <th>{t("detail.avgHr")}</th>
                           <th>{t("detail.maxHr")}</th>
                           <th>{t("detail.totalAscent")}</th>
                           <th>{t("detail.totalDescent")}</th>
-                          <th>{t("detail.avgCadence")}</th>
+                          {!isMultisportParentSelection && <th>{t("detail.avgCadence")}</th>}
                           <th>{t("detail.calories")}</th>
                         </tr>
                       </thead>
@@ -1632,12 +1715,12 @@ export function Dashboard({ onLogout }: Props) {
                             <td>{lap.lapTimeSec != null ? formatDuration(lap.lapTimeSec) : "-"}</td>
                             <td>{formatDuration(lap.cumulativeSeconds)}</td>
                             <td>{lap.distanceMeters != null ? `${(lap.distanceMeters / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-"}</td>
-                            <td>{lap.avgPace}</td>
+                            {!isMultisportParentSelection && <td>{lap.avgPace}</td>}
                             <td>{typeof lap.avgHr === "number" ? Math.round(lap.avgHr) : "-"}</td>
                             <td>{typeof lap.maxHr === "number" ? Math.round(lap.maxHr) : "-"}</td>
                             <td>{typeof lap.ascentMeters === "number" ? `${Math.round(convertElevationMeters(lap.ascentMeters, distanceUnit))} ${elevationLabel(distanceUnit)}` : "-"}</td>
                             <td>{typeof lap.descentMeters === "number" ? `${Math.round(convertElevationMeters(lap.descentMeters, distanceUnit))} ${elevationLabel(distanceUnit)}` : "-"}</td>
-                            <td>{typeof lap.avgCadence === "number" ? Math.round(lap.avgCadence) : "-"}</td>
+                            {!isMultisportParentSelection && <td>{typeof lap.avgCadence === "number" ? Math.round(lap.avgCadence) : "-"}</td>}
                             <td>{typeof lap.calories === "number" ? Math.round(lap.calories) : "-"}</td>
                           </tr>
                         ))}
@@ -1651,11 +1734,11 @@ export function Dashboard({ onLogout }: Props) {
                             const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
                             return d > 0 ? `${(d / distanceDivisorValue).toFixed(2)} ${distanceSuffix}` : "-";
                           })()}</td>
-                          <td>{(() => {
+                          {!isMultisportParentSelection && <td>{(() => {
                             const d = lapRows.reduce((a, b) => a + (b.distanceMeters || 0), 0);
                             const t = lapRows.reduce((a, b) => a + (b.lapTimeSec || 0), 0);
                             return d > 0 && t > 0 ? formatPace((distanceDivisorValue / (d / t)), distanceSuffix) : "-";
-                          })()}</td>
+                          })()}</td>}
                           <td>{(() => {
                             const hrs = lapRows.map(l => l.avgHr).filter((h): h is number => typeof h === "number");
                             return hrs.length > 0 ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : "-";
@@ -1672,10 +1755,10 @@ export function Dashboard({ onLogout }: Props) {
                             const desc = lapRows.reduce((a, b) => a + (b.descentMeters || 0), 0);
                             return desc > 0 ? `${Math.round(convertElevationMeters(desc, distanceUnit))} ${elevationLabel(distanceUnit)}` : "-";
                           })()}</td>
-                          <td>{(() => {
+                          {!isMultisportParentSelection && <td>{(() => {
                             const cads = lapRows.map(l => l.avgCadence).filter((c): c is number => typeof c === "number");
                             return cads.length > 0 ? Math.round(cads.reduce((a, b) => a + b, 0) / cads.length) : "-";
-                          })()}</td>
+                          })()}</td>}
                           <td>{(() => {
                             const cal = lapRows.reduce((a, b) => a + (b.calories || 0), 0);
                             return cal > 0 ? Math.round(cal) : "-";
@@ -1701,8 +1784,8 @@ export function Dashboard({ onLogout }: Props) {
         <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
           <button onClick={onRenameClick}><IconEdit /> {t("contextMenu.rename")}</button>
           <button className="ctx-danger" onClick={onDeleteClick}><IconTrash /> {t("contextMenu.delete")}</button>
-          <div className="ctx-divider" />
-          <div className="ctx-export-parent" onMouseEnter={() => setContextExportOpen(true)} onMouseLeave={() => setContextExportOpen(false)}>
+          <div className="ctx-divider" style={{ display: contextMenuActivity?.activity_kind === "multisport_parent" ? "none" : undefined }} />
+          <div className="ctx-export-parent" style={{ display: contextMenuActivity?.activity_kind === "multisport_parent" ? "none" : undefined }} onMouseEnter={() => setContextExportOpen(true)} onMouseLeave={() => setContextExportOpen(false)}>
             <button className="ctx-with-submenu"><IconDownload /> {t("contextMenu.export")} <IconChevron /></button>
             {contextExportOpen && (
               <div className="ctx-submenu">

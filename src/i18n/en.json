@@ -324,5 +324,11 @@
   "activityMap.temp": "Temp",
   "activityMap.low": "Low",
   "activityMap.high": "High",
-  "activityMap.noGpsCoordinates": "No GPS coordinates found in this activity."
+  "activityMap.noGpsCoordinates": "No GPS coordinates found in this activity.",
+  "multisport.parent": "Multisport",
+  "multisport.legs": "{count} legs",
+  "multisport.expandLegs": "Expand legs",
+  "multisport.collapseLegs": "Collapse legs",
+  "multisport.compareUnavailable": "Multisport comparison is not yet available.",
+  "multisport.excludedFromBulkExport": "Multisport parent activities are excluded from export."
 }

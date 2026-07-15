@@ -5,8 +5,8 @@
 Implementation investigation completed on 15 July 2026 against
 `upstream/main` commit `2d8040f`.
 
-This spike changes design and implementation guidance only. Production
-multisport support is not implemented on this branch.
+These findings define the accepted first-pass implementation on the associated
+feature branch.
 
 The broader product design is in [multisport-support.md](multisport-support.md);
 the ordered delivery plan is in
@@ -169,9 +169,9 @@ Automatic additive migration is part of the first implementation:
 - create `activity_segments` and indexes; and
 - backfill existing activities to `single`.
 
-Run additive column migration after the existing numeric rebuild check, and
-also update the numeric rebuild table definitions so future rebuilds preserve
-the new columns. A fresh-database-only release is not acceptable for the local
+Add columns needed by the numeric rebuild before its check, update the rebuild
+table definitions so they preserve those columns, then create or re-assert the
+segment table and dependent indexes after any rebuild. A fresh-database-only release is not acceptable for the local
 persistent deployment.
 
 Existing imported multisport files still require reimport because the folded
@@ -220,8 +220,7 @@ detail-page selector and URL state are deferred.
 
 ## Recommended Implementation Slices
 
-Confirm product decisions 1–3 below before implementation. With the recommended
-defaults, deliver:
+The product decisions below are accepted. Deliver:
 
 1. Parser/domain extraction, conservative detection, boundaries, lap-index
    assignment, distance offsets, and synthetic parser tests. No database or UI
@@ -236,48 +235,38 @@ defaults, deliver:
    sources, sport-specific labels, and grouped statistics to the same selection
    context before integrated Docker validation.
 
-## Open Product Decisions
+## Accepted Product Decisions
 
-### 1. Manual Multi-session Files — Blocking for Detection
+### 1. Manual Multi-session Files
 
-Should a file with multiple distinct sessions and adjacent sport changes be a
-multisport parent when its activity type is `manual`?
-
-Recommendation: yes. Require at least two meaningful, distinct-start sessions
+Accepted: Require at least two meaningful, distinct-start sessions
 and a transition or sport/sub-sport change. This supports manual bricks and the
 retained cycling-to-running example while rejecting single-session files that
 incorrectly carry `autoMultiSport`.
 
-### 2. Mixed Parent Detail — Blocking for Frontend Scope
+### 2. Mixed Parent Detail
 
-Should the parent show every existing chart and sport-specific statistic, or a
-neutral subset until a leg is selected?
-
-Recommendation: show the parent summary, complete map, and neutral time-based
+Accepted: show the parent summary, complete map, and neutral time-based
 telemetry; suppress sport-specific pace, power-zone, training-load, and similar
 interpretations that would mix incompatible legs. Child selection exposes the
 normal sport-specific detail view.
 
-### 3. Child-aware Search and Sport Filters — Blocking for MVP Scope
+### 3. Child-aware Search and Sport Filters
 
-If a Running filter matches one leg, should Overview count the full multisport
-parent's distance and duration? The existing proposal says yes, but that can make
-a Running-filtered Overview include cycling and transition totals.
-
-Recommendation: keep first-pass global filters parent-based. Multisport parents
+Accepted: keep first-pass global filters parent-based. Multisport parents
 appear under `Multisport`; expanding a parent exposes all legs. Add child-aware
 filtering later with explicitly designed leg-versus-parent aggregation semantics.
 
-### 4. Child Export — Non-blocking
+### 4. Child Export
 
-Recommendation: defer parent and child export in the first slice. Segment CSV,
+Accepted: defer parent and child export in the first slice. Segment CSV,
 JSON, GPX, and KML require correct display metadata and normalized distance;
 enable them after segment selection is proven. Compare remains disabled for
 parents and children until separately designed.
 
-### 5. Historical Reimport Workflow — Non-blocking
+### 5. Historical Reimport Workflow
 
-Recommendation: use the existing manual workflow for the first release: delete
+Accepted: use the existing manual workflow for the first release: delete
 the flattened activity, clear blacklisted hashes, then upload or sync the FIT
 again. A dedicated replace/reimport operation is valuable follow-up work but
 does not block the segment model.

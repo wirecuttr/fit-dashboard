@@ -2,10 +2,10 @@
 
 ## Status
 
-Design updated by the 15 July 2026
-[implementation investigation](multisport-implementation-spike.md). Production
-support is not implemented; remaining product decisions are recorded in the
-spike.
+Design and first-pass implementation specification updated by the 15 July 2026
+[implementation investigation](multisport-implementation-spike.md). The product
+decisions were accepted on 15 July 2026 and are implemented by the associated
+feature branch.
 
 ## Problem
 
@@ -732,8 +732,9 @@ Rules:
   wipe or manual SQL.
 - Existing activities remain `activity_kind = single` and existing records
   remain `segment_index = NULL`.
-- The existing numeric-column rebuild definitions must preserve the new columns,
-  and additive migration must run after that rebuild check.
+- Additive columns required by a numeric rebuild are created before the rebuild
+  check, the rebuild definitions preserve them, and the segment table and
+  dependent indexes are created or re-asserted after any rebuild.
 - Existing metadata stays valid because multisport data uses a new namespace.
 - Previously imported multisport files still require manual reimport because the
   folded metadata cannot reliably reconstruct every leg summary.

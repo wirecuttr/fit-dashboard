@@ -53,10 +53,11 @@ needed sooner.
 
 ## Calculations and Insights
 
-- Parent-level sport-specific calculations on mixed-sport data.
-  - Parent calculation behaviour is TBD after the first implementation slice.
-  - Segment-scoped calculations are the safer path because each child leg has one
-    sport/sub-sport and expected output stream.
+- Additional parent-level sport-specific calculations on mixed-sport data.
+  - The MVP deliberately shows neutral whole-activity telemetry and suppresses
+    interpretations that require one coherent sport/output stream.
+  - Future parent calculations need an explicit mixed-sport definition;
+    segment-scoped calculations remain the safer default.
 - Heart-rate drift on multisport.
   - If/when HR drift exists upstream, it should be disabled on multisport parent
     activities and evaluated on eligible child legs only.

@@ -303,5 +303,11 @@
   "activityMap.temp": "温度",
   "activityMap.low": "低",
   "activityMap.high": "高",
-  "activityMap.noGpsCoordinates": "このアクティビティにGPS座標が見つかりませんでした。"
+  "activityMap.noGpsCoordinates": "このアクティビティにGPS座標が見つかりませんでした。",
+  "multisport.parent": "マルチスポーツ",
+  "multisport.legs": "{count}区間",
+  "multisport.expandLegs": "区間を展開",
+  "multisport.collapseLegs": "区間を折りたたむ",
+  "multisport.compareUnavailable": "マルチスポーツの比較はまだ利用できません。",
+  "multisport.excludedFromBulkExport": "マルチスポーツの親アクティビティはエクスポートから除外されます。"
 }

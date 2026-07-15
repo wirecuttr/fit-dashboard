@@ -15,6 +15,7 @@ type Props = {
   onZoomChange?: (range: { start: number; end: number }) => void;
   lapTimestampsUtc?: string[];
   smoothGraphs?: boolean;
+  neutralOnly?: boolean;
 };
 
 export function ActivityChart({
@@ -26,6 +27,7 @@ export function ActivityChart({
   onZoomChange,
   lapTimestampsUtc = [],
   smoothGraphs = true,
+  neutralOnly = false,
 }: Props) {
   const t0 = records[0]?.timestamp_ms ?? 0;
   const totalDurationMs = Math.max(0, (records[records.length - 1]?.timestamp_ms ?? t0) - t0);
@@ -120,7 +122,7 @@ export function ActivityChart({
       textStyle: { color: axisColor, fontSize: 12 },
       top: 0,
     },
-    visualMap: {
+    visualMap: neutralOnly ? undefined : {
       show: false,
       seriesIndex: 0,
       dimension: 1,
@@ -168,7 +170,7 @@ export function ActivityChart({
         type: "line",
         smooth: smoothGraphs,
         showSymbol: false,
-        lineStyle: { width: 2 },
+        lineStyle: { width: 2, color: neutralOnly ? "#ef4444" : undefined },
         areaStyle: { opacity: 0.12 },
         sampling: smoothGraphs ? "lttb" : undefined,
         data: hrSeriesSmoothed,
@@ -272,7 +274,7 @@ export function ActivityChart({
   return (
     <div style={{ display: "grid", gap: 12, minWidth: 0, width: "100%", overflow: "hidden" }}>
       <ReactECharts option={hrOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />
-      <ReactECharts option={paceOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />
+      {!neutralOnly && <ReactECharts option={paceOption} onEvents={onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: 220, width: "100%", minWidth: 0, overflow: "hidden" }} />}
     </div>
   );
 }

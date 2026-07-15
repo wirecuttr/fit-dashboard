@@ -178,5 +178,11 @@
   "settings.hrZonesTitle": "Зоны частоты сердечных сокращений",
   "settings.hrZonesDescription": "Перетащите маркеры для настройки границ зон",
   "settings.hrZonesReset": "Сбросить по умолчанию",
-  "settings.hrZonesSave": "Сохранить"
+  "settings.hrZonesSave": "Сохранить",
+  "multisport.parent": "Мультиспорт",
+  "multisport.legs": "{count} этапов",
+  "multisport.expandLegs": "Развернуть этапы",
+  "multisport.collapseLegs": "Свернуть этапы",
+  "multisport.compareUnavailable": "Сравнение мультиспортивных активностей пока недоступно.",
+  "multisport.excludedFromBulkExport": "Родительские мультиспортивные активности исключаются из экспорта."
 }
