@@ -2415,14 +2415,16 @@ button:focus-visible {
   height: 20px;
 }
 
-.map-reset-zoom-btn {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: 4;
-  padding: 0.35rem 0.6rem;
-  font-size: 0.75rem;
-  backdrop-filter: blur(4px);
+.maplibregl-ctrl-group button.map-reset-zoom-control {
+  display: grid;
+  place-items: center;
+  color: #333;
+}
+
+.map-reset-zoom-control svg {
+  display: block;
+  width: 17px;
+  height: 17px;
 }
 
 .map-playback-bar {

@@ -47,6 +47,9 @@ export const IconBattery: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 export const IconSearch: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps} {...props}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
 );
+export const IconZoomOut: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps} {...props}><circle cx="10.5" cy="10.5" r="6.5" /><line x1="7.5" y1="10.5" x2="13.5" y2="10.5" /><line x1="15.25" y1="15.25" x2="21" y2="21" /></svg>
+);
 export const IconSort: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg width="14" height="14" viewBox="0 0 24 24" {...svgProps} {...props}><line x1="6" y1="7" x2="18" y2="7" /><line x1="9" y1="12" x2="18" y2="12" /><line x1="12" y1="17" x2="18" y2="17" /></svg>
 );
