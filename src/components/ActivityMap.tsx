@@ -1135,7 +1135,6 @@ export function ActivityMap({
         </button>
         {telemetryEnabled && telemetryData && (
           <div className="telemetry-overlay" aria-live="polite">
-            <div className="telemetry-overlay-title">{t("activityMap.timelineTelemetry")}</div>
             <div className="telemetry-overlay-grid">
               <div><span>{usePaceDisplay ? t("detail.pace") : t("activityMap.speed")}</span><strong>{telemetryData.speedOrPace}</strong></div>
               <div><span>{t("activityMap.heart")}</span><strong>{telemetryData.heartRate}</strong></div>
