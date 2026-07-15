@@ -1792,7 +1792,6 @@ export function ActivityInsights({
           disabled={heartRateZonePreferenceSaving}
           aria-label={tr("insights.hrZoneSource")}
         >
-          <legend>{tr("insights.hrZoneSource")}</legend>
           <button
             type="button"
             className={heartRateZoneSource === "fit" ? "active" : ""}
@@ -1815,8 +1814,14 @@ export function ActivityInsights({
       );
     }
     return (
-      <span className="zone-source-label" title={tr(heartRateZoneSourceHelpKey)}>
-        {tr("insights.hrZoneSource")}: {tr(heartRateZoneSource === "fit"
+      <span
+        className="zone-source-label"
+        title={tr(heartRateZoneSourceHelpKey)}
+        aria-label={`${tr("insights.hrZoneSource")}: ${tr(heartRateZoneSource === "fit"
+          ? "insights.hrZoneSourceFit"
+          : "insights.hrZoneSourceCustom")}`}
+      >
+        {tr(heartRateZoneSource === "fit"
           ? "insights.hrZoneSourceFit"
           : "insights.hrZoneSourceCustom")}
       </span>
@@ -1898,8 +1903,9 @@ export function ActivityInsights({
               <span
                 className="zone-source-label"
                 title={tr("insights.powerLineZoneSourceCalculatedHelp")}
+                aria-label={`${tr("insights.powerLineZoneSource")}: ${tr("insights.powerZoneSourceCalculated")}`}
               >
-                {tr("insights.powerLineZoneSource")}: {tr("insights.powerZoneSourceCalculated")}
+                {tr("insights.powerZoneSourceCalculated")}
               </span>
             </div>
           ) : (
@@ -1990,7 +1996,6 @@ export function ActivityInsights({
                 disabled={powerZonePreferenceSaving}
                 aria-label={tr("insights.powerZoneSource")}
               >
-                <legend>{tr("insights.powerZoneSource")}</legend>
                 <button
                   type="button"
                   className={effectivePowerZoneTimeSource === "fit" ? "active" : ""}
@@ -2016,8 +2021,11 @@ export function ActivityInsights({
                 title={tr(effectivePowerZoneTimeSource === "fit"
                   ? "insights.powerZoneSourceFitHelp"
                   : "insights.powerZoneSourceCalculatedHelp")}
+                aria-label={`${tr("insights.powerZoneSource")}: ${tr(effectivePowerZoneTimeSource === "fit"
+                  ? "insights.powerZoneSourceFit"
+                  : "insights.powerZoneSourceCalculated")}`}
               >
-                {tr("insights.powerZoneSource")}: {tr(effectivePowerZoneTimeSource === "fit"
+                {tr(effectivePowerZoneTimeSource === "fit"
                   ? "insights.powerZoneSourceFit"
                   : "insights.powerZoneSourceCalculated")}
               </span>
