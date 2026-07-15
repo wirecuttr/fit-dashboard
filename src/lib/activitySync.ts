@@ -197,11 +197,10 @@ export function createActivitySyncController(
 
 export function deriveActivitySyncState(
   enabled: boolean,
-  hasRoute: boolean,
   hasPositiveTimeline: boolean,
   registeredChartCount: number,
 ): { available: boolean; active: boolean } {
-  const available = hasRoute && hasPositiveTimeline && registeredChartCount > 0;
+  const available = hasPositiveTimeline && registeredChartCount > 0;
   return { available, active: enabled && available };
 }
 

@@ -1168,7 +1168,6 @@ export function Dashboard({ onLogout }: Props) {
     : 0;
   const telemetrySyncState = deriveActivitySyncState(
     telemetrySyncEnabled,
-    hasDetailRoute,
     activityTimeResolution.hasPositiveTimeRange,
     registeredSyncChartCount,
   );

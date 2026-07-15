@@ -2,16 +2,16 @@
 
 ## Status
 
-- Status: design reviewed; implementation investigation complete
+- Status: implemented; follow-up interaction corrections applied
 - Working branch: `feat/map-chart-sync`
 - Branch base: local `main` at `18976ca`
 - Intended destination: local/private `main`
 - Upstream pull request: not planned as part of this feature
-- Implementation: not started
+- Implementation: complete
 
-This document combines the product design and implementation plan for linking
-GPS route playback with the Individual page's time- and distance-based
-telemetry charts.
+This document combines the product design and implementation plan for
+synchronising the Individual page's telemetry charts with one another and,
+when available, GPS route playback.
 
 ## Summary
 
@@ -29,6 +29,8 @@ When Sync is on:
   the map, and updates all other eligible charts; and
 - changing Time/Distance or Moving/Total reprojects the same activity moment
   instead of choosing a new moment.
+
+Without a usable GPS route, chart clicks still update every eligible chart.
 
 The shared value is the source timeline timestamp, not a chart pixel, record
 index, moving-time value, or distance. This is the only value that can map
@@ -89,15 +91,15 @@ Sync:
 - applies immediately when checked or unchecked;
 - is session-only and is not saved;
 - remains selected while the user changes activities during the same session;
-- is disabled when the selected activity has no usable GPS route, no positive
-  activity timeline, or no eligible telemetry chart; and
+- is disabled when the selected activity has no positive activity timeline or
+  no eligible telemetry chart; and
 - does not change Time/Distance, Moving/Total, or chart zoom when toggled.
 
 Keep three separate states:
 
 - `telemetrySyncEnabled` is the checked, session-only user choice.
-- `telemetrySyncAvailable` is derived from route availability, a positive
-  timeline, and at least one registered eligible chart.
+- `telemetrySyncAvailable` is derived from a positive timeline and at least one
+  registered eligible chart; GPS route availability does not gate chart sync.
 - `telemetrySyncActive` is `telemetrySyncEnabled && telemetrySyncAvailable`.
 
 The checkbox renders `telemetrySyncEnabled`, even while temporarily disabled.
@@ -107,13 +109,17 @@ passed to map and chart behaviour that publishes positions, subscribes to
 positions, or suppresses ordinary chart interaction. When active state becomes
 false, cancel pending publication, clear the controller position, and restore
 ordinary chart hover. When availability later returns while the checkbox
-remains checked, activate Sync and immediately publish the current map playhead.
+remains checked, activate Sync. If a map is present, immediately publish its
+current playhead. Without a map, wait for an eligible chart click to establish
+the shared position.
 
-When Sync becomes active, immediately publish the map's current playhead. A newly
-selected activity initialises the playhead using the map's existing end-of-route
-behaviour and then publishes that new activity timestamp. Never carry the prior
-activity's timestamp into the new activity. During controller replacement, a
-checked Sync control may be temporarily disabled at a zero registered-chart
+When Sync becomes active with a map present, immediately publish the map's
+current playhead. A newly selected activity with a map initialises the playhead
+using the map's existing end-of-route behaviour and publishes that timestamp.
+An activity without a map starts without a shared position until a chart click.
+Never carry the prior activity's timestamp into the new activity.
+During controller replacement, a checked Sync control may be temporarily
+disabled at a zero registered-chart
 count; the first eligible chart registration re-enables it without another user
 action.
 
@@ -123,11 +129,12 @@ the charts' ordinary hover tooltip behaviour.
 Add a fourth entry to the existing help popover:
 
 - heading: `Sync`
-- help: `Links map playback and telemetry charts. Click a chart or scrub the map timeline to move all synchronised views.`
+- help: Links telemetry charts and map playback when available. Click a chart or
+  scrub the map timeline to move all synchronised views.
 
 Add `detail.syncUnavailable` with this English copy:
 
-`Sync requires a GPS route, a usable activity timeline, and a telemetry chart.`
+`Sync requires a usable activity timeline and a telemetry chart.`
 
 Expose this explanation through the control's title or adjacent accessible
 description and repeat it in the focusable help popover, because a native
@@ -423,8 +430,9 @@ position. The controller remains unaware of all adapter contents.
   activity changes;
 - render the Sync checkbox and help entry;
 - subscribe to the controller's registered-chart count;
-- derive `telemetrySyncAvailable` from `hasDetailRoute`, a positive time range,
-  and `controller.getRegisteredChartCount() > 0`;
+- derive `telemetrySyncAvailable` from a positive time range and
+  `controller.getRegisteredChartCount() > 0`, independently of route
+  availability;
 - derive `telemetrySyncActive` from the checked preference and availability;
   and
 - pass the controller, active state, and selected activity ID to ActivityMap and
@@ -471,10 +479,10 @@ instance lifecycle code for every chart. It should:
   unregister it on unmount;
 - register and unregister a controller position subscription as active state
   changes;
-- attach and remove one native click handler on the ECharts DOM container as
-  active state changes;
+- attach and remove one ZRender click handler as active state changes;
 - verify clicks with `containPixel({ gridIndex: 0 }, point)`;
-- convert clicks through `convertFromPixel`;
+- convert the scalar x pixel through `convertFromPixel({ xAxisIndex: 0 }, x)`;
+  do not pass a two-dimensional point to an axis-only finder;
 - project source timestamps to x-axis values;
 - convert projected x values back to pixels with `convertToPixel`;
 - update the ECharts axis pointer and normal tooltip using public
@@ -485,8 +493,8 @@ instance lifecycle code for every chart. It should:
 - hide both when inactive, unmounted, outside zoom, or on activity change;
 - when active state becomes false, dispatch `updateAxisPointer` with
   `currTrigger: "leave"`, then dispatch `hideTip`;
-- on unmount or instance replacement, remove the DOM click handler, unsubscribe,
-  and guard `chart.isDisposed()`;
+- on unmount or instance replacement, call `getZr().off("click", handler)`,
+  unsubscribe, and guard `chart.isDisposed()`;
   and
 - clean up listeners even when chart availability or ordering changes.
 
@@ -580,15 +588,15 @@ No backend, database, Rust, Tauri, or FIT parser change is required.
 ### Slice 2: Control and Shared Wiring
 
 - Add the Dashboard checked preference, control, and help content.
-- Derive availability from route, timeline, and registered-chart count rather
-  than a hardcoded metric list.
+- Derive availability from timeline and registered-chart count rather than route
+  availability or a hardcoded metric list.
 - Derive active state from the checked preference and availability without
   clearing the checked preference when availability changes.
 - Add translations to every locale.
 - Pass the controller, active state, and activity context to map and insights
   components.
-- Dispose old activity controllers and deactivate cleanly when no route is
-  available.
+- Dispose old activity controllers cleanly while keeping chart-only sync active
+  when no route is available.
 
 ### Slice 3: Map Publication and Seeking
 
@@ -670,6 +678,8 @@ Validate at least the following on integrated local `main`:
 
 - Sync off leaves current map and chart behaviour unchanged.
 - Enabling Sync at the route end shows aligned cursors and normal tooltips.
+- With no GPS route, enabling Sync and clicking a chart updates every eligible
+  chart.
 - 1x and 32x playback remain smooth without tooltip/cursor lag building up.
 - Dragging the map slider stops playback and updates every eligible chart.
 - Clicking near the start, middle, and end of each eligible chart seeks the map
@@ -684,15 +694,14 @@ Validate at least the following on integrated local `main`:
   holds; a missing sample does not produce a stale tooltip.
 - Follow moves immediately to chart-origin seeks and remains enabled.
 - Manual map interaction retains the existing Follow-off behaviour.
-- Changing activity clears the old position and publishes the new route's
-  current position.
+- Changing activity clears the old position and, when present, publishes the new
+  route's current position.
 - A pending coalesced map publication cannot reappear after an immediate chart
   click or after Sync becomes inactive.
-- With Sync checked, changing to an activity without GPS keeps the checkbox
-  checked but disables it, deactivates synchronisation, and restores normal
-  chart interaction.
-- Returning to an available route while Sync remains checked reactivates
-  synchronisation and publishes the current map playhead.
+- With Sync checked, changing to an activity without GPS keeps Sync active and
+  allows chart clicks to synchronise all eligible charts.
+- Selecting an activity with a route while Sync remains checked publishes the
+  current map playhead.
 - Toggling Sync off removes programmatic UI and restores ordinary hover
   tooltips.
 - The disabled explanation is available from the focusable help control, the
@@ -762,8 +771,10 @@ non-monotonic input. Never infer time from geographic proximity.
 - Eligible charts display their existing normal tooltip only when ECharts'
   nearest axis row contains a finite value and passes the defined proximity and
   stopped-interval rules.
-- Clicking or tapping an eligible chart plot seeks the map and all other
-  eligible charts to the same source activity timestamp and stops playback.
+- Clicking or tapping an eligible chart plot seeks all other eligible charts
+  and, when present, the map to the same source activity timestamp and stops
+  playback.
+- Sync remains available for eligible charts when an activity has no GPS route.
 - Time/Distance, Moving/Total, zoom, pauses, and activity changes behave as
   specified without stale cross-activity state.
 - A pending coalesced publication never overwrites an immediate seek, clear, or
