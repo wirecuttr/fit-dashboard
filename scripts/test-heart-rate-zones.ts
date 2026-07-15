@@ -1,6 +1,7 @@
 import { createStore } from "zustand/vanilla";
 import {
   buildHeartRateZones,
+  resolveHeartRateZoneIndex,
   resolveHeartRateZoneSelection,
   validateManualHeartRateZoneBounds,
   type HeartRateZonePreferences,
@@ -169,6 +170,41 @@ function testManualZoneRowsRemainOneToOne() {
   assertEqual(fitRows[3].minutes, 9, "FIT-boundary presentation should retain its combined upper bucket");
 }
 
+function testFitBoundariesStartTheNextZone() {
+  const boundaries = [98, 117, 137, 156, 176, 195];
+  const zones = buildHeartRateZones(boundaries, "next-zone-start");
+
+  assertEqual(resolveHeartRateZoneIndex(97, zones), 0, "values below a FIT transition should remain in the lower bucket");
+  assertEqual(resolveHeartRateZoneIndex(98, zones), 1, "a FIT transition value should start the next bucket");
+  assertEqual(resolveHeartRateZoneIndex(116, zones), 1, "values below the next FIT transition should remain in the current bucket");
+  assertEqual(resolveHeartRateZoneIndex(117, zones), 2, "each FIT transition should start its next bucket");
+  assertEqual(resolveHeartRateZoneIndex(194, zones), 5, "the final named bucket should end below the final FIT transition");
+  assertEqual(resolveHeartRateZoneIndex(195, zones), 6, "the final FIT transition should start the upper bucket");
+
+  const accumulated = accumulateHeartRateZoneMinutes([
+    { relMs: 0, heartRate: 98 },
+    { relMs: 60_000, heartRate: 117 },
+    { relMs: 120_000, heartRate: 195 },
+  ], zones);
+  assertEqual(
+    JSON.stringify(accumulated.minutes),
+    JSON.stringify([0, 1, 1, 0, 0, 0, 0]),
+    "record-based fallback totals should classify FIT transition values into the next bucket",
+  );
+
+  const rows = buildZoneTimeRows(zones, [1, 2, 3, 4, 5, 6, 7], "bpm", "fit-transition-zones");
+  assertEqual(
+    JSON.stringify(rows.map((row) => row.range)),
+    JSON.stringify(["<98 bpm", "98-116 bpm", "117-136 bpm", "137-155 bpm", "156-175 bpm", ">175 bpm"]),
+    "FIT rows should retain transition-based labels after classification bounds are normalized",
+  );
+  assertEqual(rows[5].minutes, 13, "FIT rows should retain the existing upper-bucket collapse");
+
+  const manualZones = buildHeartRateZones([98, 117]);
+  assertEqual(resolveHeartRateZoneIndex(98, manualZones), 0, "manual boundaries should remain inclusive upper bounds");
+  assertEqual(resolveHeartRateZoneIndex(99, manualZones), 1, "manual values above an upper bound should enter the next zone");
+}
+
 function testActiveTimeZoneAccumulation() {
   const startTimestampMs = Date.parse("2026-01-01T00:00:00Z");
   const records: RecordPoint[] = [
@@ -334,6 +370,7 @@ const tests = [
   testCompatibleFitBuckets,
   testManualSourceIgnoresFitBuckets,
   testManualZoneRowsRemainOneToOne,
+  testFitBoundariesStartTheNextZone,
   testActiveTimeZoneAccumulation,
   testNoHeartRateSamplesHideZoneTime,
   testPreferenceStoreLoadsAndSavesConfirmedValues,

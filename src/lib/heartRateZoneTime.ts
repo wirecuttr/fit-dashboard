@@ -78,7 +78,7 @@ export type ZoneTimeRow = {
   color: string;
 };
 
-export type ZoneTimeRowMode = "fit-boundaries" | "explicit-zones";
+export type ZoneTimeRowMode = "fit-boundaries" | "fit-transition-zones" | "explicit-zones";
 
 function explicitZoneTimeRows(
   zones: ZoneDefinition[],
@@ -117,7 +117,8 @@ export function buildZoneTimeRows(
   const lowerBounds = zones
     .slice(0, -1)
     .map((zone) => zone.maxInclusive)
-    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    .map((value) => mode === "fit-transition-zones" ? value + 1 : value);
 
   if (lowerBounds.length >= 2 && minutes.length >= lowerBounds.length) {
     const rows: ZoneTimeRow[] = [
