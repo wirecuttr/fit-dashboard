@@ -1,7 +1,18 @@
 import { useState } from "react";
 import ReactECharts from "./ModularECharts";
+import { ActivitySyncChart } from "./ActivitySyncChart";
 import type { Activity, RecordPoint } from "../types";
 import { enableChartWheelPageScroll } from "../lib/chartScroll";
+import {
+  axisXToSourceTimestamp,
+  buildActivitySyncAxisRows,
+  sourceTimestampToAxisX,
+  sourceTimestampToTimeX,
+  timeXToSourceTimestamp,
+  type ActivitySyncChartAdapter,
+  type ActivitySyncController,
+  type ActivitySyncProjectionPoint,
+} from "../lib/activitySync";
 import { buildHeartRateZones, type HeartRateZoneSource } from "../lib/hrZones";
 import { buildPowerZones, zoneSecondsToMinutes, type ActivityZones } from "../lib/zones";
 import { calculatePowerZoneTime } from "../lib/powerZoneTime";
@@ -68,6 +79,8 @@ type Props = {
   timeBasis: ActivityTimeBasis;
   timeResolution: ActivityTimeResolution;
   zones?: ActivityZones | null;
+  syncController?: ActivitySyncController | null;
+  syncActive?: boolean;
   heartRateZoneBoundsBpm?: number[];
   heartRateZoneSource?: HeartRateZoneSource;
   configuredPowerZoneBoundsWatts?: number[];
@@ -385,6 +398,8 @@ export function ActivityInsights({
   xAxisMode = "time",
   timeBasis,
   timeResolution,
+  syncController = null,
+  syncActive = false,
   zones,
   heartRateZoneBoundsBpm,
   heartRateZoneSource,
@@ -434,6 +449,30 @@ export function ActivityInsights({
 
   const t0 = timeResolution.timelineStartMs || records[0]?.timestamp_ms || 0;
   const telemetryPoints = buildTelemetryPoints(records, t0, xAxisMode, distanceUnit, timerMetadata, timeBasis);
+  const syncProjectionPoints: ActivitySyncProjectionPoint[] = telemetryPoints.map((point) => ({
+    x: point.x,
+    sourceTimestampMs: point.timestampMs,
+  }));
+  const createStandardSyncAdapter = (
+    seriesGroups: readonly (readonly SeriesRow[])[],
+  ): ActivitySyncChartAdapter => ({
+    axisRows: buildActivitySyncAxisRows(seriesGroups),
+    sourceTimestampToX: (sourceTimestampMs) => (
+      xAxisMode === "time"
+        ? sourceTimestampToTimeX(sourceTimestampMs, timeResolution, timeBasis)
+        : sourceTimestampToAxisX(
+            syncProjectionPoints,
+            sourceTimestampMs,
+            timeResolution.stoppedIntervals,
+          )
+    ),
+    xToSourceTimestamp: (x, currentSourceTimestampMs) => (
+      xAxisMode === "time"
+        ? timeXToSourceTimestamp(x, timeResolution, timeBasis)
+        : axisXToSourceTimestamp(syncProjectionPoints, x, currentSourceTimestampMs)
+    ),
+    stoppedIntervals: timeResolution.stoppedIntervals,
+  });
   const activeTelemetryPoints = buildTelemetryPoints(records, t0, "time", distanceUnit, timerMetadata, "moving");
   const activeTimestampSet = new Set(activeTelemetryPoints.map((point) => point.timestampMs));
   const displayDurationMs = xAxisMode === "time"
@@ -516,6 +555,19 @@ export function ActivityInsights({
   const currentStaminaLineDataSmoothed = prepareSeries(currentStaminaLineData);
   const potentialStaminaLineDataSmoothed = prepareSeries(potentialStaminaLineData);
   const performanceConditionLineDataWithGaps = prepareSeries(performanceConditionLineData, false);
+  const heartRateSyncAdapter = createStandardSyncAdapter([heartRateLineDataSmoothed]);
+  const paceSyncAdapter = createStandardSyncAdapter([paceLineDataSmoothed]);
+  const speedSyncAdapter = createStandardSyncAdapter([speedLineDataSmoothed]);
+  const elevationSyncAdapter = createStandardSyncAdapter([elevationLineDataSmoothed]);
+  const cadenceSyncAdapter = createStandardSyncAdapter([cadenceLineDataSmoothed]);
+  const powerSyncAdapter = createStandardSyncAdapter([powerLineDataSmoothed]);
+  const temperatureSyncAdapter = createStandardSyncAdapter([temperatureLineDataSmoothed]);
+  const respirationSyncAdapter = createStandardSyncAdapter([respirationLineDataSmoothed]);
+  const staminaSyncAdapter = createStandardSyncAdapter([
+    currentStaminaLineDataSmoothed,
+    potentialStaminaLineDataSmoothed,
+  ]);
+  const performanceConditionSyncAdapter = createStandardSyncAdapter([performanceConditionLineDataWithGaps]);
 
   const hasPowerData = availability.hasPower;
   const hasHeartRateData = availability.hasHeartRate;
@@ -567,6 +619,37 @@ export function ActivityInsights({
   const heartRateDriftOutputDataSmoothed = smoothGraphs
     ? applyRollingAverageSeries(heartRateDriftOutputData, 1, smoothWindow)
     : heartRateDriftOutputData;
+  const heartRateDriftTimelineStartMs = heartRateDriftChartData?.timelineStartMs ?? t0;
+  const heartRateDriftHrSyncRows: SeriesRow[] = heartRateDriftHrData.map(([x, value]) => [
+    x,
+    value,
+    x,
+    heartRateDriftTimelineStartMs + x,
+    null,
+  ]);
+  const heartRateDriftOutputSyncRows: SeriesRow[] = heartRateDriftOutputDataSmoothed.map(([x, value]) => [
+    x,
+    value,
+    x,
+    heartRateDriftTimelineStartMs + x,
+    null,
+  ]);
+  const heartRateDriftAxisRows = buildActivitySyncAxisRows([
+    heartRateDriftHrSyncRows,
+    heartRateDriftOutputSyncRows,
+  ]);
+  const heartRateDriftMaxX = heartRateDriftAxisRows.at(-1)?.x ?? 0;
+  const heartRateDriftSyncAdapter: ActivitySyncChartAdapter = {
+    axisRows: heartRateDriftAxisRows,
+    sourceTimestampToX: (sourceTimestampMs) => Math.max(
+      0,
+      sourceTimestampMs - heartRateDriftTimelineStartMs,
+    ),
+    xToSourceTimestamp: (x) => (
+      heartRateDriftTimelineStartMs + Math.max(0, Math.min(x, heartRateDriftMaxX))
+    ),
+    stoppedIntervals: timeResolution.stoppedIntervals,
+  };
   const hasHeartRateDriftChart = !!heartRateDriftChartData
     && heartRateDriftHrData.some(([, value]) => value !== null)
     && (!heartRateDriftChartData.outputMode || heartRateDriftOutputDataSmoothed.some(([, value]) => value !== null));
@@ -1487,7 +1570,14 @@ export function ActivityInsights({
       formatter: (params: any[]) => {
         const p = params?.[0];
         const rel = Number(p?.value?.[0] ?? 0);
-        let html = formatTooltipHeader(rel, null);
+        let html = formatTelemetryTooltipHeader(
+          "time",
+          heartRateDriftTimelineStartMs,
+          rel,
+          null,
+          distanceUnit,
+          heartRateDriftTimelineStartMs + rel,
+        );
         for (const row of params) {
           if (row.value?.[1] !== null && row.value?.[1] !== undefined) {
             const isHeartRate = row.seriesName === tr("chart.heartRate");
@@ -1542,6 +1632,7 @@ export function ActivityInsights({
     available: boolean;
     title: string;
     option: Record<string, unknown>;
+    syncAdapter?: ActivitySyncChartAdapter;
     onEvents?: typeof zoomEvents;
     height: number;
   };
@@ -1551,6 +1642,7 @@ export function ActivityInsights({
     available: hasSpeedData,
     title: tr("chart.pace"),
     option: paceOption,
+    syncAdapter: paceSyncAdapter,
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
@@ -1559,6 +1651,7 @@ export function ActivityInsights({
     available: hasHeartRateData,
     title: tr("chart.heartRate"),
     option: heartRateOption,
+    syncAdapter: heartRateSyncAdapter,
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
@@ -1567,6 +1660,7 @@ export function ActivityInsights({
     available: hasSpeedData,
     title: tr("insights.speed"),
     option: timelineOption,
+    syncAdapter: speedSyncAdapter,
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
@@ -1575,6 +1669,7 @@ export function ActivityInsights({
     available: hasPowerData,
     title: tr("insights.power"),
     option: powerOption,
+    syncAdapter: powerSyncAdapter,
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
@@ -1583,6 +1678,7 @@ export function ActivityInsights({
     available: hasCadenceData,
     title: tr("insights.cadence"),
     option: cadenceOption,
+    syncAdapter: cadenceSyncAdapter,
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
@@ -1591,6 +1687,7 @@ export function ActivityInsights({
     available: hasStaminaData,
     title: tr("insights.stamina"),
     option: staminaOption,
+    syncAdapter: staminaSyncAdapter,
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
@@ -1599,6 +1696,7 @@ export function ActivityInsights({
     available: hasPerformanceConditionData,
     title: tr("insights.performanceCondition"),
     option: performanceConditionOption,
+    syncAdapter: performanceConditionSyncAdapter,
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
@@ -1607,6 +1705,7 @@ export function ActivityInsights({
     available: hasRespirationData,
     title: tr("insights.respirationRate"),
     option: respirationOption,
+    syncAdapter: respirationSyncAdapter,
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
@@ -1615,6 +1714,7 @@ export function ActivityInsights({
     available: hasTemperatureData,
     title: tr("insights.temperature"),
     option: temperatureOption,
+    syncAdapter: temperatureSyncAdapter,
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
@@ -1624,6 +1724,7 @@ export function ActivityInsights({
     available: hasElevationData,
     title: tr("insights.elevation"),
     option: elevationOption,
+    syncAdapter: elevationSyncAdapter,
     onEvents: zoomEvents,
     height: insightChartHeight,
   };
@@ -1636,7 +1737,7 @@ export function ActivityInsights({
 
   const visibleMetricCharts = metricCharts.filter((chart) => chart.available);
 
-  const supplementalCharts = [
+  const supplementalCharts: VisibleChart[] = [
     staminaChart,
     performanceConditionChart,
     respirationChart,
@@ -1694,13 +1795,33 @@ export function ActivityInsights({
               </div>
             )}
           </div>
-          <ReactECharts option={heartRateDriftOption} onEvents={zoomEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: insightChartHeight, width: "100%" }} />
+          <ActivitySyncChart
+            activityId={activity?.id ?? 0}
+            chartKey="heart-rate-drift"
+            controller={syncController}
+            active={syncActive}
+            adapter={heartRateDriftSyncAdapter}
+            option={heartRateDriftOption}
+            onEvents={zoomEvents}
+            style={{ height: insightChartHeight, width: "100%" }}
+          />
         </article>
       )}
       {visibleMetricCharts.map((chart) => (
         <article className="panel" key={chart.id}>
           <h3>{chart.title}</h3>
-          <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />
+          {chart.syncAdapter && (
+            <ActivitySyncChart
+              activityId={activity?.id ?? 0}
+              chartKey={chart.id}
+              controller={syncController}
+              active={syncActive}
+              adapter={chart.syncAdapter}
+              option={chart.option}
+              onEvents={chart.onEvents}
+              style={{ height: chart.height, width: "100%" }}
+            />
+          )}
         </article>
       ))}
       {supplementalCharts.map((chart) => (
@@ -1727,7 +1848,20 @@ export function ActivityInsights({
           ) : (
             <h3>{chart.title}</h3>
           )}
-          <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />
+          {chart.syncAdapter ? (
+            <ActivitySyncChart
+              activityId={activity?.id ?? 0}
+              chartKey={chart.id}
+              controller={syncController}
+              active={syncActive}
+              adapter={chart.syncAdapter}
+              option={chart.option}
+              onEvents={chart.onEvents}
+              style={{ height: chart.height, width: "100%" }}
+            />
+          ) : (
+            <ReactECharts option={chart.option} onEvents={chart.onEvents} onChartReady={enableChartWheelPageScroll} notMerge style={{ height: chart.height, width: "100%" }} />
+          )}
         </article>
       ))}
       {hasHeartRateZoneData && (

@@ -96,6 +96,7 @@ export type HeartRateDriftExcludedRange = {
 };
 
 export type HeartRateDriftChartData = {
+  timelineStartMs: number;
   heartRate: Array<[number, number | null]>;
   output: Array<[number, number | null]>;
   outputMode?: Exclude<CardiacDecouplingMode, "constant_output_hr">;
@@ -1136,6 +1137,7 @@ export function buildHeartRateDriftChartData(
   ]);
 
   return {
+    timelineStartMs: t0,
     heartRate,
     output,
     ...(result.mode === "constant_output_hr" ? {} : { outputMode: result.mode }),
