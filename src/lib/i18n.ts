@@ -40,7 +40,7 @@ export const LANGUAGES: { code: string; label: string }[] = [
 
 /**
  * Translate a key, with optional interpolation.
- * Usage: t("sidebar.logsSelected", { filtered: 5, total: 10 })
+ * Usage: t("sidebar.activitiesSelected", { filtered: 5, total: 10 })
  */
 function translate(lang: string, key: string, params?: Record<string, string | number>): string {
   const map = locales[lang] ?? en;
