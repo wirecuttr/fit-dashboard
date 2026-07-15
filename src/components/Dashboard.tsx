@@ -867,7 +867,7 @@ export function Dashboard({ onLogout }: Props) {
       picked = await open({
         multiple: true,
         filters: [
-          { name: "Activity logs", extensions: ["fit", "FIT", "tcx", "TCX", "gpx", "GPX"] },
+          { name: t("sidebar.activityFiles"), extensions: ["fit", "FIT", "tcx", "TCX", "gpx", "GPX"] },
           { name: "FIT", extensions: ["fit", "FIT"] },
           { name: "TCX", extensions: ["tcx", "TCX"] },
           { name: "GPX", extensions: ["gpx", "GPX"] },
@@ -1497,7 +1497,7 @@ export function Dashboard({ onLogout }: Props) {
                 FIT Dashboard
                 {supporterBadge && <span className="supporter-badge-inline" title="Supporter Badge Active">{t("header.supporter")}</span>}
               </h1>
-              <span>{t("header.workoutLogAnalytics")}</span>
+              <span>{t("header.activityAnalytics")}</span>
             </div>
           </div>
         </div>
@@ -1529,7 +1529,7 @@ export function Dashboard({ onLogout }: Props) {
             <button className="sidebar-expand-btn" onClick={() => setIsSidebarCollapsed(false)} aria-label={t("sidebar.expandSidebar")} title={t("sidebar.expandSidebar")}>
               <IconExpand />
             </button>
-            <span className="sidebar-collapsed-count">{t("sidebar.logsCount", { count: filtered.length })}</span>
+            <span className="sidebar-collapsed-count">{t("sidebar.activitiesCount", { count: filtered.length })}</span>
           </div>
 
           {/* Full sidebar content */}
@@ -1739,8 +1739,8 @@ export function Dashboard({ onLogout }: Props) {
               </div>
             </div>
 
-            <div className="log-count">
-              <span>{t("sidebar.logsSelected", { filtered: filtered.length, total: activities.length })}</span>
+            <div className="activity-count">
+              <span>{t("sidebar.activitiesSelected", { filtered: filtered.length, total: activities.length })}</span>
               {hasFilters && <button onClick={clearFilters}>{t("sidebar.clearFilters")}</button>}
             </div>
 
@@ -1919,7 +1919,7 @@ export function Dashboard({ onLogout }: Props) {
             activities.length === 0 ? (
               <div className="empty-state">
                 <span className="empty-icon"><IconBarChart size={40} /></span>
-                <span>{t("overview.importLogsToSee")}</span>
+                <span>{t("overview.importActivitiesToSee")}</span>
               </div>
             ) : (
             <>

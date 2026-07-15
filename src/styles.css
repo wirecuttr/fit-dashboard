@@ -918,9 +918,9 @@ button:focus-visible {
   color: var(--accent);
 }
 
-/* Log count */
+/* Activity count */
 
-.log-count {
+.activity-count {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -931,7 +931,7 @@ button:focus-visible {
   flex-shrink: 0;
 }
 
-.log-count button {
+.activity-count button {
   font-size: 0.72rem;
   padding: 0.2rem 0.5rem;
   border-radius: 6px;
@@ -940,7 +940,7 @@ button:focus-visible {
   color: var(--text-muted);
 }
 
-.log-count button:hover {
+.activity-count button:hover {
   color: var(--accent);
   border-color: var(--border-accent);
 }
