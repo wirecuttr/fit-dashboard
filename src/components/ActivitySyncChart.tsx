@@ -12,10 +12,6 @@ import {
 type ChartInstance = {
   isDisposed(): boolean;
   getHeight(): number;
-  getZr(): {
-    on(event: "click", handler: (event: { offsetX?: number; offsetY?: number }) => void): void;
-    off(event: "click", handler: (event: { offsetX?: number; offsetY?: number }) => void): void;
-  };
   containPixel(finder: { gridIndex: number }, value: [number, number]): boolean;
   convertFromPixel(finder: { xAxisIndex: number }, value: [number, number]): number | number[];
   convertToPixel(finder: { xAxisIndex: number }, value: number): number | number[];
@@ -168,12 +164,13 @@ export function ActivitySyncChart({
 
     const listener = (position: ActivitySyncPosition | null) => applyPosition(chart, position);
     const unsubscribe = latest.controller.subscribe(listener);
-    const clickHandler = (event: { offsetX?: number; offsetY?: number }) => {
+    const chartDom = chart.getDom();
+    const clickHandler = (event: MouseEvent) => {
       const current = latestRef.current;
       if (!current.active || !current.controller || chart.isDisposed()) return;
-      const offsetX = event.offsetX;
-      const offsetY = event.offsetY;
-      if (typeof offsetX !== "number" || typeof offsetY !== "number") return;
+      const bounds = chartDom.getBoundingClientRect();
+      const offsetX = event.clientX - bounds.left;
+      const offsetY = event.clientY - bounds.top;
       if (!chart.containPixel({ gridIndex: 0 }, [offsetX, offsetY])) return;
       const x = axisX(chart.convertFromPixel({ xAxisIndex: 0 }, [offsetX, offsetY]));
       if (x === null) return;
@@ -188,10 +185,10 @@ export function ActivitySyncChart({
         origin: "chart",
       }, { immediate: true });
     };
-    chart.getZr().on("click", clickHandler);
+    chartDom.addEventListener("click", clickHandler, true);
     bindingCleanupRef.current = () => {
       unsubscribe();
-      if (!chart.isDisposed()) chart.getZr().off("click", clickHandler);
+      chartDom.removeEventListener("click", clickHandler, true);
     };
     applyPosition(chart, latest.controller.getCurrent());
   }, [applyPosition, detachBindings]);
