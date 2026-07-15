@@ -401,7 +401,6 @@
   "activityMap.colorTime": "Time (Start → End)",
   "activityMap.follow": "Follow",
   "activityMap.telemetry": "Telemetry",
-  "activityMap.resetZoom": "Reset zoom",
   "activityMap.paused": "Paused",
   "activityMap.speed": "Speed",
   "activityMap.heart": "Heart",

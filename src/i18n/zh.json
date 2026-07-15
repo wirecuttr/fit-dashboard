@@ -398,7 +398,6 @@
   "activityMap.colorTime": "时间（开始 → 结束）",
   "activityMap.follow": "跟随",
   "activityMap.telemetry": "遥测",
-  "activityMap.resetZoom": "重置缩放",
   "activityMap.paused": "已暂停",
   "activityMap.speed": "速度",
   "activityMap.heart": "心率",

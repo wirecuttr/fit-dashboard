@@ -2629,8 +2629,7 @@ button:focus-visible {
   flex-direction: column;
 }
 
-.overview-location-panel .map-header,
-.overview-location-panel .map-footer-actions {
+.overview-location-panel .map-header {
   flex-shrink: 0;
 }
 
@@ -2655,12 +2654,6 @@ button:focus-visible {
 .overview-weekly-trend-chart {
   flex: 1;
   min-height: 0;
-}
-
-.map-footer-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 0.55rem;
 }
 
 .overview-heatmap-head {
