@@ -471,7 +471,8 @@ instance lifecycle code for every chart. It should:
   unregister it on unmount;
 - register and unregister a controller position subscription as active state
   changes;
-- attach and remove one ZRender click handler as active state changes;
+- attach and remove one native click handler on the ECharts DOM container as
+  active state changes;
 - verify clicks with `containPixel({ gridIndex: 0 }, point)`;
 - convert clicks through `convertFromPixel`;
 - project source timestamps to x-axis values;
@@ -484,8 +485,8 @@ instance lifecycle code for every chart. It should:
 - hide both when inactive, unmounted, outside zoom, or on activity change;
 - when active state becomes false, dispatch `updateAxisPointer` with
   `currTrigger: "leave"`, then dispatch `hideTip`;
-- on unmount or instance replacement, call
-  `getZr().off("click", handler)`, unsubscribe, and guard `chart.isDisposed()`;
+- on unmount or instance replacement, remove the DOM click handler, unsubscribe,
+  and guard `chart.isDisposed()`;
   and
 - clean up listeners even when chart availability or ordering changes.
 
