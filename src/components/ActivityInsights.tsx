@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import ReactECharts from "./ModularECharts";
 import { ActivitySyncChart } from "./ActivitySyncChart";
 import type { Activity, RecordPoint } from "../types";
@@ -1827,6 +1827,102 @@ export function ActivityInsights({
       </span>
     );
   };
+  const renderHeartRateZoneTimePanel = () => hasHeartRateZoneData ? (
+    <article className="panel">
+      <div className="chart-panel-header">
+        <h3>{tr("insights.heartRateZoneTime")}</h3>
+        {renderHeartRateZoneSource()}
+      </div>
+      {heartRateZonePreferenceError && (
+        <p className="zone-source-error-text" role="alert">
+          {tr("insights.hrZoneSourceSaveFailed")}
+        </p>
+      )}
+      <ZoneTimeBars
+        title={tr("insights.heartRateZoneTime")}
+        zones={hrZones}
+        minutes={zoneMinutes}
+        unit="bpm"
+        totalMinutes={zoneChartTotalMinutes}
+        rowMode={heartRateZoneSource === "fit" ? "fit-transition-zones" : "explicit-zones"}
+      />
+    </article>
+  ) : null;
+  const renderPowerZoneTimePanel = () => hasPowerZoneData ? (
+    <article className="panel">
+      <div className="chart-panel-header">
+        <h3>{tr("insights.powerZoneTime")}</h3>
+        {bothPowerZoneSourcesAvailable ? (
+          <fieldset
+            className="zone-source-control"
+            disabled={powerZonePreferenceSaving}
+            aria-label={tr("insights.powerZoneSource")}
+          >
+            <button
+              type="button"
+              className={effectivePowerZoneTimeSource === "fit" ? "active" : ""}
+              aria-pressed={effectivePowerZoneTimeSource === "fit"}
+              title={tr("insights.powerZoneSourceFitHelp")}
+              onClick={() => void onPowerZoneTimeSourceChange?.("fit")}
+            >
+              {tr("insights.powerZoneSourceFit")}
+            </button>
+            <button
+              type="button"
+              className={effectivePowerZoneTimeSource === "calculated" ? "active" : ""}
+              aria-pressed={effectivePowerZoneTimeSource === "calculated"}
+              title={tr("insights.powerZoneSourceCalculatedHelp")}
+              onClick={() => void onPowerZoneTimeSourceChange?.("calculated")}
+            >
+              {tr("insights.powerZoneSourceCalculated")}
+            </button>
+          </fieldset>
+        ) : effectivePowerZoneTimeSource ? (
+          <span
+            className="zone-source-label"
+            title={tr(effectivePowerZoneTimeSource === "fit"
+              ? "insights.powerZoneSourceFitHelp"
+              : "insights.powerZoneSourceCalculatedHelp")}
+            aria-label={`${tr("insights.powerZoneSource")}: ${tr(effectivePowerZoneTimeSource === "fit"
+              ? "insights.powerZoneSourceFit"
+              : "insights.powerZoneSourceCalculated")}`}
+          >
+            {tr(effectivePowerZoneTimeSource === "fit"
+              ? "insights.powerZoneSourceFit"
+              : "insights.powerZoneSourceCalculated")}
+          </span>
+        ) : null}
+      </div>
+      {powerZonePreferenceStatus === "error" && onPowerZonePreferencesRetry && (
+        <div className="power-zone-source-error" role="alert">
+          <span>{tr("settings.powerZonesLoadFailed")}</span>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={powerZonePreferenceRetrying}
+            onClick={() => void onPowerZonePreferencesRetry()}
+          >
+            {tr("app.retry")}
+          </button>
+        </div>
+      )}
+      {powerZonePreferenceStatus === "ready" && powerZonePreferenceError && (
+        <p className="power-zone-source-error-text" role="alert">
+          {tr("insights.powerZoneSourceSaveFailed")}
+        </p>
+      )}
+      <ZoneTimeBars
+        title={tr("insights.powerZoneTime")}
+        zones={displayedPowerZones}
+        minutes={displayedPowerZoneMinutes}
+        unit="W"
+        totalMinutes={zoneChartTotalMinutes}
+        rowMode={effectivePowerZoneTimeSource === "calculated" ? "explicit-zones" : "fit-boundaries"}
+      />
+    </article>
+  ) : null;
+  const hasVisibleHeartRateChart = visibleMetricCharts.some((chart) => chart.id === "heart-rate");
+  const hasVisiblePowerChart = visibleMetricCharts.some((chart) => chart.id === "power");
 
   return (
     <>
@@ -1884,47 +1980,53 @@ export function ActivityInsights({
         </article>
       )}
       {visibleMetricCharts.map((chart) => (
-        <article className="panel" key={chart.id}>
-          {chart.id === "heart-rate" ? (
-            <>
+        <Fragment key={chart.id}>
+          <article className="panel">
+            {chart.id === "heart-rate" ? (
+              <>
+                <div className="chart-panel-header">
+                  <h3>{chart.title}</h3>
+                  {renderHeartRateZoneSource()}
+                </div>
+                {heartRateZonePreferenceError && (
+                  <p className="zone-source-error-text" role="alert">
+                    {tr("insights.hrZoneSourceSaveFailed")}
+                  </p>
+                )}
+              </>
+            ) : chart.id === "power" && configuredPowerZones.length > 0 ? (
               <div className="chart-panel-header">
                 <h3>{chart.title}</h3>
-                {renderHeartRateZoneSource()}
+                <span
+                  className="zone-source-label"
+                  title={tr("insights.powerLineZoneSourceCalculatedHelp")}
+                  aria-label={`${tr("insights.powerLineZoneSource")}: ${tr("insights.powerZoneSourceCalculated")}`}
+                >
+                  {tr("insights.powerZoneSourceCalculated")}
+                </span>
               </div>
-              {heartRateZonePreferenceError && (
-                <p className="zone-source-error-text" role="alert">
-                  {tr("insights.hrZoneSourceSaveFailed")}
-                </p>
-              )}
-            </>
-          ) : chart.id === "power" && configuredPowerZones.length > 0 ? (
-            <div className="chart-panel-header">
+            ) : (
               <h3>{chart.title}</h3>
-              <span
-                className="zone-source-label"
-                title={tr("insights.powerLineZoneSourceCalculatedHelp")}
-                aria-label={`${tr("insights.powerLineZoneSource")}: ${tr("insights.powerZoneSourceCalculated")}`}
-              >
-                {tr("insights.powerZoneSourceCalculated")}
-              </span>
-            </div>
-          ) : (
-            <h3>{chart.title}</h3>
-          )}
-          {chart.syncAdapter && (
-            <ActivitySyncChart
-              activityId={activity?.id ?? 0}
-              chartKey={chart.id}
-              controller={syncController}
-              active={syncActive}
-              adapter={chart.syncAdapter}
-              option={chart.option}
-              onEvents={chart.onEvents}
-              style={{ height: chart.height, width: "100%" }}
-            />
-          )}
-        </article>
+            )}
+            {chart.syncAdapter && (
+              <ActivitySyncChart
+                activityId={activity?.id ?? 0}
+                chartKey={chart.id}
+                controller={syncController}
+                active={syncActive}
+                adapter={chart.syncAdapter}
+                option={chart.option}
+                onEvents={chart.onEvents}
+                style={{ height: chart.height, width: "100%" }}
+              />
+            )}
+          </article>
+          {chart.id === "heart-rate" && renderHeartRateZoneTimePanel()}
+          {chart.id === "power" && renderPowerZoneTimePanel()}
+        </Fragment>
       ))}
+      {!hasVisibleHeartRateChart && renderHeartRateZoneTimePanel()}
+      {!hasVisiblePowerChart && renderPowerZoneTimePanel()}
       {supplementalCharts.map((chart) => (
         <article className="panel" key={chart.id}>
           {chart.id === "scatter-comparison" ? (
@@ -1965,100 +2067,6 @@ export function ActivityInsights({
           )}
         </article>
       ))}
-      {hasHeartRateZoneData && (
-        <article className="panel">
-          <div className="chart-panel-header">
-            <h3>{tr("insights.heartRateZoneTime")}</h3>
-            {renderHeartRateZoneSource()}
-          </div>
-          {heartRateZonePreferenceError && (
-            <p className="zone-source-error-text" role="alert">
-              {tr("insights.hrZoneSourceSaveFailed")}
-            </p>
-          )}
-          <ZoneTimeBars
-            title={tr("insights.heartRateZoneTime")}
-            zones={hrZones}
-            minutes={zoneMinutes}
-            unit="bpm"
-            totalMinutes={zoneChartTotalMinutes}
-            rowMode={heartRateZoneSource === "fit" ? "fit-transition-zones" : "explicit-zones"}
-          />
-        </article>
-      )}
-      {hasPowerZoneData && (
-        <article className="panel">
-          <div className="chart-panel-header">
-            <h3>{tr("insights.powerZoneTime")}</h3>
-            {bothPowerZoneSourcesAvailable ? (
-              <fieldset
-                className="zone-source-control"
-                disabled={powerZonePreferenceSaving}
-                aria-label={tr("insights.powerZoneSource")}
-              >
-                <button
-                  type="button"
-                  className={effectivePowerZoneTimeSource === "fit" ? "active" : ""}
-                  aria-pressed={effectivePowerZoneTimeSource === "fit"}
-                  title={tr("insights.powerZoneSourceFitHelp")}
-                  onClick={() => void onPowerZoneTimeSourceChange?.("fit")}
-                >
-                  {tr("insights.powerZoneSourceFit")}
-                </button>
-                <button
-                  type="button"
-                  className={effectivePowerZoneTimeSource === "calculated" ? "active" : ""}
-                  aria-pressed={effectivePowerZoneTimeSource === "calculated"}
-                  title={tr("insights.powerZoneSourceCalculatedHelp")}
-                  onClick={() => void onPowerZoneTimeSourceChange?.("calculated")}
-                >
-                  {tr("insights.powerZoneSourceCalculated")}
-                </button>
-              </fieldset>
-            ) : effectivePowerZoneTimeSource ? (
-              <span
-                className="zone-source-label"
-                title={tr(effectivePowerZoneTimeSource === "fit"
-                  ? "insights.powerZoneSourceFitHelp"
-                  : "insights.powerZoneSourceCalculatedHelp")}
-                aria-label={`${tr("insights.powerZoneSource")}: ${tr(effectivePowerZoneTimeSource === "fit"
-                  ? "insights.powerZoneSourceFit"
-                  : "insights.powerZoneSourceCalculated")}`}
-              >
-                {tr(effectivePowerZoneTimeSource === "fit"
-                  ? "insights.powerZoneSourceFit"
-                  : "insights.powerZoneSourceCalculated")}
-              </span>
-            ) : null}
-          </div>
-          {powerZonePreferenceStatus === "error" && onPowerZonePreferencesRetry && (
-            <div className="power-zone-source-error" role="alert">
-              <span>{tr("settings.powerZonesLoadFailed")}</span>
-              <button
-                type="button"
-                className="btn-secondary"
-                disabled={powerZonePreferenceRetrying}
-                onClick={() => void onPowerZonePreferencesRetry()}
-              >
-                {tr("app.retry")}
-              </button>
-            </div>
-          )}
-          {powerZonePreferenceStatus === "ready" && powerZonePreferenceError && (
-            <p className="power-zone-source-error-text" role="alert">
-              {tr("insights.powerZoneSourceSaveFailed")}
-            </p>
-          )}
-          <ZoneTimeBars
-            title={tr("insights.powerZoneTime")}
-            zones={displayedPowerZones}
-            minutes={displayedPowerZoneMinutes}
-            unit="W"
-            totalMinutes={zoneChartTotalMinutes}
-            rowMode={effectivePowerZoneTimeSource === "calculated" ? "explicit-zones" : "fit-boundaries"}
-          />
-        </article>
-      )}
     </>
   );
 }
