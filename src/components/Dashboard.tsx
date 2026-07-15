@@ -57,7 +57,7 @@ import {
   deriveActivitySyncState,
 } from "../lib/activitySync";
 import { getHeartRateZoneBounds } from "../lib/zones";
-import { resolveHeartRateZoneSelection } from "../lib/hrZones";
+import { resolveHeartRateZoneSelection, type HeartRateZoneSource } from "../lib/hrZones";
 import { configuredPowerZoneBoundsWatts } from "../lib/powerZones";
 
 type Props = { onLogout: () => Promise<void> };
@@ -368,6 +368,8 @@ export function Dashboard({ onLogout }: Props) {
     overviewMapStyle, setOverviewMapStyle, smoothGraphs,
     loadSupporterStatus, theme, manualHeartRateZoneBoundsBpm,
     manualHeartRateZoneUsage, heartRateZonePreferenceStatus,
+    heartRateZonePreferenceSaving, heartRateZonePreferenceError,
+    heartRateZonePreferenceErrorContext, setManualHeartRateZoneUsage,
     configuredPowerZoneBoundPercents, powerZoneTimeSource,
     powerZonePreferenceStatus, powerZonePreferenceSaving,
     powerZonePreferenceError, setPowerZoneTimeSource,
@@ -1195,6 +1197,7 @@ export function Dashboard({ onLogout }: Props) {
     () => getHeartRateZoneBounds(selectedMetadata),
     [selectedMetadata]
   );
+  const fitHeartRateZonesAvailable = (fitHeartRateZoneBoundsBpm?.length ?? 0) >= 2;
   const heartRateZoneSelection = useMemo(
     () => heartRateZonePreferenceStatus === "ready"
       ? resolveHeartRateZoneSelection(
@@ -1209,6 +1212,9 @@ export function Dashboard({ onLogout }: Props) {
       manualHeartRateZoneBoundsBpm,
       manualHeartRateZoneUsage,
     ]
+  );
+  const handleHeartRateZoneSourceChange = (source: HeartRateZoneSource) => (
+    setManualHeartRateZoneUsage(source === "fit" ? "fallback" : "always")
   );
   const selectedPowerZoneBoundsWatts = useMemo(
     () => powerZonePreferenceStatus === "ready"
@@ -2167,6 +2173,11 @@ export function Dashboard({ onLogout }: Props) {
                     zones={selectedMetadata?.zones ?? null}
                     heartRateZoneBoundsBpm={heartRateZoneSelection?.boundsBpm}
                     heartRateZoneSource={heartRateZoneSelection?.source}
+                    fitHeartRateZonesAvailable={fitHeartRateZonesAvailable}
+                    heartRateZonePreferenceStatus={heartRateZonePreferenceStatus}
+                    heartRateZonePreferenceSaving={heartRateZonePreferenceSaving}
+                    heartRateZonePreferenceError={heartRateZonePreferenceErrorContext === "source" ? heartRateZonePreferenceError : null}
+                    onHeartRateZoneSourceChange={handleHeartRateZoneSourceChange}
                     configuredPowerZoneBoundsWatts={selectedPowerZoneBoundsWatts}
                     powerZoneTimeSource={powerZoneTimeSource}
                     powerZonePreferenceStatus={powerZonePreferenceStatus}

@@ -257,30 +257,34 @@ without changing the stored value.
 
 ### Preference Save Behaviour
 
-The zone editor edits local boundary and usage-policy drafts. Pressing Save:
+The zone editor edits only local boundary drafts. Pressing Save:
 
-1. validates both drafts in the frontend;
-2. sends the draft boundaries and usage policy as one complete preference
-   object;
+1. validates the boundaries in the frontend;
+2. sends the draft boundaries with the confirmed source policy as one complete
+   preference object;
 3. waits for the backend response;
 4. updates the Zustand state with the confirmed normalized value; and
 5. closes the dialog only after success.
 
 On failure, the previous effective preferences remain active, the dialog stays
 open, and the user sees a localized error. Disable the dialog controls while
-the save is in flight.
+the save is in flight. A boundary reset does not change the source policy.
 
-### Usage Checkbox Behaviour
+### Chart Source Behaviour
 
-The usage policy is presented inside the zone editor as an `Always use custom
-zones` checkbox with an adjacent help button. The checkbox is off by default,
-which maps to `fallback`; the stored `always` value opens as checked. The help
-explains that off prefers FIT-derived zones and uses custom zones only as a
-fallback, while on uses custom zones for every activity.
+The usage policy is presented on both the Heart Rate line chart and Heart Rate
+Zone Time chart as one synchronized `FIT`/`Custom` zone-source choice. `FIT`
+maps to stored `fallback` behaviour and `Custom` maps to stored `always`
+behaviour. Changing the choice on either chart applies optimistically to both
+charts and persists immediately. If saving fails, restore the confirmed source
+and show a localized error.
 
-The checkbox remains a draft until Save succeeds. Reset asks for confirmation,
-then restores the default boundaries and clears the checkbox as drafts. Closing
-without saving discards both drafts.
+When both sources are usable for the selected activity, render an interactive
+segmented control. When only one source is usable, render a static source label.
+Tooltips explain that FIT totals are preferred when compatible, FIT boundaries
+are used for record-based fallback calculation, and Custom always calculates
+from recorded heart rate. The same source controls line colouring and zone time
+so the charts cannot silently use different zone definitions.
 
 ### Existing Browser Settings
 
@@ -389,10 +393,8 @@ The dialog includes:
 - four boundary handles;
 - coloured zone segments;
 - live zone range labels;
-- an `Always use custom zones` checkbox, off by default;
-- a help button explaining the checked and unchecked behaviours;
-- a Reset to defaults action that confirms before replacing the boundary and
-  usage drafts;
+- a Reset to defaults action that confirms before replacing the boundary
+  drafts;
 - Save and Cancel/Close actions;
 - pointer interaction;
 - keyboard-operable handles with appropriate slider semantics; and
@@ -422,9 +424,11 @@ change spelling style.
    the stored manual policy.
 7. `Dashboard` passes the effective boundaries and source to
    `ActivityInsights` while retaining all existing chart props.
-8. `ActivityInsights` builds heart-rate zones from the effective boundaries.
-9. The source determines whether FIT aggregate zone totals are compatible or
-   record-level recalculation is required.
+8. `ActivityInsights` exposes the synchronized source control on both HR
+   charts, plus static source indicators when only one source is usable.
+9. `ActivityInsights` builds heart-rate zones from the effective boundaries.
+10. The source determines whether FIT aggregate zone totals are compatible or
+    record-level recalculation is required.
 
 Handle preference-load failure separately from the activity refresh rather than
 allowing one rejecting combined promise to discard an otherwise successful
@@ -474,24 +478,27 @@ information, and blacklist controls while adding the manual-zone section.
   - Add Tauri/HTTP preference methods and shared response types.
 - `src/stores/settingsStore.ts`
   - Add manual bounds, usage, explicit load status, asynchronous load/retry,
-    and one confirmed atomic save for the boundary and usage drafts.
+    confirmed boundary saves, and immediately persisted source changes with
+    optimistic rollback.
   - Do not include the new durable settings in the existing localStorage
     serializer.
 - `src/lib/hrZones.ts` and/or `src/lib/zones.ts`
   - Centralize defaults, validation, and effective-source resolution.
 - `src/components/SettingsPanel.tsx`
-  - Integrate the boundary editor, saved usage checkbox, help, and reset
-    confirmation.
+  - Integrate the boundary editor and reset confirmation without a separate
+    usage-policy control.
 - `src/components/Dashboard.tsx`
   - Resolve FIT versus manual bounds and pass source-aware selection to charts.
 - `src/components/ActivityInsights.tsx`
   - Make aggregate time-in-zone reuse source-aware and calculate manual zone
     time from one-second `analysisRecords` with active-time handling.
+  - Expose the synchronized FIT/Custom source control on both HR charts and a
+    calculated-source tooltip on the Power line chart.
 - `src/styles.css`
   - Adapt upstream dialog styles to the current settings and responsive layout.
 - `src/i18n/*.json`
-  - Merge upstream zone-editor strings and add policy, save-error, and
-    accessibility strings.
+  - Merge upstream zone-editor strings and add chart-source, tooltip,
+    save-error, and accessibility strings.
 
 ## Implementation Slices
 
@@ -532,7 +539,8 @@ reload it, and reject invalid values.
 - Disable manual controls until loading succeeds and provide a retry after
   failure.
 - Keep browser-persisted presentation settings unchanged.
-- Keep confirmed preferences active until the combined draft save succeeds.
+- Keep confirmed boundaries active until a boundary save succeeds; apply source
+  changes optimistically and restore the confirmed source if persistence fails.
 
 Completion condition: refresh and browser-storage clearing do not remove the
 manual preferences.
@@ -540,8 +548,9 @@ manual preferences.
 ### 4. Integrate the Manual-Zone User Interface
 
 - Port and adapt the upstream slider dialog.
-- Add the saved `Always use custom zones` checkbox and explanatory help.
-- Confirm before Reset replaces the boundary and usage drafts.
+- Add synchronized chart-level FIT/Custom source controls with explanatory
+  tooltips and immediate persistence.
+- Confirm before Reset replaces the boundary drafts.
 - Fix slider range and validation consistency.
 - Add keyboard and accessible-label support.
 - Merge and add localized copy.
@@ -605,7 +614,8 @@ begins a cold rebuild of heavy native dependencies such as `libduckdb-sys`.
 - A simulated interruption of preference replacement retains the old complete
   value rather than deleting the row.
 - An unsupported stored version falls back safely.
-- A failed combined save leaves the confirmed boundaries and policy active.
+- A failed boundary save leaves the confirmed boundaries and policy active.
+- A failed source save restores the confirmed source while preserving bounds.
 - A second preference save is blocked while the first is in flight.
 
 ### Selection Matrix
@@ -614,8 +624,8 @@ begins a cold rebuild of heavy native dependencies such as `libduckdb-sys`.
 - No FIT bounds plus `fallback` uses manual bounds.
 - FIT bounds plus `always` uses manual bounds.
 - No FIT bounds plus `always` uses manual bounds.
-- Saving a changed policy updates the displayed chart colouring and zone-time
-  bars without changing the imported activity metadata.
+- Changing the chart-level source updates both displayed chart colouring and
+  zone-time bars without changing the imported activity metadata.
 
 ### Zone-Time Data
 
@@ -661,6 +671,8 @@ begins a cold rebuild of heavy native dependencies such as `libduckdb-sys`.
 - FIT-derived heart-rate boundaries remain the default when available.
 - Manual boundaries are used as a fallback when FIT boundaries are absent.
 - The user can choose to use manual boundaries for every activity.
+- The synchronized chart-level FIT/Custom control applies immediately on both
+  HR charts and persists in DuckDB.
 - Manual-zone preferences are stored in DuckDB and survive browser-storage
   clearing.
 - Preference replacement is transactional.

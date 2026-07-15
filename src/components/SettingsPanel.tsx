@@ -12,7 +12,6 @@ import {
   MANUAL_HR_SLIDER_MAX_BPM,
   MANUAL_HR_SLIDER_MIN_BPM,
   validateManualHeartRateZoneBounds,
-  type ManualHeartRateZoneUsage,
 } from "../lib/hrZones";
 import {
   DEFAULT_POWER_ZONE_BOUND_PERCENTS,
@@ -51,7 +50,6 @@ type Translate = (key: string, params?: Record<string, string | number>) => stri
 
 function HeartRateZoneDialog({
   bounds,
-  usage,
   saving,
   saveError,
   onSave,
@@ -59,22 +57,15 @@ function HeartRateZoneDialog({
   t,
 }: {
   bounds: number[];
-  usage: ManualHeartRateZoneUsage;
   saving: boolean;
   saveError: boolean;
-  onSave: (
-    boundsBpm: number[],
-    usage: ManualHeartRateZoneUsage,
-  ) => Promise<boolean>;
+  onSave: (boundsBpm: number[]) => Promise<boolean>;
   onClose: () => void;
   t: Translate;
 }) {
   const [draft, setDraft] = useState(() => [...bounds]);
-  const [draftUsage, setDraftUsage] = useState(usage);
   const [dragging, setDragging] = useState<number | null>(null);
-  const [usageHelpOpen, setUsageHelpOpen] = useState(false);
   const trackRef = useRef<HTMLDivElement>(null);
-  const usageHelpRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -120,11 +111,6 @@ function HeartRateZoneDialog({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        if (usageHelpOpen) {
-          event.preventDefault();
-          setUsageHelpOpen(false);
-          return;
-        }
         if (!saving) onClose();
       }
       if (event.key !== "Tab") return;
@@ -152,18 +138,7 @@ function HeartRateZoneDialog({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, saving, usageHelpOpen]);
-
-  useEffect(() => {
-    if (!usageHelpOpen) return;
-    const closeOnOutsidePress = (event: PointerEvent) => {
-      if (!usageHelpRef.current?.contains(event.target as Node)) {
-        setUsageHelpOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePress);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
-  }, [usageHelpOpen]);
+  }, [onClose, saving]);
 
   useEffect(() => {
     if (dragging === null) return;
@@ -219,35 +194,6 @@ function HeartRateZoneDialog({
         <p id="hr-zone-dialog-description" className="hr-zone-dialog-desc">
           {t("settings.hrZonesDescription")}
         </p>
-
-        <div className="hr-zone-usage-row">
-          <label className="hr-zone-usage-checkbox">
-            <input
-              type="checkbox"
-              checked={draftUsage === "always"}
-              disabled={saving}
-              onChange={(event) => setDraftUsage(event.target.checked ? "always" : "fallback")}
-            />
-            <span>{t("settings.hrZonesAlwaysCustom")}</span>
-          </label>
-          <div className="hr-zone-usage-help" ref={usageHelpRef}>
-            <button
-              type="button"
-              className="hr-zone-usage-help-button"
-              aria-label={t("settings.hrZonesUsageHelpLabel")}
-              aria-expanded={usageHelpOpen}
-              disabled={saving}
-              onClick={() => setUsageHelpOpen((open) => !open)}
-            >
-              ?
-            </button>
-            {usageHelpOpen && (
-              <div className="hr-zone-usage-help-popover" role="dialog" aria-label={t("settings.hrZonesUsageHelpLabel")}>
-                {t("settings.hrZonesUsageHelp")}
-              </div>
-            )}
-          </div>
-        </div>
 
         <div className="hr-zone-slider-container">
           <div className="hr-zone-slider" ref={trackRef}>
@@ -334,7 +280,6 @@ function HeartRateZoneDialog({
             onClick={() => {
               if (!window.confirm(t("settings.zoneResetConfirm"))) return;
               setDraft([...DEFAULT_HR_ZONE_BOUNDS]);
-              setDraftUsage("fallback");
             }}
             disabled={saving}
           >
@@ -343,7 +288,7 @@ function HeartRateZoneDialog({
           <button
             type="button"
             className="btn-primary"
-            onClick={() => void onSave(draft, draftUsage).then((saved) => { if (saved) onClose(); })}
+            onClick={() => void onSave(draft).then((saved) => { if (saved) onClose(); })}
             disabled={saving || !validateManualHeartRateZoneBounds(draft)}
           >
             {saving ? t("settings.hrZonesSaving") : t("settings.hrZonesSave")}
@@ -609,10 +554,10 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
     smoothGraphs,
     supporterBadge,
     manualHeartRateZoneBoundsBpm,
-    manualHeartRateZoneUsage,
     heartRateZonePreferenceStatus,
     heartRateZonePreferenceSaving,
     heartRateZonePreferenceError,
+    heartRateZonePreferenceErrorContext,
     configuredPowerZoneBoundPercents,
     powerZonePreferenceStatus,
     powerZonePreferenceSaving,
@@ -623,7 +568,7 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
     setTimeFormat,
     setSmoothGraphs,
     loadHeartRateZonePreferences,
-    saveManualHeartRateZonePreferences,
+    saveManualHeartRateZoneBounds,
     savePowerZoneBoundPercents,
     verifySupporterCode,
     removeSupporterBadge,
@@ -779,7 +724,9 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
                   {heartRateZonePreferenceSaving && (
                     <p className="hr-zone-status" role="status">{t("settings.hrZonesSaving")}</p>
                   )}
-                  {heartRateZonePreferenceError && !showHrZoneDialog && (
+                  {heartRateZonePreferenceErrorContext === "bounds"
+                    && heartRateZonePreferenceError
+                    && !showHrZoneDialog && (
                     <p className="hr-zone-status error" role="alert">{t("settings.hrZonesSaveFailed")}</p>
                   )}
                 </>
@@ -945,10 +892,9 @@ export function SettingsPanel({ appVersion, versionBadgeStatus }: Props) {
       {showHrZoneDialog && (
         <HeartRateZoneDialog
           bounds={manualHeartRateZoneBoundsBpm}
-          usage={manualHeartRateZoneUsage}
           saving={heartRateZonePreferenceSaving}
-          saveError={!!heartRateZonePreferenceError}
-          onSave={saveManualHeartRateZonePreferences}
+          saveError={heartRateZonePreferenceErrorContext === "bounds" && !!heartRateZonePreferenceError}
+          onSave={saveManualHeartRateZoneBounds}
           onClose={() => setShowHrZoneDialog(false)}
           t={t}
         />
