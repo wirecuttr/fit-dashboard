@@ -27,6 +27,7 @@ struct StoppedInterval {
     end_ms: i64,
     trigger: Option<String>,
     resume_trigger: Option<String>,
+    source: &'static str,
 }
 
 pub fn is_non_activity_fit_error(err: &anyhow::Error) -> bool {
@@ -847,6 +848,7 @@ fn build_stopped_intervals(
                     end_ms,
                     trigger: stop_event.timer_trigger,
                     resume_trigger: event.timer_trigger,
+                    source: "fit_event_message",
                 });
             }
         }
@@ -855,8 +857,106 @@ fn build_stopped_intervals(
     intervals
 }
 
+fn unmatched_timer_starts(timer_events: &[TimerEvent]) -> Vec<TimerEvent> {
+    let mut events = timer_events.to_vec();
+    events.sort_by_key(|event| event.timestamp_ms);
+
+    let mut timer_stopped = false;
+    let mut unmatched_starts = Vec::new();
+    for event in events {
+        if event.event != "timer" {
+            continue;
+        }
+
+        if is_timer_stop_event(&event.event_type) {
+            timer_stopped = true;
+        } else if is_timer_start_event(&event.event_type) {
+            if timer_stopped {
+                timer_stopped = false;
+            } else {
+                unmatched_starts.push(event);
+            }
+        }
+    }
+
+    unmatched_starts
+}
+
+fn infer_missing_stopped_intervals(
+    timer_events: &[TimerEvent],
+    record_timestamps: &[i64],
+    explicit_intervals: &[StoppedInterval],
+    record_start_ts: i64,
+    record_end_ts: i64,
+    expected_stopped_time_s: f64,
+) -> Vec<StoppedInterval> {
+    let explicit_stopped_time_s: f64 = explicit_intervals
+        .iter()
+        .map(|interval| ((interval.end_ms - interval.start_ms).max(0) as f64) / 1000.0)
+        .sum();
+    let unexplained_stopped_time_s = expected_stopped_time_s - explicit_stopped_time_s;
+    if unexplained_stopped_time_s <= TIMER_INTERVAL_TOLERANCE_S {
+        return Vec::new();
+    }
+
+    let mut timestamps = record_timestamps
+        .iter()
+        .copied()
+        .filter(|timestamp| *timestamp >= record_start_ts && *timestamp <= record_end_ts)
+        .collect::<Vec<_>>();
+    timestamps.sort_unstable();
+    timestamps.dedup();
+    if timestamps.len() < 2 {
+        return Vec::new();
+    }
+
+    let mut candidates = Vec::new();
+    for event in unmatched_timer_starts(timer_events) {
+        if event.timestamp_ms <= record_start_ts || event.timestamp_ms > record_end_ts {
+            continue;
+        }
+        let end_ms = event.timestamp_ms;
+        let insertion = timestamps.partition_point(|timestamp| *timestamp < end_ms);
+        if insertion == 0 {
+            continue;
+        }
+
+        let start_ms = timestamps[insertion - 1].max(record_start_ts);
+        let duration_s = ((end_ms - start_ms).max(0) as f64) / 1000.0;
+        if duration_s <= TIMER_INTERVAL_TOLERANCE_S
+            || explicit_intervals
+                .iter()
+                .any(|interval| start_ms < interval.end_ms && end_ms > interval.start_ms)
+        {
+            continue;
+        }
+
+        candidates.push(StoppedInterval {
+            start_ms,
+            end_ms,
+            trigger: None,
+            resume_trigger: event.timer_trigger,
+            source: "inferred_record_gap",
+        });
+    }
+
+    let inferred_stopped_time_s: f64 = candidates
+        .iter()
+        .map(|interval| ((interval.end_ms - interval.start_ms).max(0) as f64) / 1000.0)
+        .sum();
+    if inferred_stopped_time_s > 0.0
+        && (unexplained_stopped_time_s - inferred_stopped_time_s).abs()
+            <= TIMER_INTERVAL_TOLERANCE_S
+    {
+        candidates
+    } else {
+        Vec::new()
+    }
+}
+
 fn build_timer_metadata(
     timer_events: &[TimerEvent],
+    record_timestamps: &[i64],
     record_start_ts: i64,
     record_end_ts: i64,
     elapsed_time_s: Option<f64>,
@@ -864,7 +964,19 @@ fn build_timer_metadata(
 ) -> serde_json::Value {
     let elapsed_time_s = valid_duration_s(elapsed_time_s)
         .unwrap_or_else(|| ((record_end_ts - record_start_ts).max(0) as f64) / 1000.0);
-    let intervals = build_stopped_intervals(timer_events, record_start_ts, record_end_ts);
+    let expected_stopped_time_s = (elapsed_time_s - timer_time_s).max(0.0);
+    let mut intervals = build_stopped_intervals(timer_events, record_start_ts, record_end_ts);
+    let inferred_intervals = infer_missing_stopped_intervals(
+        timer_events,
+        record_timestamps,
+        &intervals,
+        record_start_ts,
+        record_end_ts,
+        expected_stopped_time_s,
+    );
+    let inferred_interval_count = inferred_intervals.len();
+    intervals.extend(inferred_intervals);
+    intervals.sort_by_key(|interval| (interval.start_ms, interval.end_ms));
     let stopped_time_s: f64 = intervals
         .iter()
         .map(|interval| ((interval.end_ms - interval.start_ms).max(0) as f64) / 1000.0)
@@ -874,13 +986,18 @@ fn build_timer_metadata(
         && (derived_timer_time_s - timer_time_s).abs() <= TIMER_INTERVAL_TOLERANCE_S;
 
     serde_json::json!({
-        "schema_version": 1,
-        "source": "fit_event_messages",
+        "schema_version": 2,
+        "source": if inferred_interval_count > 0 {
+            "fit_event_messages_with_record_gap_inference"
+        } else {
+            "fit_event_messages"
+        },
         "active_time_supported": intervals_reliable,
         "intervals_reliable": intervals_reliable,
         "elapsed_time_s": elapsed_time_s,
         "timer_time_s": timer_time_s,
         "stopped_time_s": stopped_time_s,
+        "inferred_interval_count": inferred_interval_count,
         "events": timer_events.iter().map(|event| serde_json::json!({
             "timestamp": timestamp_ms_to_rfc3339(event.timestamp_ms),
             "event": event.event,
@@ -892,7 +1009,8 @@ fn build_timer_metadata(
             "end_ts_utc": timestamp_ms_to_rfc3339(interval.end_ms),
             "duration_s": ((interval.end_ms - interval.start_ms).max(0) as f64) / 1000.0,
             "trigger": interval.trigger,
-            "resume_trigger": interval.resume_trigger
+            "resume_trigger": interval.resume_trigger,
+            "source": interval.source
         })).collect::<Vec<_>>()
     })
 }
@@ -1821,8 +1939,13 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     );
     let distance_m = total_distance_m(&points);
     let (start_latitude, start_longitude) = first_valid_coordinates(&points);
+    let record_timestamps = points
+        .iter()
+        .map(|point| point.timestamp_ms)
+        .collect::<Vec<_>>();
     let timer_metadata = build_timer_metadata(
         &timer_events,
+        &record_timestamps,
         record_start_ts,
         record_end_ts,
         session_total_elapsed_time_sum_s,
@@ -2588,7 +2711,7 @@ mod tests {
             timer_event(20_000, "start", Some("auto")),
         ];
 
-        let metadata = build_timer_metadata(&events, 0, 100_000, Some(100.0), 90.0);
+        let metadata = build_timer_metadata(&events, &[], 0, 100_000, Some(100.0), 90.0);
 
         assert_eq!(metadata["active_time_supported"].as_bool(), Some(true));
         assert_eq!(metadata["intervals_reliable"].as_bool(), Some(true));
@@ -2602,10 +2725,106 @@ mod tests {
             timer_event(20_000, "start", Some("auto")),
         ];
 
-        let metadata = build_timer_metadata(&events, 0, 100_000, Some(100.0), 70.0);
+        let metadata = build_timer_metadata(&events, &[], 0, 100_000, Some(100.0), 70.0);
 
         assert_eq!(metadata["active_time_supported"].as_bool(), Some(false));
         assert_eq!(metadata["intervals_reliable"].as_bool(), Some(false));
+    }
+
+    #[test]
+    fn fit_timer_metadata_infers_reconciling_gap_before_unmatched_start() {
+        let events = vec![
+            timer_event(0, "start", Some("manual")),
+            timer_event(1_000_000, "stop_all", Some("auto")),
+            timer_event(2_095_000, "start", Some("auto")),
+            timer_event(19_855_000, "start", Some("manual")),
+            timer_event(19_860_000, "stop_all", Some("manual")),
+        ];
+        let record_timestamps = vec![
+            0,
+            1_000_000,
+            2_095_000,
+            19_780_000,
+            19_855_000,
+            19_860_000,
+        ];
+
+        let metadata = build_timer_metadata(
+            &events,
+            &record_timestamps,
+            0,
+            19_860_000,
+            Some(19_861.018),
+            18_691.618,
+        );
+
+        assert_eq!(metadata["schema_version"].as_i64(), Some(2));
+        assert_eq!(
+            metadata["source"].as_str(),
+            Some("fit_event_messages_with_record_gap_inference")
+        );
+        assert_eq!(metadata["active_time_supported"].as_bool(), Some(true));
+        assert_eq!(metadata["intervals_reliable"].as_bool(), Some(true));
+        assert_eq!(metadata["inferred_interval_count"].as_u64(), Some(1));
+        assert_eq!(metadata["stopped_time_s"].as_f64(), Some(1_170.0));
+        assert_eq!(
+            metadata["stopped_intervals"][1]["source"].as_str(),
+            Some("inferred_record_gap")
+        );
+        assert_eq!(
+            metadata["stopped_intervals"][1]["resume_trigger"].as_str(),
+            Some("manual")
+        );
+    }
+
+    #[test]
+    fn fit_timer_metadata_rejects_gap_that_does_not_reconcile() {
+        let events = vec![
+            timer_event(0, "start", Some("manual")),
+            timer_event(10_000, "stop_all", Some("auto")),
+            timer_event(20_000, "start", Some("auto")),
+            timer_event(80_000, "start", Some("manual")),
+            timer_event(100_000, "stop_all", Some("manual")),
+        ];
+        let record_timestamps = vec![0, 10_000, 20_000, 40_000, 80_000, 100_000];
+
+        let metadata = build_timer_metadata(
+            &events,
+            &record_timestamps,
+            0,
+            100_000,
+            Some(100.0),
+            80.0,
+        );
+
+        assert_eq!(metadata["source"].as_str(), Some("fit_event_messages"));
+        assert_eq!(metadata["active_time_supported"].as_bool(), Some(false));
+        assert_eq!(metadata["intervals_reliable"].as_bool(), Some(false));
+        assert_eq!(metadata["inferred_interval_count"].as_u64(), Some(0));
+        assert_eq!(metadata["stopped_intervals"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn fit_timer_metadata_keeps_equal_no_pause_activity_non_selectable() {
+        let events = vec![
+            timer_event(0, "start", Some("manual")),
+            timer_event(100_000, "stop_all", Some("manual")),
+        ];
+        let record_timestamps = vec![0, 100_000];
+
+        let metadata = build_timer_metadata(
+            &events,
+            &record_timestamps,
+            0,
+            100_000,
+            Some(100.0),
+            100.0,
+        );
+
+        assert_eq!(metadata["active_time_supported"].as_bool(), Some(false));
+        assert_eq!(metadata["intervals_reliable"].as_bool(), Some(false));
+        assert_eq!(metadata["inferred_interval_count"].as_u64(), Some(0));
+        assert_eq!(metadata["stopped_intervals"].as_array().map(Vec::len), Some(0));
     }
 
     #[test]
