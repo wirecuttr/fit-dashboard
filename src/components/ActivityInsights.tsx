@@ -83,6 +83,11 @@ type Props = {
   syncActive?: boolean;
   heartRateZoneBoundsBpm?: number[];
   heartRateZoneSource?: HeartRateZoneSource;
+  fitHeartRateZonesAvailable?: boolean;
+  heartRateZonePreferenceStatus?: "idle" | "loading" | "ready" | "error";
+  heartRateZonePreferenceSaving?: boolean;
+  heartRateZonePreferenceError?: string | null;
+  onHeartRateZoneSourceChange?: (source: HeartRateZoneSource) => Promise<boolean>;
   configuredPowerZoneBoundsWatts?: number[];
   powerZoneTimeSource?: PowerZoneTimeSource;
   powerZonePreferenceStatus?: "idle" | "loading" | "ready" | "error";
@@ -403,6 +408,11 @@ export function ActivityInsights({
   zones,
   heartRateZoneBoundsBpm,
   heartRateZoneSource,
+  fitHeartRateZonesAvailable = false,
+  heartRateZonePreferenceStatus = "idle",
+  heartRateZonePreferenceSaving = false,
+  heartRateZonePreferenceError,
+  onHeartRateZoneSourceChange,
   zoomRange,
   configuredPowerZoneBoundsWatts,
   powerZoneTimeSource,
@@ -1764,6 +1774,55 @@ export function ActivityInsights({
     },
   ].filter((chart) => chart.available);
 
+  const showHeartRateZoneSourceChoice = heartRateZonePreferenceStatus === "ready"
+    && fitHeartRateZonesAvailable
+    && hasHeartRateData
+    && !!onHeartRateZoneSourceChange;
+  const heartRateZoneSourceHelpKey = heartRateZoneSource === "fit"
+    ? "insights.hrZoneSourceFitHelp"
+    : "insights.hrZoneSourceCustomHelp";
+  const renderHeartRateZoneSource = () => {
+    if (heartRateZonePreferenceStatus !== "ready" || !heartRateZoneSource || !hasRealHeartRateZones) {
+      return null;
+    }
+    if (showHeartRateZoneSourceChoice) {
+      return (
+        <fieldset
+          className="zone-source-control"
+          disabled={heartRateZonePreferenceSaving}
+          aria-label={tr("insights.hrZoneSource")}
+        >
+          <legend>{tr("insights.hrZoneSource")}</legend>
+          <button
+            type="button"
+            className={heartRateZoneSource === "fit" ? "active" : ""}
+            aria-pressed={heartRateZoneSource === "fit"}
+            title={tr("insights.hrZoneSourceFitHelp")}
+            onClick={() => void onHeartRateZoneSourceChange?.("fit")}
+          >
+            {tr("insights.hrZoneSourceFit")}
+          </button>
+          <button
+            type="button"
+            className={heartRateZoneSource === "manual" ? "active" : ""}
+            aria-pressed={heartRateZoneSource === "manual"}
+            title={tr("insights.hrZoneSourceCustomHelp")}
+            onClick={() => void onHeartRateZoneSourceChange?.("manual")}
+          >
+            {tr("insights.hrZoneSourceCustom")}
+          </button>
+        </fieldset>
+      );
+    }
+    return (
+      <span className="zone-source-label" title={tr(heartRateZoneSourceHelpKey)}>
+        {tr("insights.hrZoneSource")}: {tr(heartRateZoneSource === "fit"
+          ? "insights.hrZoneSourceFit"
+          : "insights.hrZoneSourceCustom")}
+      </span>
+    );
+  };
+
   return (
     <>
       {heartRateDriftOption && cardiacResult?.available && (
@@ -1821,7 +1880,31 @@ export function ActivityInsights({
       )}
       {visibleMetricCharts.map((chart) => (
         <article className="panel" key={chart.id}>
-          <h3>{chart.title}</h3>
+          {chart.id === "heart-rate" ? (
+            <>
+              <div className="chart-panel-header">
+                <h3>{chart.title}</h3>
+                {renderHeartRateZoneSource()}
+              </div>
+              {heartRateZonePreferenceError && (
+                <p className="zone-source-error-text" role="alert">
+                  {tr("insights.hrZoneSourceSaveFailed")}
+                </p>
+              )}
+            </>
+          ) : chart.id === "power" && configuredPowerZones.length > 0 ? (
+            <div className="chart-panel-header">
+              <h3>{chart.title}</h3>
+              <span
+                className="zone-source-label"
+                title={tr("insights.powerLineZoneSourceCalculatedHelp")}
+              >
+                {tr("insights.powerLineZoneSource")}: {tr("insights.powerZoneSourceCalculated")}
+              </span>
+            </div>
+          ) : (
+            <h3>{chart.title}</h3>
+          )}
           {chart.syncAdapter && (
             <ActivitySyncChart
               activityId={activity?.id ?? 0}
@@ -1878,7 +1961,15 @@ export function ActivityInsights({
       ))}
       {hasHeartRateZoneData && (
         <article className="panel">
-          <h3>{tr("insights.heartRateZoneTime")}</h3>
+          <div className="chart-panel-header">
+            <h3>{tr("insights.heartRateZoneTime")}</h3>
+            {renderHeartRateZoneSource()}
+          </div>
+          {heartRateZonePreferenceError && (
+            <p className="zone-source-error-text" role="alert">
+              {tr("insights.hrZoneSourceSaveFailed")}
+            </p>
+          )}
           <ZoneTimeBars
             title={tr("insights.heartRateZoneTime")}
             zones={hrZones}
@@ -1891,11 +1982,11 @@ export function ActivityInsights({
       )}
       {hasPowerZoneData && (
         <article className="panel">
-          <div className="zone-time-panel-header">
+          <div className="chart-panel-header">
             <h3>{tr("insights.powerZoneTime")}</h3>
             {bothPowerZoneSourcesAvailable ? (
               <fieldset
-                className="power-zone-source-control"
+                className="zone-source-control"
                 disabled={powerZonePreferenceSaving}
                 aria-label={tr("insights.powerZoneSource")}
               >
@@ -1921,7 +2012,7 @@ export function ActivityInsights({
               </fieldset>
             ) : effectivePowerZoneTimeSource ? (
               <span
-                className="power-zone-source-label"
+                className="zone-source-label"
                 title={tr(effectivePowerZoneTimeSource === "fit"
                   ? "insights.powerZoneSourceFitHelp"
                   : "insights.powerZoneSourceCalculatedHelp")}
