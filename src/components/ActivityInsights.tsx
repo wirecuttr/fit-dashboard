@@ -417,7 +417,10 @@ export function ActivityInsights({
   smoothGraphs = true,
   timerMetadata,
 }: Props) {
-  const hrZones = buildHeartRateZones(heartRateZoneBoundsBpm);
+  const hrZones = buildHeartRateZones(
+    heartRateZoneBoundsBpm,
+    heartRateZoneSource === "fit" ? "next-zone-start" : "inclusive-upper",
+  );
   const fitPowerZones = buildPowerZones(zones?.power?.upper_bounds_watts);
   const configuredPowerZones = buildPowerZones(configuredPowerZoneBoundsWatts);
   const isDark = theme === "dark";
@@ -1882,7 +1885,7 @@ export function ActivityInsights({
             minutes={zoneMinutes}
             unit="bpm"
             totalMinutes={zoneChartTotalMinutes}
-            rowMode={heartRateZoneSource === "manual" ? "explicit-zones" : "fit-boundaries"}
+            rowMode={heartRateZoneSource === "fit" ? "fit-transition-zones" : "explicit-zones"}
           />
         </article>
       )}

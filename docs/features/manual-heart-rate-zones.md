@@ -341,6 +341,13 @@ array contains finite non-negative values, its length equals the selected bound
 count plus one, and its sum is greater than zero. Bucket padding or truncation
 must not be used to establish compatibility.
 
+FIT boundary values are transition points: a value equal to a boundary starts
+the following bucket. For example, a FIT boundary of 98 bpm ends the lower
+bucket at 97 bpm and starts the next bucket at 98 bpm. Configured manual values
+remain inclusive upper bounds, so a manual boundary of 98 bpm includes 98 bpm
+in the lower zone. Zone colouring and record-based zone-time calculation must
+use the semantics of the selected source.
+
 | Effective source | FIT aggregate totals | HR samples | Zone-time behaviour |
 | --- | --- | --- | --- |
 | FIT | compatible | any | use FIT totals |
@@ -660,6 +667,8 @@ begins a cold rebuild of heavy native dependencies such as `libduckdb-sys`.
 - Manual selections recalculate zone time from one-second active-time record
   samples.
 - FIT aggregate zone totals are used only with compatible FIT-derived bounds.
+- FIT transition values are classified into the following bucket, while manual
+  boundaries remain inclusive upper bounds.
 - HR charts remain hidden when their required underlying data is unavailable.
 - English user-facing copy follows Canadian spelling.
 - The completed integration builds and deploys successfully from local `main`.
