@@ -644,7 +644,10 @@ begins a cold rebuild of heavy native dependencies such as `libduckdb-sys`.
 - Heart-rate drift availability and calculations are unchanged.
 - Power-zone boundaries and zone-time bars are unchanged.
 - Time/distance axes, zoom synchronization, lap markers, graph smoothing, map
-  layout, and chart ordering are unchanged.
+  layout, and non-zone chart ordering are unchanged.
+- Heart Rate Zone Time follows the Heart Rate chart and Power Zone Time follows
+  the Power chart. A zone-time panel without its corresponding record-based line
+  chart remains visible before supplemental charts.
 - Existing Settings values still hydrate from browser storage.
 - Supporter and donation state still load from DuckDB.
 - Existing local English translations remain unchanged except for deliberate,

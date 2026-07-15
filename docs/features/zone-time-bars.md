@@ -145,20 +145,26 @@ Running, walking, and hiking:
 
 1. Pace
 2. Heart Rate
-3. Cadence, when present
-4. Power, when present
-5. Zone time bars, when zone data exists
+3. Heart Rate Zone Time, when available
+4. Cadence, when present
+5. Elevation, when present
+6. Power, when present
+7. Power Zone Time immediately after Power, when available
 
 Cycling and similar activities:
 
 1. Power, when present
-2. Heart Rate, when present
-3. Speed, when present
-4. Cadence, when present
-5. Zone time bars, when zone data exists
+2. Power Zone Time immediately after Power, when available
+3. Heart Rate, when present
+4. Heart Rate Zone Time immediately after Heart Rate, when available
+5. Speed, when present
+6. Cadence, when present
+7. Elevation, when present
 
-Supplemental charts render after the primary metric and zone summary sequence.
-This keeps the chart grid as a single ordered flow instead of fixed paired cards.
+If a FIT zone-time summary exists without the corresponding record-based line
+chart, keep it visible after the primary metric sequence and before supplemental
+charts. Supplemental charts otherwise render after the paired metric and zone
+summary sequence.
 
 Elevation overlay support is a future-compatible design constraint for this
 branch, not a required UI control in this slice. The implementation should not
