@@ -1912,15 +1912,6 @@ button:focus-visible {
   border: 0;
 }
 
-.zone-source-control legend {
-  float: left;
-  margin-right: 0.45rem;
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 700;
-  line-height: 30px;
-}
-
 .zone-source-control button {
   min-height: 30px;
   padding: 0.25rem 0.55rem;
