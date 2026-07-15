@@ -1150,8 +1150,8 @@ export function ActivityMap({
           <button
             type="button"
             className="map-reset-zoom-control"
-            title={t("activityMap.resetZoom")}
-            aria-label={t("activityMap.resetZoom")}
+            title={t("map.resetZoom")}
+            aria-label={t("map.resetZoom")}
             onClick={resetZoomToRoute}
           >
             <IconZoomOut aria-hidden="true" focusable="false" />

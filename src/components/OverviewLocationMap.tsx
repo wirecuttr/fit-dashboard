@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import type { RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
 import { useTranslation } from "../lib/i18n";
+import { IconZoomOut } from "./Icons";
 
 type Props = {
   records: RecordPoint[];
@@ -66,6 +68,7 @@ const POINT_LAYER_ID = "overview-point-layer";
 export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const [resetZoomControlPortal, setResetZoomControlPortal] = useState<HTMLDivElement | null>(null);
   const { t } = useTranslation();
 
   const geojson = useMemo<GeoJSON.FeatureCollection<GeoJSON.Point>>(() => {
@@ -230,6 +233,19 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
 
+    const resetZoomControlElement = document.createElement("div");
+    resetZoomControlElement.className = "maplibregl-ctrl maplibregl-ctrl-group";
+    const resetZoomControl: maplibregl.IControl = {
+      onAdd: () => {
+        setResetZoomControlPortal(resetZoomControlElement);
+        return resetZoomControlElement;
+      },
+      onRemove: () => {
+        resetZoomControlElement.remove();
+      },
+    };
+    map.addControl(resetZoomControl, "top-right");
+
     map.on("load", () => {
       ensureSourcesAndLayers(map);
       fitToData(map);
@@ -318,16 +334,21 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
       </div>
 
       <div className="overview-map-canvas" ref={mapContainerRef} />
-
-      <div className="map-footer-actions">
-        <button className="btn-outline-secondary" onClick={() => {
-          const map = mapRef.current;
-          if (!map) return;
-          fitToData(map);
-        }}>
-          {t("map.resetZoom")}
-        </button>
-      </div>
+      {resetZoomControlPortal && createPortal(
+        <button
+          type="button"
+          className="map-reset-zoom-control"
+          title={t("map.resetZoom")}
+          aria-label={t("map.resetZoom")}
+          onClick={() => {
+            const map = mapRef.current;
+            if (map) fitToData(map);
+          }}
+        >
+          <IconZoomOut aria-hidden="true" focusable="false" />
+        </button>,
+        resetZoomControlPortal,
+      )}
     </div>
   );
 }

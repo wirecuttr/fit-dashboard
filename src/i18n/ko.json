@@ -398,7 +398,6 @@
   "activityMap.colorTime": "시간 (시작 → 끝)",
   "activityMap.follow": "따라가기",
   "activityMap.telemetry": "텔레메트리",
-  "activityMap.resetZoom": "줌 초기화",
   "activityMap.paused": "일시 정지",
   "activityMap.speed": "속도",
   "activityMap.heart": "심박",

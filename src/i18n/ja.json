@@ -398,7 +398,6 @@
   "activityMap.colorTime": "時間（開始 → 終了）",
   "activityMap.follow": "追従",
   "activityMap.telemetry": "テレメトリ",
-  "activityMap.resetZoom": "ズームリセット",
   "activityMap.paused": "一時停止中",
   "activityMap.speed": "速度",
   "activityMap.heart": "心拍",
