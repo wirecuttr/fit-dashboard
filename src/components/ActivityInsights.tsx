@@ -1353,6 +1353,7 @@ export function ActivityInsights({
     label: string;
     axisName: string;
     colour: string;
+    available: boolean;
     minFloor: number;
     minPadding: number;
     step: number;
@@ -1362,6 +1363,7 @@ export function ActivityInsights({
       label: tr("chart.heartRate"),
       axisName: "bpm",
       colour: "#ef4444",
+      available: hasHeartRateData,
       minFloor: 30,
       minPadding: 5,
       step: 5,
@@ -1371,6 +1373,7 @@ export function ActivityInsights({
       label: tr("insights.power"),
       axisName: "W",
       colour: "#f59e0b",
+      available: hasPowerData,
       minFloor: 0,
       minPadding: 10,
       step: 10,
@@ -1380,6 +1383,7 @@ export function ActivityInsights({
       label: tr("insights.cadence"),
       axisName: "rpm",
       colour: "#8b5cf6",
+      available: hasCadenceData,
       minFloor: 0,
       minPadding: 5,
       step: 5,
@@ -1389,6 +1393,7 @@ export function ActivityInsights({
       label: tr("insights.speed"),
       axisName: speedLabel(distanceUnit),
       colour: "#0ea5e9",
+      available: hasSpeedData,
       minFloor: 0,
       minPadding: 0.5,
       step: 1,
@@ -1398,6 +1403,7 @@ export function ActivityInsights({
       label: tr("chart.pace"),
       axisName: paceLabel(distanceUnit),
       colour: "#10b981",
+      available: hasSpeedData,
       minFloor: 0,
       minPadding: 0.25,
       step: 0.5,
@@ -1407,6 +1413,7 @@ export function ActivityInsights({
       label: tr("insights.elevation"),
       axisName: elevationLabel(distanceUnit),
       colour: "#64748b",
+      available: hasElevationData,
       minFloor: Number.NEGATIVE_INFINITY,
       minPadding: 5,
       step: 10,
@@ -1416,6 +1423,7 @@ export function ActivityInsights({
       label: tr("insights.temperature"),
       axisName: "C",
       colour: "#f97316",
+      available: hasTemperatureData,
       minFloor: Number.NEGATIVE_INFINITY,
       minPadding: 1,
       step: 1,
@@ -1426,6 +1434,7 @@ export function ActivityInsights({
   const availableScatterPresets = SCATTER_PRESETS.filter((preset) => {
     const xMetric = scatterMetrics[preset.xMetric];
     const yMetric = scatterMetrics[preset.yMetric];
+    if (!xMetric.available || !yMetric.available) return false;
     return timeline.some((point) => {
       if (includeTotalPauseGaps && !activeTimestampSet.has(point.timestampMs)) return false;
       const x = xMetric.getValue(point);
