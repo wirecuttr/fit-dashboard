@@ -1363,6 +1363,20 @@ export function Dashboard({ onLogout }: Props) {
       );
     }
     if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", t("detail.vo2Max"), `${metric.vo2_max.toFixed(1)}`, "user");
+    const validConfiguredMaxHr = (value: unknown): number | null => (
+      typeof value === "number" && Number.isFinite(value) && value >= 40 && value <= 260
+        ? value
+        : null
+    );
+    const sportProfileMaxHr = isSelectedCycling
+      ? userProfile.default_max_biking_heart_rate
+      : (normalizeActivityText(selectedActivity.sport) === "running"
+          ? userProfile.default_max_running_heart_rate
+          : null);
+    const configuredMaxHr = validConfiguredMaxHr(selectedMetadata?.zones?.heart_rate?.configured_max_heart_rate)
+      ?? validConfiguredMaxHr(sportProfileMaxHr)
+      ?? validConfiguredMaxHr(userProfile.default_max_heart_rate);
+    if (configuredMaxHr !== null) push("configured_max_hr", t("detail.maxHr"), `${Math.round(configuredMaxHr)} bpm`, "user");
     const userHeight = typeof userProfile.height_m === "number" ? formatUserHeight(userProfile.height_m, distanceUnit) : null;
     if (userHeight) push("user_height", t("detail.height"), userHeight, "user");
     const userWeight = typeof userProfile.weight_kg === "number" ? formatUserWeight(userProfile.weight_kg, distanceUnit) : null;
@@ -1383,7 +1397,7 @@ export function Dashboard({ onLogout }: Props) {
       { key: "elevation", label: t("insights.elevation"), icon: "mountain", keys: ["min_alt", "max_alt", "total_ascent", "total_descent"] },
       { key: "power", label: t("insights.power"), icon: "power", keys: ["avg_power", "max_power", "normalized_power", "left_right_balance"] },
       { key: "cadence", label: t("insights.cadence"), icon: cadenceIconForActivity(selectedActivity), keys: ["avg_cadence", "max_cadence"] },
-      { key: "user", label: t("detail.user"), icon: "user", keys: ["ftp", "vo2_max", "user_height", "user_weight", "resting_hr", "bb_change"] },
+      { key: "user", label: t("detail.user"), icon: "user", keys: ["configured_max_hr", "resting_hr", "ftp", "vo2_max", "user_height", "user_weight", "bb_change"] },
     ];
     const labelOverrides: Record<string, string> = {
       avg_speed: activityUsesPaceDisplay(selectedActivity) ? "Avg" : "Avg",
@@ -1403,6 +1417,7 @@ export function Dashboard({ onLogout }: Props) {
       left_right_balance: "L/R Balance",
       user_height: t("detail.height"),
       user_weight: t("detail.weight"),
+      configured_max_hr: t("detail.maxHr"),
       resting_hr: t("detail.restingHr"),
       avg_cadence: "Avg",
       max_cadence: "Max",
