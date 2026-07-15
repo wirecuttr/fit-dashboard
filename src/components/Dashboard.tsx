@@ -38,6 +38,21 @@ type VersionBadgeStatus = {
   latestVersion: string | null;
 };
 
+type Vo2MaxCategory = "running" | "cycling";
+
+type Vo2MaxEstimateMetadata = {
+  value_ml_kg_min?: number | null;
+  phase?: string | null;
+  category?: string | null;
+  activity_sport_code?: number | null;
+  activity_sport?: string | null;
+  sub_sport?: string | null;
+  session_index?: number | null;
+  source?: string | null;
+  raw_value?: number | null;
+  message_index?: number | null;
+};
+
 type ActivityMetadata = {
   heart_rate_zone_bounds_bpm?: number[];
   file_id?: {
@@ -46,6 +61,10 @@ type ActivityMetadata = {
   };
   activity_metrics?: {
     vo2_max?: number | null;
+  };
+  vo2_max?: {
+    schema_version?: number | null;
+    estimates?: Vo2MaxEstimateMetadata[] | null;
   };
   session?: {
     beginning_body_battery?: number | null;
@@ -76,6 +95,71 @@ type ActivityMetadata = {
     best_speed_m_s?: number | null;
   }>;
 };
+
+type DisplayVo2Max = {
+  category: Vo2MaxCategory;
+  value: number;
+};
+
+function vo2CategoryFromActivitySport(sport?: string | null): Vo2MaxCategory | null {
+  const normalized = (sport ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  if (normalized.includes("running")) return "running";
+  if (normalized.includes("motorcycling") || normalized.includes("motorcycle")) return null;
+  if (
+    normalized === "cycling"
+    || normalized === "biking"
+    || normalized === "bike"
+    || normalized.includes("cycling")
+    || normalized.includes("biking")
+  ) {
+    return "cycling";
+  }
+  return null;
+}
+
+function vo2EstimatePriority(estimate: Vo2MaxEstimateMetadata): number {
+  if (estimate.source === "fit_max_met_data_229") return 3;
+  if (estimate.phase === "after_activity" || estimate.source === "garmin_message_140_field_7") return 2;
+  if (estimate.phase === "before_activity" || estimate.source?.startsWith("garmin_message_79_")) return 1;
+  return 0;
+}
+
+function selectDisplayedVo2Max(
+  metadata: ActivityMetadata | null,
+  activitySport?: string | null
+): DisplayVo2Max[] {
+  const selected = new Map<Vo2MaxCategory, { value: number; priority: number }>();
+  for (const estimate of metadata?.vo2_max?.estimates ?? []) {
+    const category = estimate.category === "running" || estimate.category === "cycling"
+      ? estimate.category
+      : null;
+    const value = estimate.value_ml_kg_min;
+    if (!category || typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue;
+
+    const priority = vo2EstimatePriority(estimate);
+    const current = selected.get(category);
+    if (!current || priority >= current.priority) selected.set(category, { value, priority });
+  }
+
+  // Older imports have only the scalar. It is safe to qualify for an explicitly
+  // running or cycling single-sport activity, but not for multisport or other sports.
+  const legacyCategory = vo2CategoryFromActivitySport(activitySport);
+  const legacyValue = metadata?.activity_metrics?.vo2_max;
+  if (
+    legacyCategory
+    && !selected.has(legacyCategory)
+    && typeof legacyValue === "number"
+    && Number.isFinite(legacyValue)
+    && legacyValue > 0
+  ) {
+    selected.set(legacyCategory, { value: legacyValue, priority: 0 });
+  }
+
+  return (["running", "cycling"] as const).flatMap((category) => {
+    const estimate = selected.get(category);
+    return estimate ? [{ category, value: estimate.value }] : [];
+  });
+}
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -1026,13 +1110,13 @@ export function Dashboard({ onLogout }: Props) {
     ? String(selectedMetadata.file_id.serial_number)
     : "";
   const detailStats = useMemo(() => {
-    if (!selectedActivity) return [] as Array<{ key: string; label: string; value: string; secondary?: string; icon: Icon }>;
-    const out: Array<{ key: string; label: string; value: string; secondary?: string; icon: Icon }> = [];
+    if (!selectedActivity) return [] as Array<{ key: string; label: string; value: string; secondary?: string; tooltip?: string; icon: Icon }>;
+    const out: Array<{ key: string; label: string; value: string; secondary?: string; tooltip?: string; icon: Icon }> = [];
     const seen = new Set<string>();
-    const push = (key: string, label: string, value: string | null | undefined, icon: Icon, secondary?: string) => {
+    const push = (key: string, label: string, value: string | null | undefined, icon: Icon, secondary?: string, tooltip?: string) => {
       if (!value || seen.has(key)) return;
       seen.add(key);
-      out.push({ key, label, value, secondary, icon });
+      out.push({ key, label, value, secondary, tooltip, icon });
     };
 
     push("duration", t("detail.duration"), formatDuration(selectedActivity.duration_s), "clock");
@@ -1042,7 +1126,6 @@ export function Dashboard({ onLogout }: Props) {
     if (recordStats.maxSpeed > 0) push("max_speed", t("detail.maxSpeed"), `${convertSpeedKmh(recordStats.maxSpeed, distanceUnit).toFixed(1)} ${speedLabel(distanceUnit)}`, "speed");
 
     const session = selectedMetadata?.session ?? {};
-    const metric = selectedMetadata?.activity_metrics ?? {};
     const avgPaceSec = selectedActivity.distance_m > 0
       ? selectedActivity.duration_s / (selectedActivity.distance_m / distanceDivisorValue)
       : 0;
@@ -1068,7 +1151,19 @@ export function Dashboard({ onLogout }: Props) {
         `${session.beginning_body_battery} -> ${session.ending_body_battery}`
       );
     }
-    if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", "VO2 Max", `${metric.vo2_max.toFixed(1)}`, "vo2");
+    for (const estimate of selectDisplayedVo2Max(selectedMetadata, selectedActivity.sport)) {
+      const label = estimate.category === "running"
+        ? t("detail.runningVo2Max")
+        : t("detail.cyclingVo2Max");
+      push(
+        "vo2_max_" + estimate.category,
+        label,
+        estimate.value.toFixed(1),
+        "vo2",
+        undefined,
+        t("detail.vo2MaxTooltip")
+      );
+    }
     if (typeof session.total_calories === "number" && session.total_calories > 0) push("total_calories", t("detail.calories"), `${Math.round(session.total_calories)} kcal`, "flame");
     if (lapTimestampsUtc.length > 0) push("laps", t("detail.laps"), String(lapTimestampsUtc.length), "avg");
 
@@ -1579,7 +1674,7 @@ export function Dashboard({ onLogout }: Props) {
                 </div>
                 <div className="detail-stats-strip">
                   {detailStats.map((s) => (
-                    <div key={s.key} className="mini-stat">
+                    <div key={s.key} className="mini-stat" title={s.tooltip}>
                       <span className={`mini-icon ${s.key === "max_hr" ? "danger" : ""}`}>
                         {s.icon === "clock" && <IconClock />}
                         {s.icon === "distance" && <IconDistance />}
