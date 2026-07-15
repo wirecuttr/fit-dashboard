@@ -30,6 +30,7 @@ Issue #23 fixed the stored duration source. Issue #38 added Time/Distance x-axis
 
 - Parse FIT timer event messages that represent timer start, stop, stop-all, and resume behaviour.
 - Preserve whether timer intervals were triggered manually or by Auto Pause / auto-resume when the FIT file provides that detail.
+- Recover a missing stop event only when an unmatched resume, the immediately preceding record gap, and the FIT timer summary reconcile within a tight tolerance.
 - Persist enough interval metadata to derive active elapsed time for telemetry records.
 - Let telemetry charts use active timer time so the Time axis can end near the displayed activity duration.
 - Exclude stopped-interval telemetry samples from active-time chart data so paused records do not collapse onto a single x-value or distort chart shape.
@@ -40,6 +41,7 @@ Issue #23 fixed the stored duration source. Issue #38 added Time/Distance x-axis
 
 - Do not change stored activity duration selection from issue #23.
 - Do not infer moving time from GPS speed or displacement as the primary implementation when FIT timer events are available.
+- Do not treat arbitrary telemetry gaps as stopped intervals.
 - Do not change distance-axis semantics.
 - Do not change map route geometry.
 - Do not delete stored raw records; stopped-interval filtering should be a chart/view transformation.
@@ -68,13 +70,14 @@ Example shape:
 ```json
 {
   "timer": {
-    "schema_version": 1,
-    "source": "fit_event_messages",
+    "schema_version": 2,
+    "source": "fit_event_messages_with_record_gap_inference",
     "active_time_supported": true,
     "intervals_reliable": true,
     "elapsed_time_s": 16593.398,
     "timer_time_s": 15000.396,
     "stopped_time_s": 1593.002,
+    "inferred_interval_count": 1,
     "events": [
       {
         "timestamp": "2026-06-11T15:47:25Z",
@@ -94,7 +97,15 @@ Example shape:
         "start_ts_utc": "2026-06-11T15:47:25Z",
         "end_ts_utc": "2026-06-11T15:57:16Z",
         "duration_s": 591,
-        "trigger": "auto"
+        "trigger": "auto",
+        "source": "fit_event_message"
+      },
+      {
+        "start_ts_utc": "2026-06-11T18:20:00Z",
+        "end_ts_utc": "2026-06-11T18:21:15Z",
+        "duration_s": 75,
+        "resume_trigger": "manual",
+        "source": "inferred_record_gap"
       }
     ]
   }
@@ -105,16 +116,20 @@ The parser should tolerate incomplete event pairs. If intervals cannot be derive
 
 Derived intervals should be marked reliable only when their computed active duration is reasonably consistent with the FIT timer duration selected for the activity, allowing for normal timestamp rounding differences.
 
+An unmatched timer start can indicate that the device omitted the preceding stop event. The parser may infer that stop at the last record before the start only when there is a gap longer than the normal timer tolerance, the gap does not overlap an explicit interval, and accepting all such candidates reconciles the remaining stopped time within the same tolerance. Rejected candidates must not change the interval list. Each accepted interval records its inferred source for diagnostics.
+
 ## Active-Time Telemetry Model
 
 The feature should derive active telemetry from timer intervals:
 
 1. Sort timer events by timestamp.
 2. Build stopped intervals from timer stop/stop-all events followed by the next timer start event.
-3. Clamp intervals to the activity record/session time range.
-4. Ignore invalid intervals with missing timestamps, negative duration, or no matching resume event unless a safe end bound is available.
-5. Classify each telemetry record as active or stopped.
-6. For each active telemetry record timestamp, subtract all stopped interval durations that ended before the record.
+3. Identify unmatched starts and test their immediately preceding record gaps against the unexplained stopped duration.
+4. Accept inferred gaps only when the combined interval set reconciles with the FIT timer summary.
+5. Clamp intervals to the activity record/session time range.
+6. Ignore invalid intervals with missing timestamps, negative duration, or no matching resume event unless a safe end bound is available.
+7. Classify each telemetry record as active or stopped.
+8. For each active telemetry record timestamp, subtract all stopped interval durations that ended before the record.
 
 Stopped intervals should be treated as half-open ranges: `[stop_timestamp, next_start_timestamp)`. A record exactly at the stop timestamp is stopped. A record exactly at the following start timestamp is active.
 
@@ -194,3 +209,6 @@ Validation should confirm:
 - distance charts keep distance on the x-axis but use the same active-record filtering decision
 - tooltip and lap marker positions remain coherent
 - activities without reliable timer intervals fall back to elapsed record time
+- a missing stop followed by an unmatched start is inferred only when its record gap reconciles with the timer summary
+- an oversized or otherwise non-reconciling gap is rejected
+- activities whose elapsed and timer durations are equal remain non-switchable because Moving and Total are equivalent
