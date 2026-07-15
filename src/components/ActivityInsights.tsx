@@ -101,6 +101,7 @@ type Props = {
   lapTimestampsUtc?: string[];
   smoothGraphs?: boolean;
   timerMetadata?: TelemetryTimerMetadata | null;
+  neutralOnly?: boolean;
 };
 
 type SeriesRow = [number, number | null, number, number, number | null];
@@ -426,6 +427,7 @@ export function ActivityInsights({
   lapTimestampsUtc = [],
   smoothGraphs = true,
   timerMetadata,
+  neutralOnly = false,
 }: Props) {
   const hrZones = buildHeartRateZones(
     heartRateZoneBoundsBpm,
@@ -1751,11 +1753,13 @@ export function ActivityInsights({
     height: insightChartHeight,
   };
 
-  const metricCharts = usePaceDisplay
-    ? [paceChart, heartRateChart, cadenceChart, elevationChart, powerChart]
-    : hasPowerData
-      ? [powerChart, heartRateChart, speedChart, cadenceChart, elevationChart]
-      : [speedChart, heartRateChart, cadenceChart, elevationChart];
+  const metricCharts = neutralOnly
+    ? [heartRateChart, speedChart, elevationChart]
+    : usePaceDisplay
+      ? [paceChart, heartRateChart, cadenceChart, elevationChart, powerChart]
+      : hasPowerData
+        ? [powerChart, heartRateChart, speedChart, cadenceChart, elevationChart]
+        : [speedChart, heartRateChart, cadenceChart, elevationChart];
 
   const visibleMetricCharts = metricCharts.filter((chart) => chart.available);
 
@@ -1772,7 +1776,7 @@ export function ActivityInsights({
       onEvents: undefined,
       height: insightChartHeight,
     },
-  ].filter((chart) => chart.available);
+  ].filter((chart) => chart.available && (!neutralOnly || chart.id !== "scatter-comparison"));
 
   const showHeartRateZoneSourceChoice = heartRateZonePreferenceStatus === "ready"
     && fitHeartRateZonesAvailable
@@ -1926,7 +1930,7 @@ export function ActivityInsights({
 
   return (
     <>
-      {heartRateDriftOption && cardiacResult?.available && (
+      {!neutralOnly && heartRateDriftOption && cardiacResult?.available && (
         <article className="panel heart-rate-drift-detail-panel">
           <div className="heart-rate-drift-detail-header">
             <div className="heart-rate-drift-title-row">
@@ -1986,7 +1990,7 @@ export function ActivityInsights({
               <>
                 <div className="chart-panel-header">
                   <h3>{chart.title}</h3>
-                  {renderHeartRateZoneSource()}
+                  {!neutralOnly && renderHeartRateZoneSource()}
                 </div>
                 {heartRateZonePreferenceError && (
                   <p className="zone-source-error-text" role="alert">
@@ -2021,12 +2025,12 @@ export function ActivityInsights({
               />
             )}
           </article>
-          {chart.id === "heart-rate" && renderHeartRateZoneTimePanel()}
-          {chart.id === "power" && renderPowerZoneTimePanel()}
+          {!neutralOnly && chart.id === "heart-rate" && renderHeartRateZoneTimePanel()}
+          {!neutralOnly && chart.id === "power" && renderPowerZoneTimePanel()}
         </Fragment>
       ))}
-      {!hasVisibleHeartRateChart && renderHeartRateZoneTimePanel()}
-      {!hasVisiblePowerChart && renderPowerZoneTimePanel()}
+      {!neutralOnly && !hasVisibleHeartRateChart && renderHeartRateZoneTimePanel()}
+      {!neutralOnly && !hasVisiblePowerChart && renderPowerZoneTimePanel()}
       {supplementalCharts.map((chart) => (
         <article className="panel" key={chart.id}>
           {chart.id === "scatter-comparison" ? (
@@ -2068,5 +2072,6 @@ export function ActivityInsights({
         </article>
       ))}
     </>
+
   );
 }

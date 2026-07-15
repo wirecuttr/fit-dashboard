@@ -425,5 +425,11 @@
   "settings.smoothGraphs": "Graphiques lissés",
   "settings.smoothGraphsTooltip": "Lissage par moyenne mobile dynamique. En zoomant, des points plus détaillés sont utilisés.",
   "insights.scatterComparison": "Scatterplot",
-  "insights.scatterMetric": "Scatterplot metric"
+  "insights.scatterMetric": "Scatterplot metric",
+  "multisport.parent": "Multisport",
+  "multisport.legs": "{count} segments",
+  "multisport.expandLegs": "Afficher les segments",
+  "multisport.collapseLegs": "Masquer les segments",
+  "multisport.compareUnavailable": "La comparaison multisport n’est pas encore disponible.",
+  "multisport.excludedFromBulkExport": "Les activités multisport parentes sont exclues de l’exportation."
 }

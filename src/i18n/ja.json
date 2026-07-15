@@ -425,5 +425,11 @@
   "settings.smoothGraphs": "スムーズグラフ",
   "settings.smoothGraphsTooltip": "動的移動平均スムージング。ズームするとより詳細なポイントが使用されます。",
   "insights.scatterComparison": "Scatterplot",
-  "insights.scatterMetric": "Scatterplot metric"
+  "insights.scatterMetric": "Scatterplot metric",
+  "multisport.parent": "マルチスポーツ",
+  "multisport.legs": "{count}区間",
+  "multisport.expandLegs": "区間を展開",
+  "multisport.collapseLegs": "区間を折りたたむ",
+  "multisport.compareUnavailable": "マルチスポーツの比較はまだ利用できません。",
+  "multisport.excludedFromBulkExport": "マルチスポーツの親アクティビティはエクスポートから除外されます。"
 }

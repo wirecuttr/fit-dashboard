@@ -21,6 +21,27 @@ pub struct Activity {
     pub start_latitude: Option<f64>,
     pub start_longitude: Option<f64>,
     pub metadata_json: String,
+    pub activity_kind: String,
+    pub segments: Vec<ActivitySegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActivitySegment {
+    pub activity_id: i64,
+    pub segment_index: i64,
+    pub segment_type: String,
+    pub name: String,
+    pub sport: String,
+    pub sub_sport: String,
+    pub start_ts_utc: String,
+    pub end_ts_utc: String,
+    pub timer_duration_s: f64,
+    pub elapsed_duration_s: f64,
+    pub distance_m: f64,
+    pub record_distance_offset_m: f64,
+    pub start_latitude: Option<f64>,
+    pub start_longitude: Option<f64>,
+    pub metadata_json: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +60,26 @@ pub struct RecordPoint {
     pub current_stamina_pct: Option<f64>,
     pub potential_stamina_pct: Option<f64>,
     pub performance_condition: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub segment_index: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedActivitySegment {
+    pub segment_index: i64,
+    pub segment_type: String,
+    pub name: String,
+    pub sport: String,
+    pub sub_sport: String,
+    pub start_ts_utc: String,
+    pub end_ts_utc: String,
+    pub timer_duration_s: f64,
+    pub elapsed_duration_s: f64,
+    pub distance_m: f64,
+    pub record_distance_offset_m: f64,
+    pub start_latitude: Option<f64>,
+    pub start_longitude: Option<f64>,
+    pub metadata_json: String,
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +105,8 @@ pub struct ParsedActivity {
     pub file_hash: String,
     pub records: Vec<RecordPoint>,
     pub metadata_json: String,
+    pub activity_kind: String,
+    pub segments: Vec<ParsedActivitySegment>,
 }
 
 #[derive(Debug, Serialize)]

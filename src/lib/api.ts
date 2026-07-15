@@ -1,6 +1,6 @@
 import axios from "axios";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { Activity, OverviewStats, RecordPoint } from "../types";
+import type { Activity, ActivitySegment, OverviewStats, RecordPoint } from "../types";
 import type { HeartRateZonePreferences } from "./hrZones";
 import type { PowerZonePreferences } from "./powerZones";
 
@@ -210,12 +210,20 @@ export const api = {
     return res.data;
   },
 
-  async getRecords(activityId: number, resolutionMs = 10000): Promise<RecordPoint[]> {
+  async listActivitySegments(activityId: number): Promise<ActivitySegment[]> {
     if (isTauriRuntime()) {
-      return invoke("get_records", { activityId, resolutionMs });
+      return invoke("list_activity_segments", { activityId });
+    }
+    const res = await webClient.get(`/activities/${activityId}/segments`);
+    return res.data;
+  },
+
+  async getRecords(activityId: number, resolutionMs = 10000, segmentIndex?: number): Promise<RecordPoint[]> {
+    if (isTauriRuntime()) {
+      return invoke("get_records", { activityId, resolutionMs, segmentIndex });
     }
     const res = await webClient.get(`/records/${activityId}`, {
-      params: { resolution_ms: resolutionMs }
+      params: { resolution_ms: resolutionMs, segment_index: segmentIndex }
     });
     return res.data;
   },

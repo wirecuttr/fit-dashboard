@@ -425,5 +425,11 @@
   "settings.smoothGraphs": "Gráficos suavizados",
   "settings.smoothGraphsTooltip": "Suavizado de media móvil dinámica. Al hacer zoom, se usan puntos más detallados.",
   "insights.scatterComparison": "Scatterplot",
-  "insights.scatterMetric": "Scatterplot metric"
+  "insights.scatterMetric": "Scatterplot metric",
+  "multisport.parent": "Multideporte",
+  "multisport.legs": "{count} segmentos",
+  "multisport.expandLegs": "Mostrar segmentos",
+  "multisport.collapseLegs": "Ocultar segmentos",
+  "multisport.compareUnavailable": "La comparación multideporte aún no está disponible.",
+  "multisport.excludedFromBulkExport": "Las actividades multideporte principales se excluyen de la exportación."
 }

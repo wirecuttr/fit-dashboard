@@ -425,5 +425,11 @@
   "settings.smoothGraphs": "Wygładzone wykresy",
   "settings.smoothGraphsTooltip": "Dynamiczne wygładzanie średnią kroczącą. Przy zbliżeniu używane są bardziej szczegółowe punkty.",
   "insights.scatterComparison": "Scatterplot",
-  "insights.scatterMetric": "Scatterplot metric"
+  "insights.scatterMetric": "Scatterplot metric",
+  "multisport.parent": "Wielosport",
+  "multisport.legs": "{count} segmentów",
+  "multisport.expandLegs": "Rozwiń segmenty",
+  "multisport.collapseLegs": "Zwiń segmenty",
+  "multisport.compareUnavailable": "Porównywanie aktywności wielosportowych nie jest jeszcze dostępne.",
+  "multisport.excludedFromBulkExport": "Nadrzędne aktywności wielosportowe są pomijane podczas eksportu."
 }

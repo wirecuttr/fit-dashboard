@@ -19,9 +19,7 @@ use crate::{
         HeartRateZonePreferences,
     },
     models::{Credentials, RenameActivityPayload, TokenResponse, UnlockPayload},
-    power_zones::{
-        load_power_zone_preferences, save_power_zone_preferences, PowerZonePreferences,
-    },
+    power_zones::{load_power_zone_preferences, save_power_zone_preferences, PowerZonePreferences},
     state::AppState,
 };
 
@@ -31,11 +29,11 @@ const UNLOCK_BLOCK_UNTIL_KEY: &str = "auth.unlock.block_until_utc";
 #[derive(Deserialize)]
 pub struct RecordsQuery {
     pub resolution_ms: Option<i64>,
+    pub segment_index: Option<i64>,
 }
 
 /// SHA-256 hash of the valid supporter code.
-const SUPPORTER_HASH: &str =
-    "20268baf2f8af1792eaf2cd864c29b3b6698b4387810f39946fbccbc350bf5c3";
+const SUPPORTER_HASH: &str = "20268baf2f8af1792eaf2cd864c29b3b6698b4387810f39946fbccbc350bf5c3";
 const SYNC_WAL_CHECKPOINT_EVERY_IMPORTED: usize = 10;
 
 pub fn app(state: AppState) -> Router {
@@ -58,6 +56,7 @@ pub fn app(state: AppState) -> Router {
         .route("/api/blacklist/clear", post(clear_blacklisted_hashes))
         .route("/api/activities", get(list_activities))
         .route("/api/activities/{id}", patch(rename_activity).delete(delete_activity))
+        .route("/api/activities/{id}/segments", get(list_activity_segments))
         .route("/api/overview", get(overview))
         .route("/api/records/{id}", get(records))
         .route("/api/supporter/verify", post(verify_supporter_code))
@@ -109,7 +108,11 @@ async fn onboard(
     Json(payload): Json<Credentials>,
 ) -> Result<Json<TokenResponse>, StatusCode> {
     tracing::info!(username = %payload.username, "onboard attempt");
-    if state.db.has_user().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+    if state
+        .db
+        .has_user()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
         tracing::warn!("onboard denied: user already exists");
         return Err(StatusCode::CONFLICT);
     }
@@ -132,7 +135,10 @@ async fn unlock(
     if let Some(until) = get_unlock_block_until(&state)? {
         if chrono::Utc::now() < until {
             let wait_seconds = (until - chrono::Utc::now()).num_seconds().max(1);
-            tracing::warn!(wait_seconds, "unlock temporarily blocked due to repeated failures");
+            tracing::warn!(
+                wait_seconds,
+                "unlock temporarily blocked due to repeated failures"
+            );
             return Err(StatusCode::TOO_MANY_REQUESTS);
         }
     }
@@ -143,7 +149,8 @@ async fn unlock(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let ok = verify_password(&payload.password, &hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let ok =
+        verify_password(&payload.password, &hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if !ok {
         let blocked = register_unlock_failure(&state)?;
         if blocked {
@@ -183,16 +190,12 @@ async fn import_fit(
     ensure_session(&state, &headers)
         .map_err(|s| (s, Json(serde_json::json!({ "error": "unauthorized" }))))?;
 
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "error": "invalid multipart request" })),
-            )
-        })?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "invalid multipart request" })),
+        )
+    })? {
         if field.name() != Some("file") {
             continue;
         }
@@ -225,15 +228,12 @@ async fn import_fit(
             Ok(v) => v,
             Err(e) => {
                 if is_non_activity_fit_error(&e) {
-                    state
-                        .db
-                        .add_blacklisted_hash(&hash)
-                        .map_err(|_| {
-                            (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(serde_json::json!({ "error": "failed updating blacklist" })),
-                            )
-                        })?;
+                    state.db.add_blacklisted_hash(&hash).map_err(|_| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({ "error": "failed updating blacklist" })),
+                        )
+                    })?;
                     tracing::info!(file_name = %file_name, "upload skipped: non-activity FIT file");
                     return Ok(Json(serde_json::json!({ "status": "skipped" })));
                 }
@@ -255,16 +255,12 @@ async fn import_fit(
                 )
             })?;
 
-        if state
-            .db
-            .is_file_imported(&parsed.file_hash)
-            .map_err(|_| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "error": "database query failed" })),
-                )
-            })?
-        {
+        if state.db.is_file_imported(&parsed.file_hash).map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "database query failed" })),
+            )
+        })? {
             tracing::info!(file_name = %file_name, file_hash = %parsed.file_hash, "duplicate activity upload skipped");
             return Ok(Json(serde_json::json!({ "status": "duplicate" })));
         }
@@ -285,15 +281,12 @@ async fn import_fit(
 
         let source_format = parsed.source_format.clone();
         let file_hash = parsed.file_hash.clone();
-        let id = state
-            .db
-            .insert_activity(parsed)
-            .map_err(|_| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "error": "failed inserting activity" })),
-                )
-            })?;
+        let id = state.db.insert_activity(parsed).map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "failed inserting activity" })),
+            )
+        })?;
 
         if let Err(e) = persist_fit_file(&state, &file_name, &bytes, &file_hash).await {
             tracing::error!(activity_id = id, file_name = %file_name, error = %e, "upload persistence failed after DB insert; rolling back activity");
@@ -307,7 +300,9 @@ async fn import_fit(
         }
 
         tracing::info!(activity_id = id, file_name = %file_name, source_format = %source_format, "activity upload imported successfully");
-        return Ok(Json(serde_json::json!({ "status": "ok", "activity_id": id })));
+        return Ok(Json(
+            serde_json::json!({ "status": "ok", "activity_id": id }),
+        ));
     }
 
     Err((
@@ -326,6 +321,19 @@ async fn list_activities(
         .list_activities()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     tracing::debug!(count = rows.len(), "list_activities completed");
+    Ok(Json(serde_json::json!(rows)))
+}
+
+async fn list_activity_segments(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    ensure_session(&state, &headers)?;
+    let rows = state
+        .db
+        .list_activity_segments(id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(serde_json::json!(rows)))
 }
 
@@ -357,9 +365,15 @@ async fn records(
     let resolution = q.resolution_ms.unwrap_or(10_000);
     let rows = state
         .db
-        .records_downsampled(id, resolution)
+        .records_downsampled(id, resolution, q.segment_index)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    tracing::debug!(activity_id = id, resolution_ms = resolution, count = rows.len(), "records completed");
+    tracing::debug!(
+        activity_id = id,
+        segment_index = q.segment_index,
+        resolution_ms = resolution,
+        count = rows.len(),
+        "records completed"
+    );
     Ok(Json(serde_json::json!(rows)))
 }
 
@@ -635,7 +649,9 @@ async fn process_sync_file(
     ensure_session(&state, &headers)?;
     let path = std::path::Path::new(&payload.path);
     if !is_supported_activity_file(path) {
-        return Ok(Json(serde_json::json!({ "status": "ignored", "file": payload.path })));
+        return Ok(Json(
+            serde_json::json!({ "status": "ignored", "file": payload.path }),
+        ));
     }
 
     let file_name = path
@@ -652,7 +668,9 @@ async fn process_sync_file(
     match state.db.is_hash_blacklisted(&hash) {
         Ok(true) => {
             tracing::info!(file = %file_name, "sync file skipped: blacklisted");
-            return Ok(Json(serde_json::json!({ "status": "blacklisted", "file": file_name })));
+            return Ok(Json(
+                serde_json::json!({ "status": "blacklisted", "file": file_name }),
+            ));
         }
         Ok(false) => {}
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
@@ -661,7 +679,9 @@ async fn process_sync_file(
     match state.db.is_file_imported(&hash) {
         Ok(true) => {
             tracing::info!(file = %file_name, "sync file skipped: duplicate");
-            return Ok(Json(serde_json::json!({ "status": "duplicate", "file": file_name })));
+            return Ok(Json(
+                serde_json::json!({ "status": "duplicate", "file": file_name }),
+            ));
         }
         Ok(false) => {}
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
@@ -681,14 +701,18 @@ async fn process_sync_file(
                         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
                 }
                 tracing::info!(file = %file_name, "sync file skipped: non-activity FIT file");
-                return Ok(Json(serde_json::json!({ "status": "skipped", "file": file_name })));
+                return Ok(Json(
+                    serde_json::json!({ "status": "skipped", "file": file_name }),
+                ));
             }
             if is_fit_file(path) {
                 move_sync_file_to_incompatible(&state, path, &hash)
                     .await
                     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
                 tracing::info!(file = %file_name, "sync file skipped: incompatible FIT file moved to incompatible");
-                return Ok(Json(serde_json::json!({ "status": "skipped", "file": file_name })));
+                return Ok(Json(
+                    serde_json::json!({ "status": "skipped", "file": file_name }),
+                ));
             }
             return Err(StatusCode::BAD_REQUEST);
         }
@@ -700,7 +724,9 @@ async fn process_sync_file(
     {
         Ok(true) => {
             tracing::info!(file = %file_name, start_ts = %parsed.start_ts_utc, end_ts = %parsed.end_ts_utc, "sync file skipped: duplicate start/end timestamps");
-            return Ok(Json(serde_json::json!({ "status": "duplicate", "file": file_name })));
+            return Ok(Json(
+                serde_json::json!({ "status": "duplicate", "file": file_name }),
+            ));
         }
         Ok(false) => {}
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
@@ -712,7 +738,9 @@ async fn process_sync_file(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     tracing::info!(file = %file_name, "sync file imported");
 
-    Ok(Json(serde_json::json!({ "status": "imported", "file": file_name })))
+    Ok(Json(
+        serde_json::json!({ "status": "imported", "file": file_name }),
+    ))
 }
 
 async fn get_storage_info(
@@ -821,9 +849,7 @@ async fn verify_supporter_code(
     Ok(Json(true))
 }
 
-async fn get_supporter_status(
-    State(state): State<Arc<AppState>>,
-) -> Json<bool> {
+async fn get_supporter_status(State(state): State<Arc<AppState>>) -> Json<bool> {
     let active = state
         .db
         .get_setting("supporter_badge_active")
@@ -835,9 +861,7 @@ async fn get_supporter_status(
     Json(active)
 }
 
-async fn get_donation_dismissed(
-    State(state): State<Arc<AppState>>,
-) -> Json<bool> {
+async fn get_donation_dismissed(State(state): State<Arc<AppState>>) -> Json<bool> {
     let dismissed = state
         .db
         .get_setting("donation_dismissed")
@@ -885,7 +909,10 @@ async fn set_donation_dismissed(
             if payload.dismissed { "true" } else { "false" },
         )
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    tracing::info!(dismissed = payload.dismissed, "set_donation_dismissed completed");
+    tracing::info!(
+        dismissed = payload.dismissed,
+        "set_donation_dismissed completed"
+    );
     Ok(Json(payload.dismissed))
 }
 
@@ -918,8 +945,8 @@ async fn get_power_zone_preferences(
     headers: HeaderMap,
 ) -> Result<Json<PowerZonePreferences>, StatusCode> {
     ensure_session(&state, &headers)?;
-    let preferences = load_power_zone_preferences(&state.db)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let preferences =
+        load_power_zone_preferences(&state.db).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(preferences))
 }
 
@@ -929,13 +956,17 @@ async fn set_power_zone_preferences(
     Json(preferences): Json<PowerZonePreferences>,
 ) -> Result<Json<PowerZonePreferences>, StatusCode> {
     ensure_session(&state, &headers)?;
-    preferences.validate().map_err(|_| StatusCode::BAD_REQUEST)?;
+    preferences
+        .validate()
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
     let saved = save_power_zone_preferences(&state.db, preferences)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(saved))
 }
 
-fn get_unlock_block_until(state: &AppState) -> Result<Option<chrono::DateTime<chrono::Utc>>, StatusCode> {
+fn get_unlock_block_until(
+    state: &AppState,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, StatusCode> {
     let raw = state
         .db
         .get_setting(UNLOCK_BLOCK_UNTIL_KEY)
@@ -1038,10 +1069,7 @@ async fn move_sync_file_to_incompatible(
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("activity");
-        let ext = target
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("fit");
+        let ext = target.extension().and_then(|s| s.to_str()).unwrap_or("fit");
         let suffix = &file_hash[..8.min(file_hash.len())];
         target = incompatible_dir.join(format!("{stem}_{suffix}.{ext}"));
 
@@ -1088,10 +1116,7 @@ async fn persist_fit_file(
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("activity");
-        let ext = target
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("fit");
+        let ext = target.extension().and_then(|s| s.to_str()).unwrap_or("fit");
         let suffix = &file_hash[..8.min(file_hash.len())];
         target = fit_dir.join(format!("{stem}_{suffix}.{ext}"));
 

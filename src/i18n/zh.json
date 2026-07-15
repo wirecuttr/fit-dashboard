@@ -425,5 +425,11 @@
   "settings.smoothGraphs": "平滑图表",
   "settings.smoothGraphsTooltip": "使用动态滚动平均平滑。放大时，将使用更详细的数据点。",
   "insights.scatterComparison": "Scatterplot",
-  "insights.scatterMetric": "Scatterplot metric"
+  "insights.scatterMetric": "Scatterplot metric",
+  "multisport.parent": "多项运动",
+  "multisport.legs": "{count} 个分段",
+  "multisport.expandLegs": "展开分段",
+  "multisport.collapseLegs": "收起分段",
+  "multisport.compareUnavailable": "多项运动比较功能尚不可用。",
+  "multisport.excludedFromBulkExport": "多项运动的父活动不会导出。"
 }

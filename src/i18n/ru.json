@@ -266,5 +266,11 @@
   "insights.scatterMetric": "Scatterplot metric",
   "activityMap.follow": "Следовать",
   "activityMap.telemetry": "Телеметрия",
-  "activityMap.paused": "Пауза"
+  "activityMap.paused": "Пауза",
+  "multisport.parent": "Мультиспорт",
+  "multisport.legs": "{count} этапов",
+  "multisport.expandLegs": "Развернуть этапы",
+  "multisport.collapseLegs": "Свернуть этапы",
+  "multisport.compareUnavailable": "Сравнение мультиспортивных активностей пока недоступно.",
+  "multisport.excludedFromBulkExport": "Родительские мультиспортивные активности исключаются из экспорта."
 }

@@ -425,5 +425,11 @@
   "settings.smoothGraphs": "Yumuşak grafikler",
   "settings.smoothGraphsTooltip": "Dinamik hareketli ortalama yumuşatma. Yakınlaştırdıkça daha ayrıntılı noktalar kullanılır.",
   "insights.scatterComparison": "Scatterplot",
-  "insights.scatterMetric": "Scatterplot metric"
+  "insights.scatterMetric": "Scatterplot metric",
+  "multisport.parent": "Çoklu spor",
+  "multisport.legs": "{count} bölüm",
+  "multisport.expandLegs": "Bölümleri genişlet",
+  "multisport.collapseLegs": "Bölümleri daralt",
+  "multisport.compareUnavailable": "Çoklu spor karşılaştırması henüz kullanılamıyor.",
+  "multisport.excludedFromBulkExport": "Çoklu spor ana etkinlikleri dışa aktarmaya dahil edilmez."
 }

@@ -425,5 +425,11 @@
   "settings.smoothGraphs": "Simított grafikonok",
   "settings.smoothGraphsTooltip": "Dinamikus gördülő átlag simítás. Nagyítás közben részletesebb pontok használatosak.",
   "insights.scatterComparison": "Scatterplot",
-  "insights.scatterMetric": "Scatterplot metric"
+  "insights.scatterMetric": "Scatterplot metric",
+  "multisport.parent": "Multisport",
+  "multisport.legs": "{count} szakasz",
+  "multisport.expandLegs": "Szakaszok kibontása",
+  "multisport.collapseLegs": "Szakaszok összecsukása",
+  "multisport.compareUnavailable": "A multisport-összehasonlítás még nem érhető el.",
+  "multisport.excludedFromBulkExport": "A multisport szülőtevékenységek kimaradnak az exportálásból."
 }
