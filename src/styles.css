@@ -1435,6 +1435,7 @@ button:focus-visible {
 .detail-sync-control:has(input:disabled) {
   cursor: not-allowed;
   opacity: 0.55;
+}
 
 .detail-control-help {
   display: inline-flex;
