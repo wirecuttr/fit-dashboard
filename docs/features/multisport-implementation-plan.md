@@ -2,10 +2,11 @@
 
 ## Status
 
-Implementation planning notes for issue #21. This document is intended to sit
-beside the design proposal and translate it into an ordered build plan.
-
-The design proposal is in `docs/features/multisport-support.md`.
+Build plan for issue #21, reconciled with the 15 July 2026
+[implementation investigation](multisport-implementation-spike.md). Production
+support is not implemented; the spike records the recommended working defaults
+that still need product confirmation. The product design is in
+[multisport-support.md](multisport-support.md).
 
 ## Implementation Principles
 
@@ -13,17 +14,17 @@ The design proposal is in `docs/features/multisport-support.md`.
   Individual tab layout.
 - Put multisport selection in the activity list. Parent rows expand to child
   leg rows.
-- Child rows appear on parent expansion and can also appear in search/filter
-  results when they match.
+- Child rows appear on parent expansion. Child-aware global search and filtering
+  are deferred until their Overview aggregation semantics are defined.
 - Do not double-count child rows in overview totals.
-- Preserve existing single-sport behavior.
+- Preserve existing single-sport behaviour.
 - Limit multisport support to FIT files. Garmin Connect FIT downloads from the
   parent or from selected legs can contain the same full parent multisport FIT
   payload. Garmin Connect TCX and GPX downloads from selected legs are
   leg-specific exports, not parent multisport exports, and stay out of scope for
   multisport detection.
-- Treat automatic database migration as deferred but likely future work. Build
-  the first implementation against a fresh schema.
+- Include automatic additive migration in the first implementation so persistent
+  databases survive an application rebuild.
 
 ## Current Code Baseline
 
@@ -68,18 +69,17 @@ The design proposal is in `docs/features/multisport-support.md`.
 
 ### Migration Timing
 
-Implement on a fresh database first. Automatic additive migration is deferred but
-likely future work.
+Automatic additive migration is required in the first implementation. The local
+deployment preserves its DuckDB database across container rebuilds, so a
+fresh-database-only release is not acceptable.
 
-Reasoning:
+Implementation requirements:
 
-- Parser, segment assignment, insert/delete, API, and UI behavior can be tested
-  more directly on a fresh schema.
-- Migration code adds compatibility complexity and should not block the first
-  implementation slice.
-- Upstream maintainer preference is not known yet. The first implementation can
-  document the fresh-database requirement, then add automatic migration later if
-  upstream wants existing databases to upgrade without wipe/reimport.
+- Update numeric rebuild table definitions so they preserve the new columns.
+- Run additive column and table creation after the existing rebuild check.
+- Backfill existing activities as `single`; existing records remain unassigned.
+- Require manual reimport only for already-imported multisport payloads, whose
+  folded metadata cannot reconstruct every session.
 
 ### Lap Scope
 
@@ -142,7 +142,7 @@ First pass:
   insights using full parent records.
 - Treat these as whole-activity telemetry views, not sport-specific performance
   calculations.
-- Parent calculation behavior is TBD until after the first implementation slice
+- Parent calculation behaviour is TBD until after the first implementation slice
   exposes parent and child records cleanly.
 - Segment views may run sport-specific calculations later because they are scoped
   to one leg with one sport/sub-sport and one expected output metric.
@@ -174,11 +174,11 @@ Add typed parser/domain structures for:
 - Parsed lap metadata with optional segment assignment.
 - Parsed activity with optional segments and segment-tagged lap metadata.
 
-Keep existing `ParsedActivity` behavior for single-sport imports while expanding
+Keep existing `ParsedActivity` behaviour for single-sport imports while expanding
 it to carry child data.
 
 Only FIT files participate in multisport detection and segment extraction. TCX and
-GPX parsers keep their existing single-activity behavior. Garmin Connect
+GPX parsers keep their existing single-activity behaviour. Garmin Connect
 leg-specific TCX/GPX exports should import as ordinary single activities, not as
 multisport parents.
 
@@ -192,20 +192,24 @@ Update `fit_parser.rs` to preserve:
 - Session and lap sport/sub-sport.
 - Session and lap `start_time`, `total_timer_time`, and
   `total_elapsed_time`.
+- Session `first_lap_index` and `num_laps`.
 
 Do not rely on `session.timestamp` or `lap.timestamp` as an end time for
 multisport assignment.
 
 ### 3. Detect Multisport
 
-Treat a file as multisport when:
+Require at least two meaningful sessions with distinct start times, plus at
+least one of:
 
-- FIT activity type is `auto_multi_sport`; or
-- multiple session messages form a multisport pattern with distinct session
-  starts and sport/sub-sport changes, including transition sessions.
+- FIT activity type `auto_multi_sport`;
+- a transition session; or
+- an adjacent sport/sub-sport change.
 
-Keep detection conservative. If the file does not clearly match, preserve
-current single-activity behavior.
+A meaningful session has a valid start and positive timer duration, elapsed
+duration, or distance. This rejects the inspected single-session activities that
+incorrectly carry `auto_multi_sport` while supporting a retained manual
+cycling-to-running file. Record the detection reason in diagnostics.
 
 ### 4. Assign Records and Laps to Segments
 
@@ -222,33 +226,31 @@ Record assignment:
 
 Lap assignment:
 
-- Assign by lap `start_time` against segment intervals.
-- If `start_time` is missing, use FIT message order and lap sport/sub-sport.
-- If ambiguous, omit `segment_index` from the lap metadata so the lap remains
-  visible in the parent view only.
+- Prefer the session `first_lap_index` and `num_laps` range.
+- Fall back to lap `start_time` against segment intervals.
+- Then use FIT message order and lap sport/sub-sport.
+- If ambiguous, omit `segment_index` so the lap remains parent-only.
 
-### 5. Add Fresh Schema Support
+### 5. Add Schema and Migration Support
 
-Add schema for:
+Add and migrate:
 
-- `activities.activity_kind`.
-- `records.segment_id`.
-- `activity_segments`.
-- Do not add `activity_laps` in the first pass; keep laps in `metadata_json.laps` for MVP.
+- `activities.activity_kind`;
+- `records.segment_index`; and
+- `activity_segments` keyed by `(activity_id, segment_index)`, including
+  `record_distance_offset_m`.
 
-Fresh-schema implementation can add these directly in `init_schema` before
-automatic migration work is added.
+Do not add `activity_laps` in the first pass. Update numeric rebuild table
+definitions, then apply idempotent additive migration during schema
+initialization.
 
 ### 6. Update Insert, Delete, and Rollback
 
-Update insert flow:
+Update insert flow in one transaction:
 
-1. Insert parent activity.
-2. Insert segments.
-3. Store segment-tagged laps in parent `metadata_json.laps`.
-4. Insert records with `segment_id`.
-
-Use one transaction where possible.
+1. Insert parent activity and metadata-backed laps.
+2. Insert segments and their record-distance offsets.
+3. Insert records with `segment_index`.
 
 Update delete and rollback flow:
 
@@ -256,7 +258,7 @@ Update delete and rollback flow:
 2. Delete segments.
 3. Delete parent activity.
 
-Keep blacklist behavior unchanged: user deletion still adds the file hash to the
+Keep blacklist behaviour unchanged: user deletion still adds the file hash to the
 blacklist after DB rows are removed.
 
 Backend validation checkpoint:
@@ -265,13 +267,14 @@ Backend validation checkpoint:
   metadata, and segment-scoped records.
 - Deleting a multisport parent removes records, segments, and the parent row.
 - Failed import rollback removes any partial child rows.
-- Single-sport FIT, TCX, and GPX imports keep existing single-activity behavior.
+- Single-sport FIT, TCX, and GPX imports keep existing single-activity behaviour.
 
 ### 7. Add Segment APIs and Record Scoping
 
 Web:
 
-- Add `GET /api/activities/{activity_id}/segments`.
+- Include lightweight ordered segment summaries in `GET /api/activities`.
+- Add `GET /api/activities/{activity_id}/segments` for explicit refresh.
 - Do not add a lap endpoint in the first pass; keep laps in activity metadata.
 - Extend `GET /api/records/{activity_id}` with optional segment filtering.
 
@@ -282,21 +285,18 @@ Desktop/Tauri:
 
 Adapters:
 
-- Keep web and desktop API behavior aligned.
-- Use `segment_index` in frontend state, resolving it to `segment_id`
-  internally for API calls. Route/query-string support for selected child legs is
-  deferred as a likely future enhancement; if added later, expose stable
-  `segment_index` in the URL rather than database `segment_id`.
+- Keep web and desktop API behaviour aligned.
+- Use `activity_id` plus stable `segment_index` in frontend state and APIs.
+- Defer route/query-string support; if later added, expose `segment_index`.
+- Normalize cumulative distance for child responses before returning records.
 
 ### 8. Update Frontend State
 
-Extend `activityStore` to track:
-
-- Selected parent activity.
-- Optional selected segment index.
-- Selected records scoped to parent or child.
-- Segment list for the selected parent.
-- Laps scoped to parent or child from segment-tagged activity metadata.
+Use a discriminated parent-or-segment selection that retains the parent activity
+and, for a child, the complete segment summary. Derive display title, sport,
+start/end, duration, distance, session metadata, laps, and records from that
+selection. Do not change only the records array: current detail statistics and
+actions also read the selected activity object.
 
 When no segment is selected, fetch parent records and use parent laps.
 
@@ -313,17 +313,12 @@ Add expandable parent rows:
 - Child rows are visually subordinate.
 - Transition rows are visible and selectable, but visually de-emphasized.
 
-### 9b. Add Child Row Search and Filter Behavior
+### 9b. Keep Global Filters Parent-based
 
-Search/filter behavior:
-
-- Parent rows participate in filters as before.
-- Child rows also participate in search/filtering.
-- Filtering for `running` may show the running child row without showing the
-  cycling or transition sibling rows.
-- If a matching child row is shown, show a compact parent context row with only
-  the applicable matching children beneath it.
-- Child rows must not increase overview totals or activity counts.
+For the first pass, search and sport filters operate on parent activities. A
+multisport parent appears under `Multisport`; expanding it exposes every leg.
+Defer child-aware filtering until leg-versus-parent Overview aggregation is
+designed.
 
 ### 10. Reuse Individual Tab Layout
 
@@ -368,7 +363,7 @@ Activity Contributions heatmap:
   distance, duration, or intensity.
 - For each activity, `ActivityContributionHeatmap` buckets
   `activity.start_ts_utc` by local day and increments that day by one.
-- Cell color is relative to the busiest day in the displayed range:
+- Cell colour is relative to the busiest day in the displayed range:
   - `0`: grey `rgba(148, 163, 184, 0.20)`
   - `count / maxCount < 0.25`: `#155e75`
   - `count / maxCount < 0.5`: `#0891b2`
@@ -400,45 +395,27 @@ Overview activity table:
 - Do not show child legs as separate rows in the overview table for the first
   pass.
 - The parent row may show a small multisport/leg-count indicator if it can be
-  done without changing table behavior.
+  done without changing table behaviour.
 
 Filtering nuance:
 
-- The activity list can expose child rows when search/filter criteria match a
-  leg.
-- Overview statistics should still aggregate parent activities only.
-- If a filter matches a child leg, include the parent activity once in overview
-  totals rather than counting the child as a separate activity. This preserves
-  the rule that the event is one activity.
-- Reporting matching child-leg distance, duration, count, heatmap entries,
-  weekly trend entries, or donut slices is future enhancement. That would require
-  a leg-aware Overview aggregation model instead of passing only parent
-  activities into the current Overview components.
+- First-pass global filters operate on parent activities only.
+- A multisport event appears under `Multisport` and contributes parent metrics
+  once.
+- Child-aware filters and leg-aware Overview aggregation are deferred together
+  so a Running filter cannot silently include cycling and transition totals.
 
 ### 12. Exports and Compare
 
-Support export for the selected child leg by reusing the existing export shape
-with segment-scoped records. Single-sport activity export remains unchanged.
-
-Disable or suppress export for multisport parent rows in the first pass unless a
-clearly labelled parent-summary export is designed. Parent-level multisport
-export is deferred in `docs/features/multisport-deferred.md`.
-
-Compare behavior is not explicitly designed in the first pass. Preserve existing
-single-sport compare behavior. Do not add special multisport parent or child
-compare support in this slice.
-
-### 13. Automatic Migration Deferred
-
-Automatic migration is deferred but likely future work and tracked in
-`docs/features/multisport-deferred.md`. The first implementation pass targets a
-fresh schema.
+Preserve existing single-sport behaviour. Defer multisport parent and child
+export and compare until segment selection, derived display metadata, and
+normalized distance are proven.
 
 ## Test Plan
 
 Backend parser tests:
 
-- TCX and GPX imports keep existing single-activity behavior and do not enter
+- TCX and GPX imports keep existing single-activity behaviour and do not enter
   multisport detection.
 - TCX distance correction is tracked separately in issue #29 and is not part
   of this multisport implementation.
@@ -448,17 +425,21 @@ Backend parser tests:
 - Session fields are not overwritten by later sessions.
 - Activity message data is preserved.
 - Transition sessions are detected as child legs.
+- Single-session `auto_multi_sport` files remain ordinary activities.
+- Manual multi-session sport changes follow the confirmed detection policy.
 
 Segment assignment tests:
 
 - Records assign to expected segment by timestamp.
-- Laps assign to expected segment by start time.
+- Explicit session lap ranges take priority; start time remains a fallback.
 - Missing or ambiguous laps remain parent-only.
 - Overlap and unassigned diagnostics are recorded.
 
 Database tests:
 
-- Fresh DB creates new tables/columns.
+- Fresh databases create the new tables and columns.
+- Existing databases migrate automatically without losing current columns or rows.
+- A later numeric rebuild preserves the multisport columns.
 - Multisport insert writes parent metadata with segment-tagged laps, segments,
   and records.
 - Delete removes records, segments, and parent.
@@ -468,7 +449,8 @@ Database tests:
 API/Tauri tests:
 
 - Parent records endpoint returns all parent records.
-- Segment-scoped records endpoint returns only child records.
+- Segment-scoped records endpoint returns only child records and normalizes
+  cumulative distance to the segment origin.
 - Parent view reads all metadata laps.
 - Child view filters metadata laps by selected segment index.
 - Web and Tauri commands return matching shapes.
@@ -477,12 +459,10 @@ Frontend tests:
 
 - Parent row expands to child rows.
 - Child row selection scopes records, map, charts, stats, and laps.
-- Search/filter can show matching child rows.
+- Global search and sport filters remain parent-based in the first pass.
 - Overview totals do not double-count children.
 - Parent rename still works.
 - Child rows are not user-editable in the first pass.
-
-Migration tests are deferred with automatic migration.
 
 ## Deferred
 

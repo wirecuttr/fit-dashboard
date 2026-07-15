@@ -4,12 +4,8 @@ Parking lot for issue #21 follow-up work. These are intentionally out of scope
 for the first implementation pass unless the implementation proves they are
 needed sooner.
 
-## Database and Migration
+## Data Model
 
-- Automatic additive migration for existing DuckDB databases.
-  - First pass targets a fresh schema.
-  - Likely future work if upstream wants existing users to upgrade without
-    wiping/reimporting.
 - First-class `activity_laps` table.
   - MVP keeps laps in `metadata_json.laps` with segment assignment fields.
   - Future work can migrate all lap display to `activity_laps` and add a general
@@ -19,14 +15,20 @@ needed sooner.
 
 - URL/query-string support for opening a specific child leg directly.
   - MVP keeps selected child leg in frontend state.
-  - Future URL support should use stable `segment_index`, not database
-    `segment_id`.
+  - Future URL support should use stable `segment_index`.
 - Detail-page segment selector.
   - MVP selects parent/child legs from the activity list only.
 - Child leg rename/custom labels.
   - MVP uses generated names from sport/sub-sport and transition order.
   - Future work could add `activity_segments.custom_name` and a segment-specific
     rename endpoint.
+
+## Search, Filters, and Overview
+
+- Child-aware search and sport filters.
+  - MVP filters parent activities and exposes legs by expanding a Multisport row.
+  - Future work must define whether a leg match contributes leg metrics or the
+    complete parent to Overview totals.
 
 ## Overview
 
@@ -44,15 +46,15 @@ needed sooner.
 - Garmin Connect-style parent detail page.
   - MVP reuses the existing Individual tab layout for both parent and child
     selections.
-- Segment-colored route overlays.
+- Segment-coloured route overlays.
   - MVP maps render the selected record set.
-  - Future work could color parent routes by segment and mark segment boundaries.
+  - Future work could colour parent routes by segment and mark segment boundaries.
 - Manual leg-boundary editing.
 
 ## Calculations and Insights
 
 - Parent-level sport-specific calculations on mixed-sport data.
-  - Parent calculation behavior is TBD after the first implementation slice.
+  - Parent calculation behaviour is TBD after the first implementation slice.
   - Segment-scoped calculations are the safer path because each child leg has one
     sport/sub-sport and expected output stream.
 - Heart-rate drift on multisport.
@@ -73,7 +75,7 @@ needed sooner.
   - Future work should decide whether parent compare is disabled, summary-only,
     or represented by a multisport-specific compare view.
 - Multisport child-leg compare.
-  - Child-leg compare may be able to reuse existing compare behavior, but that is
+  - Child-leg compare may be able to reuse existing compare behaviour, but that is
     not part of the first-slice design.
   - Future work should verify whether compare can accept `activity_id` plus
     `segment_index`, segment labels, segment summaries, and segment-scoped
