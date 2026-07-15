@@ -1409,6 +1409,33 @@ button:focus-visible {
   font-size: 0.72rem;
 }
 
+.detail-sync-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 29px;
+  padding: 0.25rem 0.2rem;
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.detail-sync-control input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.detail-sync-control:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+
 .detail-control-help {
   display: inline-flex;
 }

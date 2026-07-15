@@ -19,6 +19,7 @@ import {
   type ActivityTimeBasis,
   type ActivityTimeResolution,
 } from "../lib/activityTime";
+import type { ActivitySyncController } from "../lib/activitySync";
 import {
   buildRouteDisplayGeoJson,
   buildRouteLineGradient,
@@ -37,6 +38,9 @@ type Props = {
   usePaceDisplay?: boolean;
   timeBasis: ActivityTimeBasis;
   timeResolution: ActivityTimeResolution;
+  activityId: number;
+  syncController: ActivitySyncController | null;
+  syncActive: boolean;
 };
 
 const PLAYBACK_SPEEDS = [1, 2, 4, 8, 16, 32] as const;
@@ -340,6 +344,9 @@ export function ActivityMap({
   usePaceDisplay = false,
   timeBasis,
   timeResolution,
+  activityId,
+  syncController,
+  syncActive,
 }: Props) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -401,6 +408,12 @@ export function ActivityMap({
   const playbackPausedRef = useRef(false);
   const timeBasisRef = useRef(timeBasis);
   const timeResolutionRef = useRef(timeResolution);
+  const syncControllerRef = useRef(syncController);
+  const syncActiveRef = useRef(syncActive);
+  const activityIdRef = useRef(activityId);
+  syncControllerRef.current = syncController;
+  syncActiveRef.current = syncActive;
+  activityIdRef.current = activityId;
   const followBearingRef = useRef<number | null>(null);
   const lastFollowCameraTimeRef = useRef<number | null>(null);
   const playbackSpeedRef = useRef<number>(PLAYBACK_SPEEDS[playbackSpeedIndex]);
@@ -484,7 +497,31 @@ export function ActivityMap({
     timelineIndexRef.current = timelineIndex;
   }, [timelineIndex]);
 
-  function updatePlayhead(elapsedMs: number, render = true) {
+  function publishSyncPosition(sourceTimestampMs: number, immediate = false) {
+    const controller = syncControllerRef.current;
+    if (!syncActiveRef.current || !controller) return;
+    controller.publish({
+      activityId: activityIdRef.current,
+      sourceTimestampMs,
+      origin: "map",
+    }, { immediate });
+  }
+
+  function publishCurrentSyncPosition(immediate = false) {
+    const resolution = timeResolutionRef.current;
+    const basis = timeBasisRef.current;
+    publishSyncPosition(
+      sourceTimestampAtBasisElapsed(playheadElapsedMsRef.current, resolution, basis),
+      immediate,
+    );
+  }
+
+  function updatePlayhead(
+    elapsedMs: number,
+    render = true,
+    publishSync = true,
+    immediateSync = false,
+  ) {
     const resolution = timeResolutionRef.current;
     const basis = timeBasisRef.current;
     const durationMs = getBasisDurationMs(resolution, basis);
@@ -511,6 +548,9 @@ export function ActivityMap({
       playbackPausedRef.current = nextPaused;
       setPlaybackPaused(nextPaused);
     }
+    if (publishSync) {
+      publishSyncPosition(sourceTimestampMs, immediateSync);
+    }
   }
 
   useEffect(() => {
@@ -535,6 +575,7 @@ export function ActivityMap({
     setPlaybackElapsedSeconds(totalElapsedSeconds);
     setPlaybackPaused(false);
     setIsPlaying(false);
+    publishCurrentSyncPosition(true);
   }, [coordinates, timeResolution.timelineStartMs, timeResolution.timelineEndMs]);
 
   useEffect(() => {
@@ -550,7 +591,7 @@ export function ActivityMap({
     timeBasisRef.current = timeBasis;
     timeResolutionRef.current = timeResolution;
     const nextElapsedMs = basisElapsedMsAtTimestamp(sourceTimestampMs, timeResolution, timeBasis);
-    updatePlayhead(nextElapsedMs);
+    updatePlayhead(nextElapsedMs, true, false);
   }, [timeBasis, timeResolution]);
 
   function moveFollowCamera(frameTimeMs: number, force = false, animate = false) {
@@ -601,6 +642,30 @@ export function ActivityMap({
   }
 
   useEffect(() => {
+    if (!syncActive || !syncController) return;
+
+    const unsubscribe = syncController.subscribe((position) => {
+      if (
+        !position
+        || position.activityId !== activityId
+        || position.origin !== "chart"
+      ) {
+        return;
+      }
+      setIsPlaying(false);
+      const nextElapsedMs = basisElapsedMsAtTimestamp(
+        position.sourceTimestampMs,
+        timeResolutionRef.current,
+        timeBasisRef.current,
+      );
+      updatePlayhead(nextElapsedMs, true, false);
+      moveFollowCamera(performance.now(), true);
+    });
+
+    publishCurrentSyncPosition(true);
+    return unsubscribe;
+  }, [activityId, syncActive, syncController]);
+  useEffect(() => {
     if (!isPlaying) {
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -626,7 +691,7 @@ export function ActivityMap({
       const durationMs = getBasisDurationMs(timeResolutionRef.current, timeBasisRef.current);
 
       if (nextElapsedMs >= durationMs) {
-        updatePlayhead(durationMs);
+        updatePlayhead(durationMs, true, true, true);
         moveFollowCamera(time, true);
         setIsPlaying(false);
         return;
@@ -887,7 +952,7 @@ export function ActivityMap({
       return;
     }
     if (playheadElapsedMsRef.current >= playbackDurationMs) {
-      updatePlayhead(0);
+      updatePlayhead(0, true, true, true);
     }
     setIsPlaying(true);
   }
@@ -1100,6 +1165,10 @@ export function ActivityMap({
             setIsPlaying(false);
             updatePlayhead(next * 1000);
           }}
+          onPointerUp={() => publishCurrentSyncPosition(true)}
+          onPointerCancel={() => publishCurrentSyncPosition(true)}
+          onKeyUp={() => publishCurrentSyncPosition(true)}
+          onBlur={() => publishCurrentSyncPosition(true)}
           style={{
             "--progress": playbackSliderMaxSeconds > 0
                 ? `${(Math.min(playbackElapsedSeconds, playbackSliderMaxSeconds) / playbackSliderMaxSeconds) * 100}%`

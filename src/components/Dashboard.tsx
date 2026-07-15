@@ -52,6 +52,10 @@ import {
   resolveEffectiveTimeBasis,
   type ActivityTimeBasis,
 } from "../lib/activityTime";
+import {
+  createActivitySyncController,
+  deriveActivitySyncState,
+} from "../lib/activitySync";
 import { getHeartRateZoneBounds } from "../lib/zones";
 import { resolveHeartRateZoneSelection } from "../lib/hrZones";
 import { configuredPowerZoneBoundsWatts } from "../lib/powerZones";
@@ -340,6 +344,10 @@ export function Dashboard({ onLogout }: Props) {
   const [telemetryZoom, setTelemetryZoom] = useState<{ start: number; end: number } | null>(null);
   const [telemetryXAxisMode, setTelemetryXAxisMode] = useState<TelemetryXAxisMode>("time");
   const [activityTimeBasis, setActivityTimeBasis] = useState<ActivityTimeBasis>("moving");
+  const [telemetrySyncEnabled, setTelemetrySyncEnabled] = useState(false);
+  const [registeredSyncCharts, setRegisteredSyncCharts] = useState<{
+    activityId: number | null; count: number;
+  }>({ activityId: null, count: 0 });
   const [detailControlHelpOpen, setDetailControlHelpOpen] = useState(false);
   const [appVersion, setAppVersion] = useState("unknown");
   const [versionBadgeStatus, setVersionBadgeStatus] = useState<VersionBadgeStatus>({ state: "hidden", latestVersion: null });
@@ -1126,6 +1134,50 @@ export function Dashboard({ onLogout }: Props) {
     () => resolveActivityTime(selectedActivity, records, selectedMetadata),
     [selectedActivity, records, selectedMetadata],
   );
+  const activitySyncController = useMemo(
+    () => typeof selectedActivity?.id === "number"
+      ? createActivitySyncController(selectedActivity.id)
+      : null,
+    [selectedActivity?.id],
+  );
+
+  useEffect(() => {
+    const selectedActivityId = selectedActivity?.id ?? null;
+    if (!activitySyncController || selectedActivityId === null) {
+      setRegisteredSyncCharts({ activityId: null, count: 0 });
+      return;
+    }
+
+    const updateCount = (count: number) => {
+      setRegisteredSyncCharts((current) => (
+        current.activityId === selectedActivityId && current.count === count
+          ? current
+          : { activityId: selectedActivityId, count }
+      ));
+    };
+    updateCount(activitySyncController.getRegisteredChartCount());
+    return activitySyncController.subscribeRegisteredChartCount(updateCount);
+  }, [activitySyncController, selectedActivity?.id]);
+
+  useEffect(() => () => {
+    activitySyncController?.dispose();
+  }, [activitySyncController]);
+
+  const registeredSyncChartCount = registeredSyncCharts.activityId === selectedActivity?.id
+    ? registeredSyncCharts.count
+    : 0;
+  const telemetrySyncState = deriveActivitySyncState(
+    telemetrySyncEnabled,
+    hasDetailRoute,
+    activityTimeResolution.hasPositiveTimeRange,
+    registeredSyncChartCount,
+  );
+  const telemetrySyncAvailable = telemetrySyncState.available;
+  const telemetrySyncActive = telemetrySyncState.active;
+
+  useEffect(() => {
+    if (!telemetrySyncActive) activitySyncController?.clear();
+  }, [activitySyncController, telemetrySyncActive]);
   const effectiveActivityTimeBasis = resolveEffectiveTimeBasis(activityTimeBasis, activityTimeResolution);
   const isSelectedCycling = isCyclingSport(selectedActivity?.sport);
   const rawSessionNormalizedPower = selectedMetadata?.session?.normalized_power;
@@ -2003,6 +2055,18 @@ export function Dashboard({ onLogout }: Props) {
                         </div>
                       )}
                     </div>
+                    <label
+                      className="detail-sync-control"
+                      title={!telemetrySyncAvailable ? t("detail.syncUnavailable") : t("detail.syncHelp")}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={telemetrySyncEnabled}
+                        disabled={!telemetrySyncAvailable}
+                        onChange={(event) => setTelemetrySyncEnabled(event.target.checked)}
+                      />
+                      <span>{t("detail.sync")}</span>
+                    </label>
                     <button className="btn-secondary detail-reset-zoom" disabled={!telemetryZoom} onClick={() => setTelemetryZoom(null)}>
                       {t("detail.resetCharts")}
                     </button>
@@ -2029,6 +2093,11 @@ export function Dashboard({ onLogout }: Props) {
                           <div>
                             <strong>{t("detail.resetCharts")}</strong>
                             <span>{t("detail.resetChartsHelp")}</span>
+                          </div>
+                          <div>
+                            <strong>{t("detail.sync")}</strong>
+                            <span>{t("detail.syncHelp")}</span>
+                            <span>{t("detail.syncUnavailable")}</span>
                           </div>
                         </div>
                       )}
@@ -2070,7 +2139,18 @@ export function Dashboard({ onLogout }: Props) {
               <section className="activity-visual-grid">
                 {hasDetailRoute && (
                   <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} map />}>
-                    <ActivityMap records={selectedRecords} mapStyle={activityMapStyle} setMapStyle={setActivityMapStyle} lapTimestampsUtc={lapTimestampsUtc} usePaceDisplay={activityUsesPaceDisplay(selectedActivity)} timeBasis={effectiveActivityTimeBasis} timeResolution={activityTimeResolution} />
+                    <ActivityMap
+                      records={selectedRecords}
+                      mapStyle={activityMapStyle}
+                      setMapStyle={setActivityMapStyle}
+                      lapTimestampsUtc={lapTimestampsUtc}
+                      usePaceDisplay={activityUsesPaceDisplay(selectedActivity)}
+                      timeBasis={effectiveActivityTimeBasis}
+                      timeResolution={activityTimeResolution}
+                      activityId={selectedActivity?.id ?? 0}
+                      syncController={activitySyncController}
+                      syncActive={telemetrySyncActive}
+                    />
                   </Suspense>
                 )}
                 <Suspense fallback={<VisualisationFallback label={t("app.loadingDashboard")} />}>
@@ -2083,6 +2163,8 @@ export function Dashboard({ onLogout }: Props) {
                     xAxisMode={telemetryXAxisMode}
                     timeBasis={effectiveActivityTimeBasis}
                     timeResolution={activityTimeResolution}
+                    syncController={activitySyncController}
+                    syncActive={telemetrySyncActive}
                     zones={selectedMetadata?.zones ?? null}
                     heartRateZoneBoundsBpm={heartRateZoneSelection?.boundsBpm}
                     heartRateZoneSource={heartRateZoneSelection?.source}

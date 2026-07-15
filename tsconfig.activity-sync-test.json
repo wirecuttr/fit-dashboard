@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": "node_modules/.cache/fit-dashboard-activity-sync-tests",
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": [
+    "scripts/test-activity-sync.ts",
+    "src/lib/activitySync.ts",
+    "src/lib/activityTime.ts"
+  ]
+}

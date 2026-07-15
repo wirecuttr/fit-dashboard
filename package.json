@@ -15,6 +15,7 @@
     "test:map-follow": "node scripts/run-map-follow-tests.mjs",
     "test:activity-time": "node scripts/run-activity-time-tests.mjs",
     "test:map-route-color": "node scripts/run-map-route-color-tests.mjs",
+    "test:activity-sync": "node scripts/run-activity-sync-tests.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
