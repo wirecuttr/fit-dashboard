@@ -42,13 +42,11 @@
   --badge-text: #0891b2;
   --telemetry-overlay-bg: rgba(255, 255, 255, 0.9);
   --telemetry-overlay-border: rgba(15, 23, 42, 0.18);
-  --telemetry-overlay-title: #334155;
   --telemetry-overlay-label-bg: rgba(15, 23, 42, 0.08);
   --telemetry-overlay-label-border: rgba(15, 23, 42, 0.2);
   --telemetry-overlay-label-text: #1e293b;
   --telemetry-overlay-value: #0f172a;
   --telemetry-overlay-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
-  --telemetry-overlay-title-shadow: none;
   --telemetry-overlay-label-shadow: none;
   --telemetry-overlay-value-shadow: none;
 }
@@ -86,13 +84,11 @@
   --badge-text: #67e8f9;
   --telemetry-overlay-bg: rgba(10, 14, 22, 0.82);
   --telemetry-overlay-border: rgba(255, 255, 255, 0.2);
-  --telemetry-overlay-title: rgba(235, 241, 255, 0.92);
   --telemetry-overlay-label-bg: rgba(34, 46, 65, 0.95);
   --telemetry-overlay-label-border: rgba(255, 255, 255, 0.2);
   --telemetry-overlay-label-text: #f8fbff;
   --telemetry-overlay-value: #ffffff;
   --telemetry-overlay-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --telemetry-overlay-title-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
   --telemetry-overlay-label-shadow: 0 1px 1px rgba(0, 0, 0, 0.75);
   --telemetry-overlay-value-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
@@ -2571,14 +2567,6 @@ button:focus-visible {
   box-shadow: var(--telemetry-overlay-shadow);
 }
 
-.telemetry-overlay-title {
-  font-size: 0.68rem;
-  letter-spacing: 0.35px;
-  text-transform: uppercase;
-  color: var(--telemetry-overlay-title);
-  text-shadow: var(--telemetry-overlay-title-shadow);
-  margin-bottom: 0.35rem;
-}
 
 .telemetry-overlay-grid {
   display: grid;
