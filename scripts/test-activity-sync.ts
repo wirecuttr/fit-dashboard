@@ -197,9 +197,10 @@ function testAxisRowsAndTooltipRules() {
 }
 
 function testStateDerivation() {
-  assertEqual(deriveActivitySyncState(true, true, true, 0).active, false, "checked Sync should remain inactive without charts");
-  assertEqual(deriveActivitySyncState(true, true, true, 1).active, true, "checked available Sync should become active");
-  assertEqual(deriveActivitySyncState(false, true, true, 1).available, true, "availability should not depend on preference");
+  assertEqual(deriveActivitySyncState(true, true, 0).active, false, "checked Sync should remain inactive without charts");
+  assertEqual(deriveActivitySyncState(true, true, 1).active, true, "checked available Sync should become active without a route");
+  assertEqual(deriveActivitySyncState(false, true, 1).available, true, "availability should not depend on preference");
+  assertEqual(deriveActivitySyncState(true, false, 1).available, false, "Sync should require a usable timeline");
 }
 
 testControllerCoalescingAndImmediateCancellation();

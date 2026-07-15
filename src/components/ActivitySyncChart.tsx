@@ -12,8 +12,12 @@ import {
 type ChartInstance = {
   isDisposed(): boolean;
   getHeight(): number;
+  getZr(): {
+    on(event: "click", handler: (event: { offsetX: number; offsetY: number }) => void): void;
+    off(event: "click", handler: (event: { offsetX: number; offsetY: number }) => void): void;
+  };
   containPixel(finder: { gridIndex: number }, value: [number, number]): boolean;
-  convertFromPixel(finder: { xAxisIndex: number }, value: [number, number]): number | number[];
+  convertFromPixel(finder: { xAxisIndex: number }, value: number): number | number[];
   convertToPixel(finder: { xAxisIndex: number }, value: number): number | number[];
   dispatchAction(payload: Record<string, unknown>): void;
   getDom(): HTMLElement;
@@ -164,15 +168,12 @@ export function ActivitySyncChart({
 
     const listener = (position: ActivitySyncPosition | null) => applyPosition(chart, position);
     const unsubscribe = latest.controller.subscribe(listener);
-    const chartDom = chart.getDom();
-    const clickHandler = (event: MouseEvent) => {
+    const clickHandler = (event: { offsetX: number; offsetY: number }) => {
       const current = latestRef.current;
       if (!current.active || !current.controller || chart.isDisposed()) return;
-      const bounds = chartDom.getBoundingClientRect();
-      const offsetX = event.clientX - bounds.left;
-      const offsetY = event.clientY - bounds.top;
+      const { offsetX, offsetY } = event;
       if (!chart.containPixel({ gridIndex: 0 }, [offsetX, offsetY])) return;
-      const x = axisX(chart.convertFromPixel({ xAxisIndex: 0 }, [offsetX, offsetY]));
+      const x = axisX(chart.convertFromPixel({ xAxisIndex: 0 }, offsetX));
       if (x === null) return;
       const sourceTimestampMs = current.adapter.xToSourceTimestamp(
         x,
@@ -185,10 +186,10 @@ export function ActivitySyncChart({
         origin: "chart",
       }, { immediate: true });
     };
-    chartDom.addEventListener("click", clickHandler, true);
+    chart.getZr().on("click", clickHandler);
     bindingCleanupRef.current = () => {
       unsubscribe();
-      chartDom.removeEventListener("click", clickHandler, true);
+      if (!chart.isDisposed()) chart.getZr().off("click", clickHandler);
     };
     applyPosition(chart, latest.controller.getCurrent());
   }, [applyPosition, detachBindings]);
