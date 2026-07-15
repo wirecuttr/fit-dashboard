@@ -30,6 +30,146 @@ struct StoppedInterval {
     source: &'static str,
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+struct Vo2MaxEstimateMetadata {
+    value_ml_kg_min: f64,
+    phase: String,
+    category: String,
+    activity_sport_code: Option<i64>,
+    activity_sport: Option<String>,
+    sub_sport: Option<String>,
+    session_index: Option<usize>,
+    source: String,
+    raw_value: Option<f64>,
+    message_index: usize,
+}
+
+#[derive(Clone, Debug)]
+struct StartingVo2Value {
+    value_ml_kg_min: f64,
+    raw_value: f64,
+    source: String,
+    message_index: usize,
+}
+
+#[derive(Clone, Debug)]
+struct Vo2SessionContext {
+    session_index: usize,
+    sport: String,
+}
+
+fn valid_vo2_max(value: f64) -> bool {
+    value.is_finite() && value > 0.0 && value < 200.0
+}
+
+fn vo2_category_from_sport_code(sport_code: Option<i64>) -> String {
+    match sport_code {
+        Some(1) => "running",
+        Some(2) => "cycling",
+        Some(_) => "generic",
+        None => "unknown",
+    }
+    .to_string()
+}
+
+fn vo2_category_from_sport_name(sport: &str) -> Option<String> {
+    let normalized: String = sport
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect();
+    match normalized.as_str() {
+        "running" => Some("running".to_string()),
+        "cycling" => Some("cycling".to_string()),
+        _ => None,
+    }
+}
+
+fn sport_code_for_vo2_category(category: &str) -> Option<i64> {
+    match category {
+        "running" => Some(1),
+        "cycling" => Some(2),
+        _ => None,
+    }
+}
+
+fn push_starting_vo2_estimate(
+    starting: &StartingVo2Value,
+    category: Option<&str>,
+    session: Option<&Vo2SessionContext>,
+    estimates: &mut Vec<Vo2MaxEstimateMetadata>,
+) {
+    let category = category.unwrap_or("unknown");
+    estimates.push(Vo2MaxEstimateMetadata {
+        value_ml_kg_min: starting.value_ml_kg_min,
+        phase: "before_activity".to_string(),
+        category: category.to_string(),
+        activity_sport_code: sport_code_for_vo2_category(category),
+        activity_sport: session
+            .map(|value| value.sport.clone())
+            .or_else(|| (category != "unknown").then(|| category.to_string())),
+        sub_sport: None,
+        session_index: session.map(|value| value.session_index),
+        source: starting.source.clone(),
+        raw_value: Some(starting.raw_value),
+        message_index: starting.message_index,
+    });
+}
+
+fn append_starting_vo2_estimates(
+    starting_values: &[StartingVo2Value],
+    sessions: &[Vo2SessionContext],
+    estimates: &mut Vec<Vo2MaxEstimateMetadata>,
+) {
+    if starting_values.is_empty() {
+        return;
+    }
+
+    let qualifying_sessions: Vec<&Vo2SessionContext> = sessions
+        .iter()
+        .filter(|session| vo2_category_from_sport_name(&session.sport).is_some())
+        .collect();
+
+    if starting_values.len() == qualifying_sessions.len() && !qualifying_sessions.is_empty() {
+        for (starting, session) in starting_values.iter().zip(qualifying_sessions) {
+            let category = vo2_category_from_sport_name(&session.sport);
+            push_starting_vo2_estimate(
+                starting,
+                category.as_deref(),
+                Some(session),
+                estimates,
+            );
+        }
+        return;
+    }
+
+    let first_category = qualifying_sessions
+        .first()
+        .and_then(|session| vo2_category_from_sport_name(&session.sport));
+    let one_category = first_category.as_ref().is_some_and(|category| {
+        qualifying_sessions.iter().all(|session| {
+            vo2_category_from_sport_name(&session.sport).as_ref() == Some(category)
+        })
+    });
+    if one_category {
+        let session = (qualifying_sessions.len() == 1).then_some(qualifying_sessions[0]);
+        for starting in starting_values {
+            push_starting_vo2_estimate(
+                starting,
+                first_category.as_deref(),
+                session,
+                estimates,
+            );
+        }
+        return;
+    }
+
+    for starting in starting_values {
+        push_starting_vo2_estimate(starting, None, None, estimates);
+    }
+}
+
 pub fn is_non_activity_fit_error(err: &anyhow::Error) -> bool {
     err.chain()
         .any(|cause| cause.to_string().starts_with(NON_ACTIVITY_FIT_MARKER))
@@ -1089,6 +1229,10 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     let mut device_info_creator_name: Option<String> = None;
     let mut device_info_creator_serial: Option<i64> = None;
     let mut vo2_max: Option<f64> = None;
+    let mut vo2_max_estimates: Vec<Vo2MaxEstimateMetadata> = Vec::new();
+    let mut starting_vo2_values: Vec<StartingVo2Value> = Vec::new();
+    let mut vo2_sessions: Vec<Vo2SessionContext> = Vec::new();
+    let mut pending_vo2_estimate_index: Option<usize> = None;
     let mut user_profile = serde_json::Map::new();
 
     let mut session_beginning_body_battery: Option<i64> = None;
@@ -1146,7 +1290,7 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
     let mut min_ts: Option<i64> = None;
     let mut max_ts: Option<i64> = None;
 
-    for rec in records {
+    for (message_index, rec) in records.into_iter().enumerate() {
         if rec.kind() == MesgNum::Record {
             let mut timestamp_ms: Option<i64> = None;
             let mut latitude = None;
@@ -1226,7 +1370,10 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                 });
             }
         } else if rec.kind() == MesgNum::Session {
+            let vo2_session_index = session_count as usize;
             session_count += 1;
+            let mut current_session_sport: Option<String> = None;
+            let mut current_session_sub_sport: Option<String> = None;
             push_decoded_fit_message(&mut fit_session_messages, &rec);
             for field in rec.fields() {
                 match field.name() {
@@ -1235,11 +1382,13 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                         session_sport_raw_code = value_i64(field.value())
                             .or_else(|| value.trim().parse().ok());
                         sport = value.to_lowercase();
+                        current_session_sport = Some(sport.clone());
                     }
                     "sub_sport" => {
                         let value = value_string(field.value()).to_lowercase();
                         if !value.trim().is_empty() {
-                            sub_sport = Some(value);
+                            sub_sport = Some(value.clone());
+                            current_session_sub_sport = Some(value);
                         }
                     }
                     "start_time" => {
@@ -1298,6 +1447,36 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
                     _ => {}
                 }
             }
+
+            if let Some(session_sport) = current_session_sport {
+                let session_category = vo2_category_from_sport_name(&session_sport);
+                vo2_sessions.push(Vo2SessionContext {
+                    session_index: vo2_session_index,
+                    sport: session_sport.clone(),
+                });
+
+                if let Some(estimate_index) = pending_vo2_estimate_index {
+                    if let Some(estimate) = vo2_max_estimates.get_mut(estimate_index) {
+                        let expected_code = session_category
+                            .as_deref()
+                            .and_then(sport_code_for_vo2_category);
+                        let sport_matches = expected_code.is_none()
+                            || estimate.activity_sport_code.is_none()
+                            || estimate.activity_sport_code == expected_code;
+                        if sport_matches {
+                            estimate.session_index = Some(vo2_session_index);
+                            estimate.activity_sport = Some(session_sport);
+                            estimate.sub_sport = current_session_sub_sport;
+                            if estimate.category == "unknown" {
+                                if let Some(category) = session_category {
+                                    estimate.category = category;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            pending_vo2_estimate_index = None;
         } else if rec.kind() == MesgNum::Sport {
             for field in rec.fields() {
                 if field.name() == "name" && sport_profile_name.is_none() {
@@ -1511,13 +1690,118 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
             if !step.is_empty() {
                 workout_steps.push(serde_json::Value::Object(step));
             }
-        } else if rec.kind() == MesgNum::Value(140){
+        } else if rec.kind() == MesgNum::Value(79) {
+            let mut raw_field_0: Option<f64> = None;
+            let mut raw_field_19: Option<f64> = None;
             for field in rec.fields() {
-                if field.name() == "unknown_field_7" {
-                    if let Some(v) = value_f64(field.value()) {
-                        vo2_max = Some(v * 3.5 / 65536.0);
-                    }
+                match field.name() {
+                    "unknown_field_0" => raw_field_0 = value_f64(field.value()),
+                    "unknown_field_19" => raw_field_19 = value_f64(field.value()),
+                    _ => {}
                 }
+            }
+
+            let starting_value = raw_field_19
+                .map(|raw| (raw * 3.5 / 65536.0, raw, "garmin_message_79_field_19"))
+                .or_else(|| {
+                    raw_field_0.map(|raw| {
+                        (raw * 3.5 / 1024.0, raw, "garmin_message_79_field_0")
+                    })
+                });
+            if let Some((value, raw_value, source)) = starting_value {
+                if valid_vo2_max(value) {
+                    starting_vo2_values.push(StartingVo2Value {
+                        value_ml_kg_min: value,
+                        raw_value,
+                        source: source.to_string(),
+                        message_index,
+                    });
+                }
+            }
+        } else if rec.kind() == MesgNum::Value(140) {
+            let mut raw_vo2_max: Option<f64> = None;
+            let mut activity_sport_code: Option<i64> = None;
+            for field in rec.fields() {
+                match field.name() {
+                    "unknown_field_7" => raw_vo2_max = value_f64(field.value()),
+                    "unknown_field_11" => activity_sport_code = value_i64(field.value()),
+                    _ => {}
+                }
+            }
+
+            pending_vo2_estimate_index = None;
+            if let Some(raw_value) = raw_vo2_max {
+                let value = raw_value * 3.5 / 65536.0;
+                if valid_vo2_max(value) {
+                    let category = vo2_category_from_sport_code(activity_sport_code);
+                    let activity_sport = match category.as_str() {
+                        "running" | "cycling" => Some(category.clone()),
+                        _ => None,
+                    };
+                    vo2_max = Some(value);
+                    vo2_max_estimates.push(Vo2MaxEstimateMetadata {
+                        value_ml_kg_min: value,
+                        phase: "after_activity".to_string(),
+                        category,
+                        activity_sport_code,
+                        activity_sport,
+                        sub_sport: None,
+                        session_index: None,
+                        source: "garmin_message_140_field_7".to_string(),
+                        raw_value: Some(raw_value),
+                        message_index,
+                    });
+                    pending_vo2_estimate_index = Some(vo2_max_estimates.len() - 1);
+                }
+            }
+        } else if rec.kind() == MesgNum::MaxMetData {
+            let mut value_ml_kg_min: Option<f64> = None;
+            let mut activity_sport: Option<String> = None;
+            let mut estimate_sub_sport: Option<String> = None;
+            let mut max_met_category: Option<String> = None;
+            for field in rec.fields() {
+                match field.name() {
+                    "vo2_max" => value_ml_kg_min = value_f64(field.value()),
+                    "sport" => {
+                        activity_sport = Some(value_string(field.value()).to_lowercase())
+                    }
+                    "sub_sport" => {
+                        estimate_sub_sport = Some(value_string(field.value()).to_lowercase())
+                    }
+                    "max_met_category" => {
+                        max_met_category = Some(value_string(field.value()).to_lowercase())
+                    }
+                    _ => {}
+                }
+            }
+
+            if let Some(value) = value_ml_kg_min.filter(|value| valid_vo2_max(*value)) {
+                let category = if max_met_category.as_deref() == Some("cycling")
+                    || activity_sport.as_deref() == Some("cycling")
+                {
+                    "cycling".to_string()
+                } else if activity_sport.as_deref() == Some("running") {
+                    "running".to_string()
+                } else if max_met_category.as_deref() == Some("generic") {
+                    "generic".to_string()
+                } else {
+                    "unknown".to_string()
+                };
+                if vo2_max.is_none() {
+                    vo2_max = Some(value);
+                }
+                vo2_max_estimates.push(Vo2MaxEstimateMetadata {
+                    value_ml_kg_min: value,
+                    phase: "profile".to_string(),
+                    activity_sport_code: sport_code_for_vo2_category(&category),
+                    activity_sport,
+                    sub_sport: estimate_sub_sport,
+                    session_index: None,
+                    category,
+                    source: "fit_max_met_data_229".to_string(),
+                    raw_value: None,
+                    message_index,
+                });
             }
         } else if rec.kind() == MesgNum::Activity {
             for field in rec.fields() {
@@ -1890,6 +2174,13 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
 
     }
 
+    append_starting_vo2_estimates(
+        &starting_vo2_values,
+        &vo2_sessions,
+        &mut vo2_max_estimates,
+    );
+    vo2_max_estimates.sort_by_key(|estimate| estimate.message_index);
+
     let heart_rate_zone_bounds_bpm = zones.hr_zone_high_boundary.clone();
     let zones_json = build_zones_json(&zones);
     workout_steps.sort_by_key(|step| {
@@ -2097,6 +2388,10 @@ fn parse_fit_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
         },
         "activity_metrics": {
             "vo2_max": vo2_max
+        },
+        "vo2_max": {
+            "schema_version": 1,
+            "estimates": vo2_max_estimates
         },
         "user_profile": serde_json::Value::Object(user_profile),
         "activity": {
@@ -2500,6 +2795,80 @@ fn parse_gpx_bytes(file_name: &str, bytes: &[u8]) -> Result<ParsedActivity> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn starting_vo2(value: f64, message_index: usize) -> StartingVo2Value {
+        StartingVo2Value {
+            value_ml_kg_min: value,
+            raw_value: value * 65536.0 / 3.5,
+            source: "garmin_message_79_field_19".to_string(),
+            message_index,
+        }
+    }
+
+    #[test]
+    fn maps_only_running_and_cycling_to_explicit_vo2_categories() {
+        assert_eq!(vo2_category_from_sport_code(Some(1)), "running");
+        assert_eq!(vo2_category_from_sport_code(Some(2)), "cycling");
+        assert_eq!(vo2_category_from_sport_code(Some(11)), "generic");
+        assert_eq!(vo2_category_from_sport_code(None), "unknown");
+        assert_eq!(
+            vo2_category_from_sport_name("Running"),
+            Some("running".to_string())
+        );
+        assert_eq!(vo2_category_from_sport_name("mountain_biking"), None);
+    }
+
+    #[test]
+    fn associates_multisport_starting_vo2_values_in_session_order() {
+        let sessions = vec![
+            Vo2SessionContext {
+                session_index: 0,
+                sport: "running".to_string(),
+            },
+            Vo2SessionContext {
+                session_index: 1,
+                sport: "transition".to_string(),
+            },
+            Vo2SessionContext {
+                session_index: 2,
+                sport: "cycling".to_string(),
+            },
+        ];
+        let mut estimates = Vec::new();
+
+        append_starting_vo2_estimates(
+            &[starting_vo2(44.7, 20), starting_vo2(43.7, 30)],
+            &sessions,
+            &mut estimates,
+        );
+
+        assert_eq!(estimates.len(), 2);
+        assert_eq!(estimates[0].category, "running");
+        assert_eq!(estimates[0].session_index, Some(0));
+        assert_eq!(estimates[1].category, "cycling");
+        assert_eq!(estimates[1].session_index, Some(2));
+    }
+
+    #[test]
+    fn preserves_ambiguous_starting_vo2_value_without_a_category() {
+        let sessions = vec![
+            Vo2SessionContext {
+                session_index: 0,
+                sport: "running".to_string(),
+            },
+            Vo2SessionContext {
+                session_index: 1,
+                sport: "cycling".to_string(),
+            },
+        ];
+        let mut estimates = Vec::new();
+
+        append_starting_vo2_estimates(&[starting_vo2(45.0, 20)], &sessions, &mut estimates);
+
+        assert_eq!(estimates.len(), 1);
+        assert_eq!(estimates[0].category, "unknown");
+        assert_eq!(estimates[0].session_index, None);
+    }
 
     fn gps_point() -> RecordPoint {
         RecordPoint {

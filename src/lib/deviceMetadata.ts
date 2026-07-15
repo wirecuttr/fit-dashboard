@@ -103,6 +103,19 @@ export type LeftRightBalanceMetadata = {
   right_percent?: number | null;
 };
 
+export type Vo2MaxEstimateMetadata = {
+  value_ml_kg_min?: number | null;
+  phase?: string | null;
+  category?: string | null;
+  activity_sport_code?: number | null;
+  activity_sport?: string | null;
+  sub_sport?: string | null;
+  session_index?: number | null;
+  source?: string | null;
+  raw_value?: number | null;
+  message_index?: number | null;
+};
+
 export type ActivityMetadata = {
   duration_source?: string | null;
   record_span_duration_s?: number | null;
@@ -126,6 +139,10 @@ export type ActivityMetadata = {
   } | null;
   activity_metrics?: {
     vo2_max?: number | null;
+  };
+  vo2_max?: {
+    schema_version?: number | null;
+    estimates?: Vo2MaxEstimateMetadata[] | null;
   };
   user_profile?: {
     friendly_name?: string | null;

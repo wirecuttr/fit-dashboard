@@ -44,6 +44,8 @@ import {
   getAccessoryDevices,
   getPrimaryDeviceLabel,
   parseActivityMetadata,
+  type ActivityMetadata,
+  type Vo2MaxEstimateMetadata,
   type WorkoutStepMetadata,
 } from "../lib/deviceMetadata";
 import { hasUsableDistanceAxis, type TelemetryXAxisMode } from "../lib/telemetryAxis";
@@ -85,6 +87,74 @@ type VersionBadgeStatus = {
   state: "hidden" | "latest" | "update";
   latestVersion: string | null;
 };
+
+type Vo2MaxCategory = "running" | "cycling";
+
+type DisplayVo2Max = {
+  category: Vo2MaxCategory;
+  value: number;
+};
+
+function vo2CategoryFromActivitySport(sport?: string | null): Vo2MaxCategory | null {
+  const normalized = (sport ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  if (normalized.includes("running")) return "running";
+  if (normalized.includes("motorcycling") || normalized.includes("motorcycle")) return null;
+  if (
+    normalized === "cycling"
+    || normalized === "biking"
+    || normalized === "bike"
+    || normalized.includes("cycling")
+    || normalized.includes("biking")
+  ) {
+    return "cycling";
+  }
+  return null;
+}
+
+function vo2EstimatePriority(estimate: Vo2MaxEstimateMetadata): number {
+  if (estimate.source === "fit_max_met_data_229") return 3;
+  if (estimate.phase === "after_activity" || estimate.source === "garmin_message_140_field_7") return 2;
+  if (estimate.phase === "before_activity" || estimate.source?.startsWith("garmin_message_79_")) return 1;
+  return 0;
+}
+
+function selectDisplayedVo2Max(
+  metadata: ActivityMetadata | null,
+  activitySport?: string | null
+): DisplayVo2Max[] {
+  const selected = new Map<Vo2MaxCategory, { value: number; priority: number }>();
+  for (const estimate of metadata?.vo2_max?.estimates ?? []) {
+    const category = estimate.category === "running" || estimate.category === "cycling"
+      ? estimate.category
+      : null;
+    const value = estimate.value_ml_kg_min;
+    if (!category || typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue;
+
+    const priority = vo2EstimatePriority(estimate);
+    const current = selected.get(category);
+    if (!current || priority >= current.priority) selected.set(category, { value, priority });
+  }
+
+  // Older imports have only the scalar. It is safe to qualify for an explicitly
+  // running or cycling activity, but historical multisport imports need reimport
+  // to recover both categories and per-session provenance.
+  const legacyCategory = vo2CategoryFromActivitySport(activitySport);
+  const legacyValue = metadata?.activity_metrics?.vo2_max;
+  if (
+    legacyCategory
+    && !selected.has(legacyCategory)
+    && typeof legacyValue === "number"
+    && Number.isFinite(legacyValue)
+    && legacyValue > 0
+  ) {
+    selected.set(legacyCategory, { value: legacyValue, priority: 0 });
+  }
+
+  return (["running", "cycling"] as const).flatMap((category) => {
+    const estimate = selected.get(category);
+    return estimate ? [{ category, value: estimate.value }] : [];
+  });
+}
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -1254,17 +1324,17 @@ export function Dashboard({ onLogout }: Props) {
     () => getAccessoryDevices(selectedMetadata),
     [selectedMetadata]
   );
-  type DetailStat = { key: string; label: string; value: string; secondary?: string; icon: Icon };
+  type DetailStat = { key: string; label: string; value: string; secondary?: string; tooltip?: string; icon: Icon };
   type DetailStatGroup = { key: string; label: string; icon: Icon; stats: DetailStat[] };
 
   const detailStats = useMemo(() => {
     if (!selectedActivity) return [] as DetailStat[];
     const out: DetailStat[] = [];
     const seen = new Set<string>();
-    const push = (key: string, label: string, value: string | null | undefined, icon: Icon, secondary?: string) => {
+    const push = (key: string, label: string, value: string | null | undefined, icon: Icon, secondary?: string, tooltip?: string) => {
       if (!value || seen.has(key)) return;
       seen.add(key);
-      out.push({ key, label, value, secondary, icon });
+      out.push({ key, label, value, secondary, tooltip, icon });
     };
 
     if (activityTimeResolution.movingLabelSupported && activityTimeResolution.movingDurationMs !== null) {
@@ -1303,7 +1373,6 @@ export function Dashboard({ onLogout }: Props) {
     }
 
     const session = selectedMetadata?.session ?? {};
-    const metric = selectedMetadata?.activity_metrics ?? {};
     const userProfile = selectedMetadata?.user_profile ?? {};
     const avgHr = recordStats.avgHr > 0 ? Math.round(recordStats.avgHr) : (typeof session.avg_heart_rate === "number" ? session.avg_heart_rate : null);
     const maxHr = recordStats.maxHr > 0 ? recordStats.maxHr : (typeof session.max_heart_rate === "number" ? session.max_heart_rate : null);
@@ -1362,7 +1431,19 @@ export function Dashboard({ onLogout }: Props) {
         `${session.beginning_body_battery} -> ${session.ending_body_battery}`
       );
     }
-    if (typeof metric.vo2_max === "number" && metric.vo2_max > 0) push("vo2_max", t("detail.vo2Max"), `${metric.vo2_max.toFixed(1)}`, "user");
+    for (const estimate of selectDisplayedVo2Max(selectedMetadata, selectedActivity.sport)) {
+      const label = estimate.category === "running"
+        ? t("detail.runningVo2Max")
+        : t("detail.cyclingVo2Max");
+      push(
+        "vo2_max_" + estimate.category,
+        label,
+        estimate.value.toFixed(1),
+        "user",
+        undefined,
+        t("detail.vo2MaxTooltip")
+      );
+    }
     const validConfiguredMaxHr = (value: unknown): number | null => (
       typeof value === "number" && Number.isFinite(value) && value >= 40 && value <= 260
         ? value
@@ -1397,7 +1478,7 @@ export function Dashboard({ onLogout }: Props) {
       { key: "elevation", label: t("insights.elevation"), icon: "mountain", keys: ["min_alt", "max_alt", "total_ascent", "total_descent"] },
       { key: "power", label: t("insights.power"), icon: "power", keys: ["avg_power", "max_power", "normalized_power", "left_right_balance"] },
       { key: "cadence", label: t("insights.cadence"), icon: cadenceIconForActivity(selectedActivity), keys: ["avg_cadence", "max_cadence"] },
-      { key: "user", label: t("detail.user"), icon: "user", keys: ["configured_max_hr", "resting_hr", "ftp", "vo2_max", "user_height", "user_weight", "bb_change"] },
+      { key: "user", label: t("detail.user"), icon: "user", keys: ["configured_max_hr", "resting_hr", "ftp", "vo2_max_running", "vo2_max_cycling", "user_height", "user_weight", "bb_change"] },
     ];
     const labelOverrides: Record<string, string> = {
       avg_speed: activityUsesPaceDisplay(selectedActivity) ? "Avg" : "Avg",
@@ -2145,7 +2226,7 @@ export function Dashboard({ onLogout }: Props) {
                       </div>
                       <div className="detail-stat-group-items">
                         {group.stats.map((s) => (
-                          <div key={s.key} className="mini-stat">
+                          <div key={s.key} className="mini-stat" title={s.tooltip}>
                             <span className="mini-value">{s.value}</span>
                             <span className="mini-label">{s.label}</span>
                             {s.secondary && <span className="mini-label" style={{ fontSize: "0.68rem", marginTop: "2px" }}>{s.secondary}</span>}
