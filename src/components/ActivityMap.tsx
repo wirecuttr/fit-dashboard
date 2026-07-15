@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import type { RecordPoint } from "../types";
 import type { MapStyle } from "../stores/settingsStore";
@@ -29,6 +30,7 @@ import {
 } from "../lib/mapRouteColor";
 import { convertElevationMeters, convertSpeedKmh, elevationLabel, paceLabel, speedLabel, type DistanceUnit } from "../lib/units";
 import { useTranslation } from "../lib/i18n";
+import { IconZoomOut } from "./Icons";
 
 type Props = {
   records: RecordPoint[];
@@ -398,6 +400,7 @@ export function ActivityMap({
   const [playbackPaused, setPlaybackPaused] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeedIndex, setPlaybackSpeedIndex] = useState(0);
+  const [resetZoomControlPortal, setResetZoomControlPortal] = useState<HTMLDivElement | null>(null);
   const followEnabledRef = useRef(followEnabled);
   const telemetryEnabledRef = useRef(telemetryEnabled);
   const timelineIndexRef = useRef(timelineIndex);
@@ -997,6 +1000,19 @@ export function ActivityMap({
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
 
+    const resetZoomControlElement = document.createElement("div");
+    resetZoomControlElement.className = "maplibregl-ctrl maplibregl-ctrl-group";
+    const resetZoomControl: maplibregl.IControl = {
+      onAdd: () => {
+        setResetZoomControlPortal(resetZoomControlElement);
+        return resetZoomControlElement;
+      },
+      onRemove: () => {
+        resetZoomControlElement.remove();
+      },
+    };
+    map.addControl(resetZoomControl, "top-right");
+
     // Hover tooltip popup
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: "220px" });
     popupRef.current = popup;
@@ -1130,9 +1146,18 @@ export function ActivityMap({
 
       <div className="map-canvas-wrap">
         <div ref={mapContainerRef} className="map-canvas" />
-        <button className="btn-outline-secondary map-reset-zoom-btn" onClick={resetZoomToRoute}>
-          {t("activityMap.resetZoom")}
-        </button>
+        {resetZoomControlPortal && createPortal(
+          <button
+            type="button"
+            className="map-reset-zoom-control"
+            title={t("activityMap.resetZoom")}
+            aria-label={t("activityMap.resetZoom")}
+            onClick={resetZoomToRoute}
+          >
+            <IconZoomOut aria-hidden="true" focusable="false" />
+          </button>,
+          resetZoomControlPortal,
+        )}
         {telemetryEnabled && telemetryData && (
           <div className="telemetry-overlay" aria-live="polite">
             <div className="telemetry-overlay-grid">
