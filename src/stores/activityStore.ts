@@ -22,6 +22,24 @@ let recordsRequestId = 0;
 function deriveSegmentActivity(parent: Activity, segment: ActivitySegment): Activity {
   const parentMetadata = parseMetadata(parent.metadata_json);
   const segmentMetadata = parseMetadata(segment.metadata_json);
+  const parentZones = parentMetadata.zones && typeof parentMetadata.zones === "object"
+    ? parentMetadata.zones as Record<string, unknown>
+    : null;
+  const segmentZones = parentZones ? { ...parentZones } : null;
+  if (segmentZones) {
+    if (segmentZones.heart_rate && typeof segmentZones.heart_rate === "object") {
+      segmentZones.heart_rate = {
+        ...(segmentZones.heart_rate as Record<string, unknown>),
+        time_in_zone_s: [],
+      };
+    }
+    if (segmentZones.power && typeof segmentZones.power === "object") {
+      segmentZones.power = {
+        ...(segmentZones.power as Record<string, unknown>),
+        time_in_zone_s: [],
+      };
+    }
+  }
   const laps = (parentMetadata.laps ?? []).filter(
     (lap) => Number(lap.segment_index) === segment.segment_index
   );
@@ -37,6 +55,8 @@ function deriveSegmentActivity(parent: Activity, segment: ActivitySegment): Acti
     ...parentMetadata,
     ...segmentMetadata,
     sport: segment.sport,
+    sub_sport: segment.sub_sport,
+    segment_type: segment.segment_type,
     duration_source: "segment.session.total_timer_time",
     record_span_duration_s: segment.elapsed_duration_s,
     total_elapsed_time_s: segment.elapsed_duration_s,
@@ -46,6 +66,7 @@ function deriveSegmentActivity(parent: Activity, segment: ActivitySegment): Acti
       elapsed_time_s: segment.elapsed_duration_s,
       timer_time_s: segment.timer_duration_s,
     },
+    zones: segmentZones,
     fit_messages: fitMessages,
     laps,
   };

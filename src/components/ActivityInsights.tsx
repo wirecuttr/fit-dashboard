@@ -291,6 +291,25 @@ function activityUsesPaceDisplay(activity: Pick<Activity, "sport" | "metadata_js
   return ["treadmill", "trail", "track", "indoor_running", "indoor_walking", "casual_walking", "speed_walking"].includes(subSport);
 }
 
+function getActivitySegmentType(metadataJson: string | null | undefined): string | undefined {
+  if (!metadataJson) return undefined;
+  try {
+    const parsed = JSON.parse(metadataJson) as Record<string, unknown>;
+    const segmentType = parsed.segment_type;
+    if (typeof segmentType !== "string") return undefined;
+    return segmentType.trim().toLowerCase().replace(/[\s_-]+/g, "_");
+  } catch {
+    return undefined;
+  }
+}
+
+function segmentShouldUsePace(segment: { sport?: string | null; sub_sport?: string | null }): boolean {
+  return activityUsesPaceDisplay({
+    sport: segment.sport ?? "",
+    metadata_json: segment.sub_sport ? JSON.stringify({ sub_sport: segment.sub_sport }) : undefined,
+  });
+}
+
 function paceFromSpeedMps(valueMps: number, distanceUnit: DistanceUnit): number | null {
   const speedInUnit = convertSpeedMps(valueMps, distanceUnit);
   return speedInUnit > 0 ? 60 / speedInUnit : null;
@@ -435,6 +454,16 @@ export function ActivityInsights({
   );
   const fitPowerZones = buildPowerZones(zones?.power?.upper_bounds_watts);
   const configuredPowerZones = buildPowerZones(configuredPowerZoneBoundsWatts);
+  const activityIsMultisportSegment = activity?.activity_kind === "multisport_segment";
+  const segmentType = getActivitySegmentType(activity?.metadata_json);
+  const isTransitionSegment = activityIsMultisportSegment && segmentType === "transition";
+  const canShowZoneTimeCharts = !isTransitionSegment;
+  const shouldUsePaceInMultisportParent = activity?.activity_kind === "multisport_parent"
+    ? (activity?.segments ?? []).some((segment) => segmentShouldUsePace(segment))
+    : false;
+  const usePaceForNeutral = neutralOnly
+    ? shouldUsePaceInMultisportParent
+    : false;
   const isDark = theme === "dark";
   const { t: tr } = useTranslation();
   const [heartRateDriftHelpOpen, setHeartRateDriftHelpOpen] = useState(false);
@@ -681,7 +710,7 @@ export function ActivityInsights({
   const lapMarkers = buildLapMarkers(records, lapTimestampsUtc, t0, xAxisMode, distanceUnit, timerMetadata, timeBasis);
 
   const hasRealHeartRateZones = hrZones.length > 0;
-  const fitHrZoneMinutes = hasRealHeartRateZones
+  const fitHrZoneMinutes = !activityIsMultisportSegment && hasRealHeartRateZones
     ? compatibleFitHeartRateZoneMinutes(
         heartRateZoneSource,
         zones?.heart_rate?.time_in_zone_s,
@@ -702,13 +731,15 @@ export function ActivityInsights({
   const zoneMinutes = fitHrZoneMinutes
     ? [...fitHrZoneMinutes]
     : accumulatedHeartRateZones.minutes;
-  const hasHeartRateZoneData = hasHeartRateZoneTimeData(
+  const hasHeartRateZoneData = canShowZoneTimeCharts && hasHeartRateZoneTimeData(
     hrZones.length,
     fitHrZoneMinutes,
     accumulatedHeartRateZones.hasHeartRateSamples,
   );
 
-  const fitPowerZoneSeconds = validFitPowerZoneSeconds(zones?.power?.time_in_zone_s);
+  const fitPowerZoneSeconds = !activityIsMultisportSegment
+    ? validFitPowerZoneSeconds(zones?.power?.time_in_zone_s)
+    : null;
   const fitPowerZoneMinutes = fitPowerZoneSeconds && fitPowerZones.length > 0
     ? zoneSecondsToMinutes(fitPowerZoneSeconds, fitPowerZones.length)
     : null;
@@ -739,7 +770,7 @@ export function ActivityInsights({
     : effectivePowerZoneTimeSource === "calculated" ? calculatedPowerZoneTime.minutes : [];
   const bothPowerZoneSourcesAvailable = fitPowerZoneSourceAvailable
     && calculatedPowerZoneSourceAvailable;
-  const hasPowerZoneData = effectivePowerZoneTimeSource !== undefined;
+  const hasPowerZoneData = canShowZoneTimeCharts && effectivePowerZoneTimeSource !== undefined;
   const zoneChartTotalMinutes = analysisDurationMs > 0 ? analysisDurationMs / 60000 : 0;
 
   const sharedXAxis = {
@@ -1754,7 +1785,7 @@ export function ActivityInsights({
   };
 
   const metricCharts = neutralOnly
-    ? [heartRateChart, speedChart, elevationChart]
+    ? [heartRateChart, ...(usePaceForNeutral ? [paceChart, speedChart] : [speedChart]), elevationChart]
     : usePaceDisplay
       ? [paceChart, heartRateChart, cadenceChart, elevationChart, powerChart]
       : hasPowerData
@@ -1776,9 +1807,10 @@ export function ActivityInsights({
       onEvents: undefined,
       height: insightChartHeight,
     },
-  ].filter((chart) => chart.available && (!neutralOnly || chart.id !== "scatter-comparison"));
+  ].filter((chart) => chart.available && (!neutralOnly || chart.id !== "scatter-comparison") && !(isTransitionSegment && chart.id === "scatter-comparison"));
 
-  const showHeartRateZoneSourceChoice = heartRateZonePreferenceStatus === "ready"
+  const showHeartRateZoneSourceChoice = canShowZoneTimeCharts
+    && heartRateZonePreferenceStatus === "ready"
     && fitHeartRateZonesAvailable
     && hasHeartRateData
     && !!onHeartRateZoneSourceChange;
@@ -1990,7 +2022,7 @@ export function ActivityInsights({
               <>
                 <div className="chart-panel-header">
                   <h3>{chart.title}</h3>
-                  {!neutralOnly && renderHeartRateZoneSource()}
+                  {!neutralOnly && canShowZoneTimeCharts && renderHeartRateZoneSource()}
                 </div>
                 {heartRateZonePreferenceError && (
                   <p className="zone-source-error-text" role="alert">
@@ -2025,12 +2057,12 @@ export function ActivityInsights({
               />
             )}
           </article>
-          {!neutralOnly && chart.id === "heart-rate" && renderHeartRateZoneTimePanel()}
-          {!neutralOnly && chart.id === "power" && renderPowerZoneTimePanel()}
+          {!neutralOnly && canShowZoneTimeCharts && chart.id === "heart-rate" && renderHeartRateZoneTimePanel()}
+          {!neutralOnly && canShowZoneTimeCharts && chart.id === "power" && renderPowerZoneTimePanel()}
         </Fragment>
       ))}
-      {!neutralOnly && !hasVisibleHeartRateChart && renderHeartRateZoneTimePanel()}
-      {!neutralOnly && !hasVisiblePowerChart && renderPowerZoneTimePanel()}
+      {!neutralOnly && canShowZoneTimeCharts && !hasVisibleHeartRateChart && renderHeartRateZoneTimePanel()}
+      {!neutralOnly && canShowZoneTimeCharts && !hasVisiblePowerChart && renderPowerZoneTimePanel()}
       {supplementalCharts.map((chart) => (
         <article className="panel" key={chart.id}>
           {chart.id === "scatter-comparison" ? (

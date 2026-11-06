@@ -1924,8 +1924,8 @@ export function Dashboard({ onLogout }: Props) {
                   const hasIndependentTitle = Boolean(a.source_title || titleDiffersFromGenerated);
                   const deviceLabel = sidebarDeviceLabels.get(a.id) ?? a.device;
                   const contextParts = [
-                    hasIndependentTitle || a.location_city ? activityTypeLabel : "",
-                    hasIndependentTitle ? a.location_city || a.location_label || "" : "",
+                    activityTypeLabel,
+                    a.location_city || a.location_label || "",
                     deviceLabel,
                   ].filter((part): part is string => Boolean(part));
                   const isMultisport = a.activity_kind === "multisport_parent";
