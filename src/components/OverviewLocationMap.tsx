@@ -68,6 +68,7 @@ const POINT_LAYER_ID = "overview-point-layer";
 export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const [mapUnavailable, setMapUnavailable] = useState(false);
   const [resetZoomControlPortal, setResetZoomControlPortal] = useState<HTMLDivElement | null>(null);
   const { t } = useTranslation();
 
@@ -221,14 +222,20 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
   useEffect(() => {
     if (!hasLocations || !mapContainerRef.current || mapRef.current) return;
 
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: styleFromMap(mapStyle),
-      center: [0, 0],
-      zoom: 2,
-      minZoom: 2,
-      cooperativeGestures: true,
-    });
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: mapContainerRef.current,
+        style: styleFromMap(mapStyle),
+        center: [0, 0],
+        zoom: 2,
+        minZoom: 2,
+        cooperativeGestures: true,
+      });
+    } catch {
+      setMapUnavailable(true);
+      return;
+    }
     mapRef.current = map;
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
@@ -312,7 +319,7 @@ export function OverviewLocationMap({ records, mapStyle, setMapStyle }: Props) {
     mapRef.current = null;
   }, [hasLocations]);
 
-  if (!hasLocations) return null;
+  if (!hasLocations || mapUnavailable) return null;
 
   return (
     <div className="panel overview-location-panel">
